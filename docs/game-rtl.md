@@ -174,3 +174,4 @@ To prevent license contamination:
 4. Our `hookMain()` patches `src/main.c` with the `SoeAfterConfig` hook.
 5. Clean, strict legal separation is maintained: no proprietary or PolyForm template files ever enter
    the everscript-vscode repository.
+

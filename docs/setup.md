@@ -160,3 +160,4 @@ SOE_ROM="/path/to/Secret of Evermore (U) [!].smc" npm run recomp
 | `ROM differs` during Asar rebuild | Uncommitted modifications or corrupt export | Run `npm run recomp -- --fresh` to force a clean re-export |
 | `recomp-host.log: regen failed` | Python 3 or Cargo build issue | Check `out/recomp/recomp-host.log` for compilation stack trace |
 | Character-name screen renders garbled | `NewRenderer` active instead of legacy PPU | Verify `SoeAfterConfig` hook is present in `src/main.c` (see [game-rtl.md](game-rtl.md)) |
+

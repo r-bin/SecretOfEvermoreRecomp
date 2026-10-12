@@ -1,0 +1,10 @@
+# Seed directives the everscript CDL export must not emit. everscript-vscode's `npm run recomp`
+# reads this file when it writes recomp/bank*.cfg; each entry is a bug in docs/bugs-and-todos.md.
+#   func <pc24> <reason>       no root `func` line, and `force_lle`: kept interpreted for every caller
+#   dispatch <pc24> <reason>   no `indirect_dispatch` at this jump site
+# An address stands for all its HiROM mirrors ($00/$40/$80/$C0 banks).
+
+# "Press START" screen corrupted in cycle 2: the loop keeps its counter on the 65816 stack.
+dispatch 8F9F46  stack-resident loop dispatcher in func_CF9F05; native RecompStackPop desynchronizes C stack across loop
+# The NMI's dynamic hook: a static target list silently skips unobserved callbacks.
+dispatch 8084BE  NMI dynamic hook JML [$0125] with 3-byte return frame (PHK; PEA) and dynamic targets
