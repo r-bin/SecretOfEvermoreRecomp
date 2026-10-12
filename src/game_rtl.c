@@ -1,59 +1,24 @@
 /*
- * Secret of Evermore — per-game runtime glue.
+ * Secret of Evermore: game-specific runtime glue for the snesrecomp host.
+ * Ours (MIT); the rest of src/ comes from the snesrecomp scaffold.
  *
- * THIS FILE IS THE PORT. Everything else the scaffold produced is layout,
- * build wiring, and packaging; this is where the actual work happens.
- *
- * The framework does not, and cannot, drive an arbitrary SNES game on its
- * own. Two responsibilities always land on the game host:
- *
- *   1. Deciding what "one frame" means for THIS title, and returning from
- *      run_frame() at that boundary. A real ROM's reset vector never
- *      returns — it enters a main loop that waits on vblank — so somebody
- *      has to choose the yield point.
- *   2. Delivering NMI/IRQ at the hardware edge (see
- *      snesrecomp/docs/FRAME_MODEL_HOSTS.md).
- *
- * A new port starts on the framework's beam-aligned driver
- * (runner/src/beam_frame_driver.h): one frame is one PPU field, cut at the
- * beam's vblank edge; interrupts -- raster splits and a coprocessor's IRQ
- * line -- are taken where the beam latches them; parked time still runs the
- * beam, APU and coprocessors; and the field is rasterized from the raster
- * journal with real HDMA. It is the framework's, so a fix to it reaches this
- * port on a submodule pull.
- *
- * This file used to hold its own copy of a simpler driver: frames measured
- * from wherever the CPU last stopped, NMI delivered at an arbitrary beam
- * position, the field drawn with end-of-frame register state. A game that
- * uploads in vblank between INIDISP=$80 and $0F flickered black, and one
- * that chains raster splits fell apart. Replace these calls only for what
- * the driver does not do; MetalWarriorsSNESRecomp's src/mw_rtl.c and
- * GundamWingEndlessDuelSNESRecomp's src/game_rtl.c are developed examples of
- * title-specific drivers.
+ * What SoE needs from the host (docs/recomp-host.md):
+ *   - Reset $80:8020 sets up the hardware, enables NMI + auto-joypad ($4200 = $81) and jumps to
+ *     the main loop at $80:8B66, which never returns: the host cuts frames at vblank.
+ *   - The NMI handler $80:823A copies the PPU shadows $7E0106-$0125 and counts frames in $7E0100.
+ * The framework's beam-aligned driver does both (one frame = one PPU field, NMI at the vblank
+ * edge), and boots SoE into the intro. SoE-specific frame handling goes here once needed.
  */
 
 #include "game_rtl.h"
-
 #include "beam_frame_driver.h"
 
-void GameRunOneFrame(void)
-{
-    snes_beam_frame_driver_run_frame();
-}
+void GameRunOneFrame(void) { snes_beam_frame_driver_run_frame(); }
 
-void GameDrawPpuFrame(void)
-{
-    snes_beam_frame_driver_draw_ppu_frame();
-}
+void GameDrawPpuFrame(void) { snes_beam_frame_driver_draw_ppu_frame(); }
 
-void GameSessionReset(void)
-{
-    /* Rematch / soft-return: clear anything that must not survive a new
-     * session. recomp-ai-rules/NETPLAY.md §3 — sticky state that "has always
-     * been fine" is the usual desync culprit, because single-player never
-     * re-enters the boot path twice in one process. */
-    snes_beam_frame_driver_reset();
-}
+/* A new session (reset / return to title) must not inherit driver state from the last one. */
+void GameSessionReset(void) { snes_beam_frame_driver_reset(); }
 
 const RtlGameInfo kGameInfo = {
     .title = "secretofevermore",
