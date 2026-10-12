@@ -27,6 +27,7 @@
 
 #include "host_main.h"
 #include "game_rtl.h"
+void SoeAfterConfig(void);   /* src/game_rtl.c */
 #include "snesrecomp_rom_identity.h"  /* generated from rom_identity.txt */
 
 #ifndef __ANDROID__
@@ -43,6 +44,7 @@
 #endif
 
 static const SnesDesktopHostGame kGameHost = {
+    .after_config        = SoeAfterConfig,
     .display_name        = "Secret of Evermore",
     .window_title        = "Secret of Evermore",
     .region              = SNESRECOMP_ROM_REGION,

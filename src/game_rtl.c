@@ -12,6 +12,7 @@
 
 #include "game_rtl.h"
 #include "beam_frame_driver.h"
+#include "desktop/config.h"
 
 void GameRunOneFrame(void) { snes_beam_frame_driver_run_frame(); }
 
@@ -19,6 +20,15 @@ void GameDrawPpuFrame(void) { snes_beam_frame_driver_draw_ppu_frame(); }
 
 /* A new session (reset / return to title) must not inherit driver state from the last one. */
 void GameSessionReset(void) { snes_beam_frame_driver_reset(); }
+
+/*
+ * Called by the desktop host after config.ini is parsed (hooked in src/main.c as the host
+ * descriptor's after_config). snesrecomp's optimized PPU ("NewRenderer") draws BG modes 4-6 through
+ * its mode-7 path; SoE's character-name screen is mode 4 (BG1 8bpp, written at $2105 = $04), so
+ * it came out as noise. The reference renderer (ppu_legacy.c) handles every mode: use it until
+ * the optimized one learns mode 4. Found 2026-10-12 (recomp-host.md §3).
+ */
+void SoeAfterConfig(void) { g_config.new_renderer = false; }
 
 const RtlGameInfo kGameInfo = {
     .title = "secretofevermore",

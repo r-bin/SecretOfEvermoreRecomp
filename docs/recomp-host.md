@@ -81,6 +81,24 @@ by the same amount. So the cause is **timing**, not the generated C: during the 
 the loading phase the two emulators spend a different number of frames, so the fade and the
 RNG calls shift. Caveat: the reference, snes9x 2005, is not cycle-accurate either.
 
+### Known framework gap: BG mode 4 (fixed by glue)
+
+Pressing Start in the intro leads to the character-name screen. In the recomp it was noise, while
+intro, title and attract demo were pixel-perfect. Findings (2026-10-12):
+
+- **Not the CDL, not our C:** a build without any of our seeds (everything interpreted) shows the
+  same noise. A more complete CDL would not change it.
+- VRAM at that screen matches snes9x (402 of 65 536 bytes differ, text area only).
+- The game sets up the screen in two steps: `$2105 = $39` (mode 1, BG1/BG2 16×16 tiles), two
+  frames later `$2105 = $04` (**mode 4**: BG1 8bpp, BG2 2bpp), `$2108 = $08`, `$210B = $02`,
+  `$212C = $13`. The stone texture is an 8bpp background.
+- snesrecomp's optimized renderer (`NewRenderer`, the default) handles modes 0–3 and sends
+  everything else down its mode-7 path (`PpuDrawBackgrounds` in `runner/src/snes/ppu.c`). The
+  reference renderer (`ppu_legacy.c`) handles all modes.
+- Fix: our glue sets `g_config.new_renderer = false` from the host's `after_config` hook. Intro
+  and demo are pixel-identical with both renderers, and speed stays above 400 fps. Worth
+  reporting upstream (mode 4/5/6 in the optimized renderer); then the hook can go.
+
 ## 4. What the boot does (learned while setting this up)
 
 - **Reset `$80:8020`:** switches to native mode, sets the stack to `$1FFF` and D to 0, clears
