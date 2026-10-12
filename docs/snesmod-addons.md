@@ -55,8 +55,15 @@ A mod is written across two layers depending on its complexity:
 | Component | Language | Role |
 |---|---|---|
 | **Package Manifest** | **TOML** (`manifest.toml`) | Metadata, feature definitions, UI options, target ROM hashes, asset references. |
-| **Declarative Patches** | **TOML** (`patches/*.toml`) | Hex byte replacements for ROM, RAM, or VRAM (e.g. text translations, palette tweaks). |
+| **Declarative Patches** | **TOML** (`patches/*.toml`) | Hex byte replacements for ROM, RAM, or VRAM (e.g. text translations, palette tweaks, `.evs` bytecode). |
 | **Trusted Plugins** | **C11 / C++17** | Custom game code, hooks into Evermore's Game RTL, entity modifications, UI widgets. |
+
+### 1.3 ROM Hacks vs. Plugins vs. Packages
+A common question is whether a ROM hack is considered a "plugin":
+* **ROM Hacks are Data (Not Plugins):** In Secret of Evermore, custom quests, dialogues, map edits, and Everscript (`.evs`) scripts do **not** compile into native C or new 65816 machine code engines. They compile into script bytecode interpreted by the in-game VM at `$8C:D0A6`. In `.snesmod`, these are declarative byte patches (`patches/*.toml`).
+* **Clean Vanilla ROM as Single Source of Truth:** Users never load pre-patched ROM hacks directly into the recomp executable. The launcher loads the untouched vanilla ROM (verified against `rom_sha256`) and applies the `.snesmod` byte patches **in-memory at runtime**. The original ROM file on disk remains clean.
+* **When is a Plugin Needed?** Only when a mod requires new host-level capabilities or native engine rewrites (e.g., 16:9 widescreen camera logic, network multiplayer, or a DAP debug server). Pure gameplay/story hacks are 100% data patches.
+
 
 ### 2.1 Manifest Example (`manifest.toml`)
 ```toml
@@ -163,8 +170,33 @@ interactive UI. Player selections are saved to `mods/state.toml`.
    type = "integer"
    default = 100
    min = 0
-   max = 150
-   ```
+### 3.1 Launcher UI Layout & Visual Presentation
+When players open the snesrecomp launcher's **Features** screen, installed `.snesmod` addons are rendered in a two-pane layout:
+
+```text
+┌──────────────────────────────────────┬─────────────────────────────────────────────────┐
+│ Features (Left Pane)                 │ Configuration (Right Pane)                      │
+├──────────────────────────────────────┼─────────────────────────────────────────────────┤
+│ ▼ Story & Quests                     │                                                 │
+│   [✓] Secret of Evermore 2-Player    │  Secret of Evermore 2-Player Co-op (v1.0.0)     │
+│   [✓] My Everscript Quest            │  Author: Evermore Community                     │
+│                                      │                                                 │
+│ ▼ Audio & Visuals                    │  Enables full 2-Player co-op with Controller 2  │
+│   [✓] MSU-1 Orchestral Audio         │  controlling the companion dog/boy.             │
+│   [ ] 16:9 Widescreen                │                                                 │
+│                                      │  Options:                                       │
+│ ▼ Quality of Life                    │  Companion Behavior: [ Vanilla AI ▼ ]           │
+│   [✓] Instant Dialogue               │  [✓] Dedicated Ring Menu for P2                 │
+│                                      │                                                 │
+└──────────────────────────────────────┴─────────────────────────────────────────────────┘
+```
+
+* **Left Pane (Features List):** Categorized by `group` (e.g. `Story & Quests`, `Audio & Visuals`, `Quality of Life`). Each feature has a checkbox / toggle allowing players to enable or disable individual mods on the fly before clicking **PLAY**.
+* **Right Pane (Feature Config):** Displays package metadata (name, author, description) and dynamically renders interactive controls for every declared `[[option]]` (checkboxes, dropdowns, numeric sliders).
+* **Top Tabs:**
+  * **Features:** The primary toggle and configuration view.
+  * **Installed packages:** Manages the `.snesmod` archives themselves (view versions, inspect file sizes, install or uninstall packages).
+
 
 ---
 
@@ -218,3 +250,11 @@ to `.snesmod` packages:
 - **Direct Alchemy Shortcuts:** Binds favorite formulas directly to shoulder triggers (L/R)
   without opening the Ring Menu.
 - **Ingredient Counter in Status HUD:** Shows held alchemy ingredient counts on screen.
+ 
+### 5.5 Everscript Debugger Bridge (`soe-evs-debugger.snesmod`)
+- **Mechanism:** Combines a `.snesmod` configuration wrapper with a native C **Trusted Plugin** compiled into the host executable.
+- **Role:** Hooks the Evermore bytecode script engine opcode fetch at `$8C:D0A6`, exposing live script PC (`$82..$84`) and script slot data (`$7E28FC`) over a local TCP socket.
+- **Addon Options:**
+  - Toggle debug server active / inactive.
+  - Configurable listening TCP port (e.g. `54321`).
+  - Option to break/pause on game boot until VS Code debugger attaches.
