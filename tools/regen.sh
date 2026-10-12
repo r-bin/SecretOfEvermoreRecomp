@@ -15,6 +15,7 @@
 #   --no-verify   skip the ROM digest check (for a revision this project has
 #                 not been pinned to yet — expect the generated C to differ)
 #   --cfg-roots   seed analysis from every func declaration in recomp/*.cfg
+#                 (on by default: recomp/bank8x..91.cfg are the CDL seeds)
 #   -h|--help     this message
 set -euo pipefail
 
@@ -23,7 +24,7 @@ ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$ROOT"
 
 VERIFY=1
-CFG_ROOTS=0
+CFG_ROOTS=1
 ROM=""
 while [ $# -gt 0 ]; do
   case "$1" in
