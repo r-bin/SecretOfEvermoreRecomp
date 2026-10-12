@@ -8,3 +8,11 @@
 dispatch 8F9F46  stack-resident loop dispatcher in func_CF9F05; native RecompStackPop desynchronizes C stack across loop
 # The NMI's dynamic hook: a static target list silently skips unobserved callbacks.
 dispatch 8084BE  NMI dynamic hook JML [$0125] with 3-byte return frame (PHK; PEA) and dynamic targets
+
+# Sprite corruption in the attract demo, then the HUD portrait in combat.
+func 80960A  dynamic sprite allocator cluster; stack/register desync in snesrecomp mega-function corrupts OAM allocations
+func 809685  dynamic sprite allocator cluster; stack/register desync in snesrecomp mega-function corrupts OAM allocations
+func 8096BB  dynamic sprite allocator cluster; stack/register desync in snesrecomp mega-function corrupts OAM allocations
+func 809033  dynamic sprite allocator cluster; direct_sprite_draw_oam; leaves stack frame intact for interpreter
+func 809040  dynamic sprite allocator cluster; internal entry called from 96bb; leaves stack frame intact for interpreter
+func 808FEE  dynamic sprite allocator cluster; sprite queue setup; leaves stack frame intact for interpreter
