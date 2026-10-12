@@ -48,7 +48,13 @@ open "out/recomp/SecretOfEvermore-macos-arm64/play.command"     # Linux: play.sh
    **682 native**, 351 LLE.
 5. **Build:** `cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build`.
 6. **Package:** copy the executable, `assets/` and `mods/` to
-   `out/recomp/SecretOfEvermore-<os>-<arch>/` and write a start script with the ROM path.
+   `out/recomp/SecretOfEvermore-<os>-<arch>/` and write a start script with the ROM path. Only
+   those are replaced on a rebuild: `saves/` (SRAM `save.srm`, save states `save<N>.sav`),
+   `config.ini` and `keybinds.ini` belong to the player and are kept.
+
+Keys (from the framework's default `config.ini`): Shift+F1…F10 save a state, F1…F10 load it,
+`r` toggles the PPU renderer, Tab is turbo, Ctrl+R resets. A save state is the way to hand over a
+scene for debugging: `--script` with `loadstate <slot>` replays it headless.
 
 The ROM probe reports HiROM, no coprocessor, checksum valid.
 
