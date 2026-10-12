@@ -174,9 +174,18 @@ whether a glitch exists on the reference at all.
 
 ### 5.4 Forcing Functions into the Interpreter at Run Time
 `SNESRECOMP_LLE_INTERP_TARGET_FILE=<file>` (one 24-bit PC per line, hex) makes the bridge run
-those functions in the interpreter instead of their generated C, with no rebuild. List every
-`func` root of `recomp/bank*.cfg` in the `$0x`, `$8x` and `$Cx` mirrors to
-get an interpreter-only run of the same build; list half of them to bisect.
+those entries in the interpreter instead of their generated C, with no rebuild. It only
+covers the entries listed, so a file of `func` roots is **not** an interpreter-only run: compiled
+variants and rediscovered callees still run natively. For a real differential:
+
+1. `SNESRECOMP_LLE_BOUNCE=0`: interpreted code stops bouncing into compiled bodies. snesrecomp
+   promises bounced and interpreted runs are guest-state bit-exact, so if this makes a glitch
+   vanish, a compiled body is wrong.
+2. List every compiled entry: the `g_dispatch_table` rows of `src/gen/dispatch_v2.c`
+   whose variant pointers are not all `NULL` (in the `$0x`, `$8x` and `$Cx` mirrors), and bisect that
+   list through the target file against a deterministic script and a WRAM invariant.
+3. Keep the culprit off the native tier for good with `force_lle <pc24>` in a `bank*.cfg`; our
+   generator emits it for every `FUNC_EXCLUSIONS` entry (`src/emulator/cdl/recomp-analysis.js`).
 
 ---
 
