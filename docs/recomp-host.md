@@ -87,6 +87,8 @@ by the same amount. So the cause is **timing**, not the generated C: during the 
 the loading phase the two emulators spend a different number of frames, so the fade and the
 RNG calls shift. Caveat: the reference, snes9x 2005, is not cycle-accurate either.
 
+How to debug a wrong picture (method, both fixed bugs, what is open): [recomp-bug-hunt.md](recomp-bug-hunt.md).
+
 ### Known framework gap: BG mode 4 (fixed by glue)
 
 Pressing Start in the intro leads to the character-name screen. In the recomp it was noise, while
