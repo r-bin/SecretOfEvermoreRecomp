@@ -1,5 +1,6 @@
 [submodule "snesrecomp"]
 	path = snesrecomp
+	ignore = dirty
 	url = https://github.com/RetroPortingToolKit/snesrecomp.git
 	branch = main
 [submodule "recomp-ui"]

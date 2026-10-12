@@ -131,7 +131,27 @@ poke 133 1A2B3C4D                 # Overwrite WRAM at 0x7E0133
 wait 120                          # Advance exactly 120 frames
 dump tag_name                     # Write comprehensive hardware dumps
 quit                              # Terminate process cleanly
+press b 4                         # Hold B for 4 frames (+1 idle frame); combine with +: down+b
+pokefor 4ea3 a002 3               # Write WRAM for 3 frames (little-endian bytes: 0x02A0)
+forcepoke 4eb3 1e00               # Write WRAM every frame from now on (HP lock)
+loadstate 0                       # Load save-state slot 0 (saves/save0.sav)
 ```
+
+Traps found on 2026-10-12:
+- **No `savestate` command.** To get a state headless, set `Autosave = 1` in `config.ini`: the
+  host loads slot 0 at start and saves slot 0 on exit, so a script that ends in `quit` leaves
+  a state of that moment. Set it back to 0 for later runs, or every run starts from slot 0.
+- **Getting into the game:** from power-on, `wait 700`, `press start 2`, `wait 400`,
+  `press start 2`, `wait 150` opens the load list (the first save is already selected),
+  then `press b 4`, `wait 60`, `press b 4`, `wait 500`. Pressing down first selects an empty slot.
+- **Moving between rooms:** write the Boy's x/y (`$4EA3`/`$4EA5`) just before a step-on
+  trigger and walk into it; standing on it does nothing. Triggers are stored in 16-px cells
+  minus the room origin at `$7E0F86`. The camera follows only after a few walked frames.
+- **Fighting:** enemies only take hits from a few pixels away; stand ~18 px above one,
+  `press down 1`, then `press b 3` / `wait 26` per swing. Enemy home positions are in the
+  room's enter script (`soe://rom/assets/maps/<room>/scripts/enter.json`, `spawns`, 8-px units).
+- Every recomp run from a state is deterministic: the same script gives the same dumps, so a
+  glitch found once can be bisected.
 
 ### 5.2 Analyzing Dump Artifacts
 When `dump <tag>` is executed with `SNESRECOMP_DUMP_DIR=/path/to/dumps`, six files are emitted:
@@ -144,6 +164,19 @@ When `dump <tag>` is executed with `SNESRECOMP_DUMP_DIR=/path/to/dumps`, six fil
 | `<tag>.oam.bin` | 544 bytes (OAM sprite table) | Inspect sprite X/Y coordinates, tile IDs, and priority bits |
 | `<tag>.regs.json` | PPU register state | Check BG mode (`$2105`), screen display (`$2100`), OBSEL (`$2101`) |
 | `<tag>.ppuw.tsv` | Complete register write trace | Full log of every PPU write with exact frame and scanline number |
+
+### 5.3 Same Script on snes9x (`tools/recomp/s9x-run.js`)
+`node tools/recomp/s9x-run.js <rom> <save.srm | -> <script> <outdir>` runs the same commands on
+the extension's snes9x core (about 10,000 frames per second) and writes `<tag>.wram.bin`,
+`<tag>.vram.bin` and `<tag>.fb.bmp` in the recomp's layout. Start it from SRAM with the title
+sequence above instead of `loadstate`. Hash a VRAM or WRAM range in both dump folders to see
+whether a glitch exists on the reference at all.
+
+### 5.4 Forcing Functions into the Interpreter at Run Time
+`SNESRECOMP_LLE_INTERP_TARGET_FILE=<file>` (one 24-bit PC per line, hex) makes the bridge run
+those functions in the interpreter instead of their generated C, with no rebuild. List every
+`func` root of `recomp/bank*.cfg` in the `$0x`, `$8x` and `$Cx` mirrors to
+get an interpreter-only run of the same build; list half of them to bisect.
 
 ---
 
