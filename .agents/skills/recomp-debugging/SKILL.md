@@ -1,6 +1,6 @@
 ---
 name: recomp-debugging
-description: Use when the recompiled Secret of Evermore shows a bug (glitch, freeze, crash, wrong behaviour) or when checking whether it behaves like the original — reproducing it headless, choosing a reference emulator and comparing against it, deciding whether our generated C, our seeds, our glue or snesrecomp is at fault, and fixing it. Includes where every tool, dump, log and generated file lives.
+description: Use when the recompiled game misbehaves or must be compared with the original: headless repro, reference emulators, deciding whether C, seeds, glue or snesrecomp is at fault.
 applyTo: "tools/recomp/**,docs/**,src/platform/cdl/recomp-*.js"
 ---
 
