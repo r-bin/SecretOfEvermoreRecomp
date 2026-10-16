@@ -1,7 +1,7 @@
 ---
 name: recomp
 description: Use when building, running, testing or debugging the Secret of Evermore static recompilation (snesrecomp) — npm run recomp, the generated host project, our glue in tools/recomp/host/, seeds from the CDL, save states, headless scripts, or comparing against snes9x. Covers commands and file ownership; bug hunting is the recomp-debugging skill.
-applyTo: "tools/recomp/**,docs/**,src/emulator/cdl/recomp-*.js"
+applyTo: "tools/recomp/**,docs/**,src/platform/cdl/recomp-*.js"
 ---
 
 # Skill: the SoE recomp
@@ -21,7 +21,7 @@ before experimenting: `saves/`, `config.ini` belong to the user.
 - the repository root is generated (snesrecomp, PolyForm Noncommercial): never commit it, never
   copy its files into the repo. Change it only through `tools/recomp/host.js` hooks (it patches
   `src/main.c` and `beam_frame_driver.c`) or our glue `src/game_rtl.c`.
-- Seeds come from `src/emulator/cdl/recomp-seeds.js` / `recomp-analysis.js`.
+- Seeds come from `src/platform/cdl/recomp-seeds.js` / `recomp-analysis.js`.
 
 ## Bugs
 Reproducing, comparing against snes9x / Mesen2, classifying and fixing a recomp bug, and where
