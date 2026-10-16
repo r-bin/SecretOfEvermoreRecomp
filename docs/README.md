@@ -41,13 +41,13 @@ into a native, standalone, portable C desktop executable using
 ### Build the Recompiled Game
 ```sh
 # One command: exports Asar disasm, verifies byte-identical rebuild, scaffolds host, generates C, compiles & packages
-SOE_ROM="/path/to/Secret of Evermore (U) [!].smc" npm run recomp
+npm run recomp
 
 # Re-scaffold the host project cleanly and enforce strict checks
-SOE_ROM=... npm run recomp -- --fresh --strict
+npm run recomp -- --fresh --strict
 
 # Stop after Asar rebuild (fast disasm check, ~2 s)
-SOE_ROM=... npm run recomp -- --no-recomp
+npm run recomp -- --no-recomp
 ```
 
 ### Play the Game

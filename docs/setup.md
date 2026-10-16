@@ -15,7 +15,7 @@ runtime observations with verified structural knowledge about Secret of Evermore
 - **SHA-1:** `79e7738630fff5699217ef58ecc421bc8fcbcd89`
 - **Role:** Source of all game machine code and binary assets. snesrecomp analyzes these exact bytes,
   and the Asar rebuild step must match this checksum byte-for-byte.
-- **Location:** Provided via `SOE_ROM=/path/to/rom.smc` or `--rom <path>`.
+- **Location:** the Evermore base ROM of the ROM library (`npm run roms -- add <path>`), or `--rom <path>`.
 
 ### 1.2 The CDL Library (Code/Data Logger)
 - **Source:** Generated during play sessions in the embedded emulator panel or headless test harness.
@@ -76,7 +76,7 @@ git submodule update --init --depth 1
 
 | Variable / Flag | Default | Description |
 |---|---|---|
-| `SOE_ROM` / `--rom` | *None (required)* | Absolute path to the clean Secret of Evermore ROM |
+| `--rom` | the ROM library's base ROM | Absolute path to the clean Secret of Evermore ROM |
 | `SNESRECOMP` / `--snesrecomp` | `../snesrecomp` | Path to the snesrecomp checkout |
 | `ASAR` / `--asar` | `asar` on PATH | Path to the Asar assembler binary |
 | `SOE_RECOMP_EXE` / `--exe` | Built output binary | Path to recompiled executable (for lockstep tests) |
@@ -92,7 +92,7 @@ git submodule update --init --depth 1
 
 When you invoke:
 ```sh
-SOE_ROM="/path/to/Secret of Evermore (U) [!].smc" npm run recomp
+npm run recomp
 ```
 `tools/recomp/build.js` executes the following sequence:
 
