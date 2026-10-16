@@ -33,14 +33,14 @@ runtime observations with verified structural knowledge about Secret of Evermore
     pointer calls (`jmp ($ptr)`), and stack returns (`pei ($dp); rts`).
 
 ### 1.3 Curated Game Knowledge
-- **`src/localizations/functions.js`:** Hand-curated, verified function names and signatures.
-- **`src/localizations/tables.js`:** Catalogs jump tables and data lookup tables with entry counts.
-- **`src/localizations/knowledge/ram/*.md`:** Curated WRAM variable and structure documentation.
+- **`src/games/evermore/localizations/functions.js`:** Hand-curated, verified function names and signatures.
+- **`src/games/evermore/localizations/tables.js`:** Catalogs jump tables and data lookup tables with entry counts.
+- **`src/games/evermore/localizations/knowledge/ram/*.md`:** Curated WRAM variable and structure documentation.
 - **Role:** Transformed into clean, valid C identifiers (e.g. `Random number generator` → `random_number_generator`)
   and Mesen2 labels, replacing cryptic hex offsets with meaningful symbols across all generated C files.
 
 ### 1.4 ROM Asset Models
-- Asset boundaries defined in `src/rom/` and `src/maps/`:
+- Asset boundaries defined in `src/games/evermore/rom/` and `src/games/evermore/maps/`:
   - 127 room blobs (`rooms/room_XX.bin`)
   - 3,002 dialogue and menu strings (`str_XXXX`)
   - Map collision grids, tilesets, palettes, and sprite graphics.
@@ -99,7 +99,7 @@ npm run recomp
 ### Step 1: Input Gathering & Validation
 - Validates the ROM SHA-1 against `79e7738630fff5699217ef58ecc421bc8fcbcd89`.
 - Locates the CDL library for this SHA-1 in global storage.
-- Loads curated function names from `src/localizations/functions.js` and tables from `tables.js`.
+- Loads curated function names from `src/games/evermore/localizations/functions.js` and tables from `tables.js`.
 
 ### Step 2: Asar Export
 - Generates `out/recomp/asar/`:

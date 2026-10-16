@@ -44,7 +44,7 @@ node tools/recomp/room-nav.js out/rom.sfc 25            # table: triggers with d
 node tools/recomp/room-nav.js out/rom.sfc 25 --script   # the same as ready-to-paste script blocks
 ```
 
-It reads the room through `buildRoomScriptModel` (`src/script/room-scripts.ts`):
+It reads the room through `buildRoomScriptModel` (`src/games/evermore/script/room-scripts.ts`):
 
 - **Step-on triggers** are stored as boxes in absolute 16-px cells. Pixel box =
   `(cell − origin) × 16`. The destination room and landing point come from the trigger

@@ -99,7 +99,7 @@ Verify an exclusion took: the address has only `NULL` variants in `dispatch_v2.c
 | Helpers | `tools/recomp/`: `room-nav.js`, `check-obj-tiles.js`, `s9x-run.js`, `lockstep.js`, `bisect.js`, `verify-intro.js` |
 | Wrappers | `scripts/` (`build-recomp.sh`, `play-recomp.sh`, `lockstep.sh`, `test.sh`) |
 | Clean ROM | `out/rom.sfc` (SHA-1 `79e77386…`) |
-| Game facts | `src/localizations/knowledge/{ram,rom}/`, MCP `soe://` (`rom/assets/maps/<room>/scripts/`, `characters/`) |
+| Game facts | `src/games/evermore/localizations/knowledge/{ram,rom}/`, MCP `soe://` (`rom/assets/maps/<room>/scripts/`, `characters/`) |
 | Runner switches | `grep -rhoE 'getenv\("SNESRECOMP_[A-Z0-9_]+' snesrecomp/runner/src` |
 | Script commands | `snesrecomp/runner/src/desktop/host_main.c` (`LoadScript`); docs: debugging.md §5.1 |
 

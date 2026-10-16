@@ -102,7 +102,7 @@ These issues should be submitted to the [RetroPortingToolKit/snesrecomp](https:/
 ### Milestone 3: High-Level Emulation (HLE) Replacements (`hle_func`)
 - snesrecomp supports replacing any recompiled routine with a clean C implementation using `hle_func <pc16> <c_func_name>`.
 - Replace the leaf routines first:
-  1. LZ decompressors (`src/maps/` already has verified TypeScript decoders).
+  1. LZ decompressors (`src/games/evermore/maps/` already has verified TypeScript decoders).
   2. Room tilemap loader and collision unpacker.
 - Lockstep WRAM comparison validates that hand-written C behaves identically to the original 65816 assembly.
 
