@@ -233,8 +233,8 @@ to `.snesmod` packages:
   - Vanilla SoE corrupts RAM when more than 4 status effects tick simultaneously.
   - An addon can fix the status timer loop natively in C or via a guarded RAM patch.
 - **Naris Super Heal & Prophet Bronze Armor Fixes:**
-  - Documented in [`docs/Naris Super Heal Logic.md`](https://github.com/r-bin/everscript-vscode/blob/develop/docs/Naris%20Super%20Heal%20Logic.md) and
-    [`docs/Prophet Bronze Armor Logic.md`](https://github.com/r-bin/everscript-vscode/blob/develop/docs/Prophet%20Bronze%20Armor%20Logic.md).
+  - Documented in [`docs/naris-super-heal-logic.md`](https://github.com/r-bin/everscript-vscode/blob/develop/docs/naris-super-heal-logic.md) and
+    [`docs/prophet-bronze-armor-logic.md`](https://github.com/r-bin/everscript-vscode/blob/develop/docs/prophet-bronze-armor-logic.md).
   - Corrects vanilla arithmetic logic bugs in boss spell scaling and shop armor values.
 
 ### 5.3 High-Fidelity Audio / MSU-1 Orchestral Soundtrack
