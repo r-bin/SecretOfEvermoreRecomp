@@ -43,9 +43,9 @@ saves and config live in the original):
 | **snesrecomp, compiled bodies off** | same binary, `SNESRECOMP_LLE_BOUNCE=0` | "is our generated C wrong?" — must be bit-exact with the run above | env var |
 | **snesrecomp, chosen entries interpreted** | `SNESRECOMP_LLE_INTERP_TARGET_FILE=<file>` (one PC24 per line, `$0x/$8x/$Cx` mirrors) | bisecting compiled entries; a list of roots alone is **not** interpreter-only | env var |
 | **snesrecomp, zero seeds** | rebuild without `bank8x/9x.cfg` (debugging.md §3.2) | framework vs seeds | rebuild |
-| **snes9x 2005, headless** | `tools/recomp/s9x-run.js` (debugger core `src/emulator/core/snes9x2005-wasm/`) | same script on a reference; ~10,000 fps | `node tools/recomp/s9x-run.js out/rom.sfc <save.srm> s.txt <dir>`; dumps in the recomp layout |
+| **snes9x 2005, headless** | `tools/recomp/s9x-run.js` (debugger core `src/core/emulator/core/snes9x2005-wasm/`) | same script on a reference; ~10,000 fps | `node tools/recomp/s9x-run.js out/rom.sfc <save.srm> s.txt <dir>`; dumps in the recomp layout |
 | **snes9x 2005, lockstep** | `npm run recomp:lockstep` / `scripts/lockstep.sh` | WRAM diff per NMI count from power-on | valid to counter ~305; timing drift after (§1.1 of bugs-and-todos) |
-| **snes9x 2005, breakpoints** | debugger core in node: `Module.addWriteBreakpoint(addr)`, `onBreakpointHit` | who writes an address on the reference | `src/emulator/core/snes9x2005-wasm/DEBUGGER.md` |
+| **snes9x 2005, breakpoints** | debugger core in node: `Module.addWriteBreakpoint(addr)`, `onBreakpointHit` | who writes an address on the reference | `src/core/emulator/core/snes9x2005-wasm/DEBUGGER.md` |
 | **Extension emulator panel** | VS Code, Everscript emulator | play, CDL recording, room overlays | interactive |
 | **Mesen2** | `/Applications/Mesen.app` | cycle-accurate arbiter, trace logger, PPU/sprite viewers | import `out/recomp/asar/mesen/labels.mlb` + `rom.cdl`; manual |
 | **Snes9x (desktop)** | `/Applications/Snes9x.app` | quick visual check of the original | manual |

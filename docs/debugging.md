@@ -36,7 +36,7 @@ When an anomaly occurs in the recompiled game:
 We leverage three complementary SNES emulation environments:
 
 ### 2.1 snes9x2005-wasm (Embedded Node.js Reference)
-- **Path:** `src/emulator/core/snes9x2005-wasm-vanilla/snes9x_2005.js`
+- **Path:** `src/core/emulator/core/snes9x2005-wasm-vanilla/snes9x_2005.js`
 - **Execution:** Runs headless inside Node.js scripts (`tools/recomp/lockstep.js`).
 - **Capabilities:**
   - Instantly accessible from JavaScript via WebAssembly exports (`_startWithRom`, `_mainLoop`, `_saveState`).
