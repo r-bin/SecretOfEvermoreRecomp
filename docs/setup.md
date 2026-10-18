@@ -33,8 +33,8 @@ runtime observations with verified structural knowledge about Secret of Evermore
     pointer calls (`jmp ($ptr)`), and stack returns (`pei ($dp); rts`).
 
 ### 1.3 Curated Game Knowledge
-- **`src/games/evermore/localizations/functions.js`:** Hand-curated, verified function names and signatures.
-- **`src/games/evermore/localizations/tables.js`:** Catalogs jump tables and data lookup tables with entry counts.
+- **`src/games/evermore/localizations/functions.ts`:** Hand-curated, verified function names and signatures.
+- **`src/games/evermore/localizations/tables.ts`:** Catalogs jump tables and data lookup tables with entry counts.
 - **`src/games/evermore/localizations/knowledge/ram/*.md`:** Curated WRAM variable and structure documentation.
 - **Role:** Transformed into clean, valid C identifiers (e.g. `Random number generator` → `random_number_generator`)
   and Mesen2 labels, replacing cryptic hex offsets with meaningful symbols across all generated C files.
@@ -99,7 +99,7 @@ npm run recomp
 ### Step 1: Input Gathering & Validation
 - Validates the ROM SHA-1 against `79e7738630fff5699217ef58ecc421bc8fcbcd89`.
 - Locates the CDL library for this SHA-1 in global storage.
-- Loads curated function names from `src/games/evermore/localizations/functions.js` and tables from `tables.js`.
+- Loads curated function names from `src/games/evermore/localizations/functions.ts` and tables from `tables.js`.
 
 ### Step 2: Asar Export
 - Generates `out/recomp/asar/`:
