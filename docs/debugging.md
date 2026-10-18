@@ -173,7 +173,7 @@ variants and rediscovered callees still run natively. For a real differential:
    whose variant pointers are not all `NULL` (in the `$0x`, `$8x` and `$Cx` mirrors), and bisect that
    list through the target file against a deterministic script and a WRAM invariant.
 3. Keep the culprit off the native tier for good with `force_lle <pc24>` in a `bank*.cfg`; our
-   generator emits it for every `FUNC_EXCLUSIONS` entry (`src/platform/cdl/recomp-analysis.js`).
+   generator emits it for every `FUNC_EXCLUSIONS` entry (`src/platform/cdl/recomp-analysis.ts`).
 
 ---
 

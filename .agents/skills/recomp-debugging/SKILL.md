@@ -78,7 +78,7 @@ up to N (`dump` takes no frame). Then read the bad frame: `ppuw.tsv` (vblank VRA
 
 | Cause | Fix | Where |
 |---|---|---|
-| A compiled routine misbehaves | `FUNC_EXCLUSIONS` entry → emitted as `force_lle` (keeps it interpreted for every caller) | `src/platform/cdl/recomp-analysis.js` |
+| A compiled routine misbehaves | `FUNC_EXCLUSIONS` entry → emitted as `force_lle` (keeps it interpreted for every caller) | `src/platform/cdl/recomp-analysis.ts` |
 | An indirect-jump directive is wrong | `DISPATCH_EXCLUSIONS` | same file |
 | Host behaviour (frame, save state, renderer) | our glue `game_rtl.c` hooks; scaffold patches in `host.js` (`hookMain`, `hookBeamDriver`) | `tools/recomp/host/`, `tools/recomp/host.js` |
 | snesrecomp itself | work around in glue, write it up under "Upstream" in bugs-and-todos.md §3 | never edit the repository root by hand |
@@ -95,7 +95,7 @@ Verify an exclusion took: the address has only `NULL` variants in `dispatch_v2.c
 | Disassembly with our names and comments | `out/recomp/asar/banks/bank_XX.asm` (bus `$8x`/`$Cx` → file `bank_Cx`), `functions.json` |
 | Mesen2 files | `out/recomp/asar/mesen/` |
 | Our glue / hooks | `src/game_rtl.c`, `tools/recomp/host.js` |
-| Seed generation, exclusions | `src/platform/cdl/recomp-seeds.js`, `recomp-analysis.js` |
+| Seed generation, exclusions | `src/platform/cdl/recomp-seeds.js`, `recomp-analysis.ts` |
 | Helpers | `tools/recomp/`: `room-nav.js`, `check-obj-tiles.js`, `s9x-run.js`, `lockstep.js`, `bisect.js`, `verify-intro.js` |
 | Wrappers | `scripts/` (`build-recomp.sh`, `play-recomp.sh`, `lockstep.sh`, `test.sh`) |
 | Clean ROM | `out/rom.sfc` (SHA-1 `79e77386…`) |
