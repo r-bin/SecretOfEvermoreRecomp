@@ -12,8 +12,8 @@ each with its lesson), `game-rtl.md` (our glue). Read the bug table before a new
 failure classes repeat.
 
 ## Commands
-`scripts/build-recomp.sh` (= `npm run recomp -- --rom out/rom.sfc`), `scripts/play-recomp.sh`,
-`scripts/lockstep.sh`. `out/rom.sfc` is the clean ROM. Headless: `<game>/SecretOfEvermore
+`npm run recomp -- --rom out/rom.sfc` builds the game into `out/recomp/SecretOfEvermore-*/`; start it with that folder's
+`play.command` (macOS) or `play.sh`; `npm run recomp:lockstep` compares it with snes9x. `out/rom.sfc` is the clean ROM. Headless: `<game>/SecretOfEvermore
 --no-launcher --script s.txt <rom>` with `SNESRECOMP_DUMP_DIR`. Copy the package to the scratchpad
 before experimenting: `saves/`, `config.ini` belong to the user.
 
