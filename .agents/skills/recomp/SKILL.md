@@ -21,7 +21,7 @@ before experimenting: `saves/`, `config.ini` belong to the user.
 - the repository root is generated (snesrecomp, PolyForm Noncommercial): never commit it, never
   copy its files into the repo. Change it only through `tools/recomp/host.js` hooks (it patches
   snesrecomp's `main.c` and `beam_frame_driver.c`) or our glue `src/game_rtl.c`.
-- Seeds come from `src/platform/cdl/recomp-seeds.js` / `recomp-analysis.ts`.
+- Seeds come from `src/platform/cdl/recomp-seeds.ts` / `recomp-analysis.ts`.
 
 ## Bugs
 Reproducing, comparing against snes9x / Mesen2, classifying and fixing a recomp bug, and where

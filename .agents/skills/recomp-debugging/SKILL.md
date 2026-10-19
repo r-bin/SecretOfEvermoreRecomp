@@ -95,7 +95,7 @@ Verify an exclusion took: the address has only `NULL` variants in `dispatch_v2.c
 | Disassembly with our names and comments | `out/recomp/asar/banks/bank_XX.asm` (bus `$8x`/`$Cx` → file `bank_Cx`), `functions.json` |
 | Mesen2 files | `out/recomp/asar/mesen/` |
 | Our glue / hooks | `src/game_rtl.c`, `tools/recomp/host.js` |
-| Seed generation, exclusions | `src/platform/cdl/recomp-seeds.js`, `recomp-analysis.ts` |
+| Seed generation, exclusions | `src/platform/cdl/recomp-seeds.ts`, `recomp-analysis.ts` |
 | Helpers | `tools/recomp/`: `room-nav.js`, `check-obj-tiles.js`, `s9x-run.js`, `lockstep.js`, `bisect.js`, `verify-intro.js` |
 | Wrappers | `scripts/` (`build-recomp.sh`, `play-recomp.sh`, `lockstep.sh`, `test.sh`) |
 | Clean ROM | `out/rom.sfc` (SHA-1 `79e77386…`) |
