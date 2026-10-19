@@ -1,3 +1,4 @@
+// TODO port to TS (docs/todo/port-to-ts.md)
 'use strict';
 
 // Check the game's OBJ tile cache in WRAM dumps (recomp `dump` or tools/recomp/s9x-run.js output).
