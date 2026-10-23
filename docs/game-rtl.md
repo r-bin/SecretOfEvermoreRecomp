@@ -69,38 +69,10 @@ The Game RTL satisfies all these requirements.
 
 Secret of Evermore's runtime implementation is located in `src/game_rtl.c`:
 
-```c
-#include "game_rtl.h"
-#include "beam_frame_driver.h"
-#include "desktop/config.h"
+> **Reconstructed C Decompilation**:
+> Source moved to [`reconstructed-c/80/808020_game_rtl.c`](https://github.com/r-bin/everscript-vscode/blob/develop/reconstructed-c/80/808020_game_rtl.c).
+> [View in VFS: soe://rom/code/808020](soe://rom/code/808020?c=1&asm=0)
 
-void GameRunOneFrame(void) {
-    snes_beam_frame_driver_run_frame();
-}
-
-void GameDrawPpuFrame(void) {
-    snes_beam_frame_driver_draw_ppu_frame();
-}
-
-/* A new session (reset / return to title) must not inherit driver state. */
-void GameSessionReset(void) {
-    snes_beam_frame_driver_reset();
-}
-
-/* Host configuration hook: forces legacy PPU for BG Mode 4 compatibility. */
-void SoeAfterConfig(void) {
-    g_config.new_renderer = false;
-}
-
-const RtlGameInfo kGameInfo = {
-    .title = "secretofevermore",
-    .initialize = NULL,
-    .run_frame = &GameRunOneFrame,
-    .draw_ppu_frame = &GameDrawPpuFrame,
-    .save_name_prefix = "save",
-    .session_reset = &GameSessionReset,
-};
-```
 
 ### 3.1 The Beam Frame Driver
 Secret of Evermore uses snesrecomp's `beam_frame_driver`:
@@ -127,13 +99,10 @@ via `tools/recomp/host.js`.
 
 ### The Hook Mechanism
 In `src/main.c`:
-```c
-static const SnesDesktopHostGame kGameHost = {
-    .game                = &kGameInfo,
-    .after_config        = SoeAfterConfig,   /* everscript glue */
-    // ...
-};
-```
+> **Reconstructed C Decompilation**:
+> Source moved to [`reconstructed-c/80/808020_game_rtl.c`](https://github.com/r-bin/everscript-vscode/blob/develop/reconstructed-c/80/808020_game_rtl.c).
+> [View in VFS: soe://rom/code/808020](soe://rom/code/808020?c=1&asm=0)
+
 
 `SoeAfterConfig()` executes immediately after `config.ini` is parsed from disk and sets:
 ```c

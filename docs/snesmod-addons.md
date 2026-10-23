@@ -109,23 +109,10 @@ label = "Hold Position"
 
 ### 2.2 Native Trusted Plugin Example (C)
 In the host project's C codebase:
-```c
-#include "mod_runtime.h"
+> **Reconstructed C Decompilation**:
+> Source moved to [`reconstructed-c/8C/8CD0A6_snesmod_addons.c`](https://github.com/r-bin/everscript-vscode/blob/develop/reconstructed-c/8C/8CD0A6_snesmod_addons.c).
+> [View in VFS: soe://rom/code/8CD0A6](soe://rom/code/8CD0A6?c=1&asm=0)
 
-static void enable_two_player(void) {
-    // Hook Evermore input dispatcher in WRAM / Game RTL
-    g_two_player_enabled = true;
-}
-
-static void reset_two_player(void) {
-    g_two_player_enabled = false;
-}
-
-SNES_MOD_CONSTRUCTOR(register_two_player_plugin) {
-    snes_mod_register_reset_callback(reset_two_player);
-    snes_mod_register_activation_plugin("soe.twoplayer.native", enable_two_player);
-}
-```
 
 ---
 

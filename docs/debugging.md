@@ -216,15 +216,10 @@ the in-game interpreter at `$8C:D0A6` (`lda [$82]`):
 
 In the recompilation host (`src/game_rtl.c`), a native C hook at `$8C:D0A6` can intercept
 every bytecode fetch:
-```c
-if (g_evs_debug_server_active) {
-    uint32_t script_pc = snes_read24(0x82);
-    uint16_t slot_ptr = snes_read16(0x7E);
-    if (debug_check_breakpoint(script_pc, slot_ptr)) {
-        debug_pause_and_await_dap_command();
-    }
-}
-```
+> **Reconstructed C Decompilation**:
+> Source moved to [`reconstructed-c/80/808020_debugging.c`](https://github.com/r-bin/everscript-vscode/blob/develop/reconstructed-c/80/808020_debugging.c).
+> [View in VFS: soe://rom/code/808020](soe://rom/code/808020?c=1&asm=0)
+
 
 ### 7.2 Native Trusted Plugin vs. `.snesmod`
 Because `.snesmod` archives follow a strict data-only security model (no arbitrary shared libraries or executable code),
