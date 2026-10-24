@@ -283,7 +283,7 @@ Until a routine passes this, call its C a description, not a decompilation.
 |---|---|---|---|
 | 1 | Pin snesrecomp: record the SHA in `tools/recomp/`, refuse another or dirty checkout unless a flag allows it, and move to a current revision | Builds are reproducible; MMX's pin is 77 commits ahead of ours | `tools/recomp/host.js`, `setup.md` |
 | 2 | Arm the tripwires in every headless run; fail on the first trip | Stack and M/X bugs surface at the routine, not frames later | `debugging.md`, `tools/recomp/` |
-| 3 | Make interpreted vs native (bounce on/off) the primary lockstep; keep snes9x/Mesen2 for hardware questions | Sidesteps the NMI-315 timing drift | `lockstep.js`, bugs-and-todos.md §1.1 |
+| 3 | Make interpreted vs native (bounce on/off) the primary lockstep; keep snes9x/Mesen2 for hardware questions | Sidesteps the NMI-315 timing drift | `tools/compare`, bugs-and-todos.md §1.1 |
 | 4 | Turn each exclusion in `recomp-analysis.ts` into a test: drop it on the new framework, regenerate, rerun the bug's repro | Hints are migration tests; the framework may now prove these `LLE_ONLY` itself | `src/platform/cdl/recomp-analysis.ts` |
 | 5 | Record replays in the recomp and replay them after each regeneration, stopping at the first divergence; pin the save-state and reset cases as tests | Regression evidence that survives timing changes | `tools/recomp/`, `sample-playbacks` |
 | 6 | Run a long playthrough with coverage capture on; ingest it as seeds bound to the ROM SHA | 394 variants still interpreted; the CDL used so far covers ~10 s | `setup.md`, `README.md` §1 |

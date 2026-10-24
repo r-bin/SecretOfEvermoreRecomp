@@ -37,7 +37,7 @@ We leverage three complementary SNES emulation environments:
 
 ### 2.1 snes9x2005-wasm (Embedded Node.js Reference)
 - **Path:** `src/core/emulator/core/snes9x2005-wasm-vanilla/snes9x_2005.js`
-- **Execution:** Runs headless inside Node.js scripts (`tools/recomp/lockstep.js`).
+- **Execution:** Runs headless inside Node.js scripts (`tools/compare/`).
 - **Capabilities:**
   - Instantly accessible from JavaScript via WebAssembly exports (`_startWithRom`, `_mainLoop`, `_saveState`).
   - Direct WRAM access: 128 KB of WRAM is located at state offset `0x10C14`.
@@ -95,8 +95,11 @@ snesrecomp can be configured to run in multiple diagnostic modes to isolate faul
 Lockstep runs the clean ROM in `snes9x2005-wasm` and in the recompiled binary side-by-side:
 
 ```sh
-npm run recomp:lockstep -- --rom "/path/to/rom.smc" --from 295 --to 479 --step 10
+npm run recomp:lockstep -- --rom "/path/to/rom.smc"      # = npm run compare -- recomp=
+npm run compare -- recomp=rom.smc --verbose              # every count, not every 60th
 ```
+
+`tools/compare/README.md` has every option; the report goes to `out/compare/`.
 
 #### Rule 1: Align on the NMI Frame Counter ($7E0100)
 **Never align runs by elapsed host frame numbers.**
@@ -108,7 +111,7 @@ the PPU. Always align on the engine's internal NMI frame counter at `$7E0100`:
 The reset routine `$80:8020` seeds Evermore's pseudorandom number generator from the PPU's
 horizontal and vertical beam counters. Because different emulators boot with different beam positions,
 their RNG seeds immediately diverge.
-- `lockstep.js` pauses at counter 115, reads snes9x's 8-byte RNG state (`$7E0133..$7E013A`), and
+- `tools/compare` waits for counter 115 in snes9x, reads snes9x's 8-byte RNG state (`$7E0133..$7E013A`), and
   `poke`s it into the recompiled game.
 
 #### Rule 3: Mask Non-Deterministic Timing Noise

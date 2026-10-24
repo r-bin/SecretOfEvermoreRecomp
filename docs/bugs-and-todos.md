@@ -97,7 +97,7 @@ These issues should be submitted to the [RetroPortingToolKit/snesrecomp](https:/
 ### Milestone 2: Automated In-Game Playthrough
 - Write a headless script that presses Start at the title screen, accepts default names, and loads
   the opening cutscene and first playable room (`room_00`, Podunk).
-- Extend `lockstep.js` to verify WRAM integrity across player movement and weapon swings.
+- Extend `tools/compare` (recomp `press` input from a replay) to verify WRAM integrity across player movement and weapon swings.
 
 ### Milestone 3: High-Level Emulation (HLE) Replacements (`hle_func`)
 - snesrecomp supports replacing any recompiled routine with a clean C implementation using `hle_func <pc16> <c_func_name>`.
