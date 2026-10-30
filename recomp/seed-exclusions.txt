@@ -16,3 +16,6 @@ func 8096BB  dynamic sprite allocator cluster; stack/register desync in snesreco
 func 809033  dynamic sprite allocator cluster; direct_sprite_draw_oam; leaves stack frame intact for interpreter
 func 809040  dynamic sprite allocator cluster; internal entry called from 96bb; leaves stack frame intact for interpreter
 func 808FEE  dynamic sprite allocator cluster; sprite queue setup; leaves stack frame intact for interpreter
+
+# A save loads into the wrong room with the game logic frozen.
+func 8CCFFD  script scheduler pass; its jsr ($D029,x) handlers return into its own loop by a pushed address; compiled, a save loads into the wrong room with frozen logic

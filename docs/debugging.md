@@ -164,7 +164,8 @@ sequence above instead of `loadstate`. Hash a VRAM or WRAM range in both dump fo
 whether a glitch exists on the reference at all.
 
 ### 5.4 Forcing Functions into the Interpreter at Run Time
-`SNESRECOMP_LLE_INTERP_TARGET_FILE=<file>` (one 24-bit PC per line, hex) makes the bridge run
+`SNESRECOMP_LLE_INTERP_TARGET_FILE=<file>` (one 24-bit PC per line, plain hex such as `8CCFFD`: the
+parser is `strtoul`, so a `$8CCFFD` line is skipped without a warning) makes the bridge run
 those entries in the interpreter instead of their generated C, with no rebuild. It only
 covers the entries listed, so a file of `func` roots is **not** an interpreter-only run: compiled
 variants and rediscovered callees still run natively. For a real differential:

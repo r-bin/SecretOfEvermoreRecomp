@@ -41,7 +41,7 @@ saves and config live in the original):
 |---|---|---|---|
 | **snesrecomp, native** | `out/recomp/SecretOfEvermore-*/` | the subject | script + dumps |
 | **snesrecomp, compiled bodies off** | same binary, `SNESRECOMP_LLE_BOUNCE=0` | "is our generated C wrong?" — must be bit-exact with the run above | env var |
-| **snesrecomp, chosen entries interpreted** | `SNESRECOMP_LLE_INTERP_TARGET_FILE=<file>` (one PC24 per line, `$0x/$8x/$Cx` mirrors) | bisecting compiled entries; a list of roots alone is **not** interpreter-only | env var |
+| **snesrecomp, chosen entries interpreted** | `SNESRECOMP_LLE_INTERP_TARGET_FILE=<file>` (one PC24 per line, plain hex without `$`, all of the `0x/8x/Cx` mirrors) | bisecting compiled entries; a list of roots alone is **not** interpreter-only | env var |
 | **snesrecomp, zero seeds** | rebuild without `bank8x/9x.cfg` (debugging.md §3.2) | framework vs seeds | rebuild |
 | **snes9x 2005, headless** | `tools/recomp/s9x-run.js` (debugger core `src/core/emulator/core/snes9x2005-wasm/`) | same script on a reference; ~10,000 fps | `node tools/recomp/s9x-run.js out/rom.sfc <save.srm> s.txt <dir>`; dumps in the recomp layout |
 | **snes9x 2005, lockstep** | `npm run compare -- recomp=` (alias `recomp:lockstep`; `tools/compare/README.md`) | first differing NMI count from power-on (WRAM + VRAM hashes every 60), bytes, snes9x's writers | in sync through counter 300, different at 360 (§1.1 of bugs-and-todos); two recomp builds: `recomp:<a>=rom recomp:<b>=rom` |
