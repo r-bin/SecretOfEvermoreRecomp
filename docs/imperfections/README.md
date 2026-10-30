@@ -21,6 +21,13 @@ the counter and the stack page left out):
 |---|---|---|---|---|---|---|
 | equal | 100 % | 99.95 % | 99.83 % | 99.11 % | 98.35 % | 98.83 % |
 
+`02-newgame-boy-available.evsmv` (New Game, the prologue, until the Boy can be moved; both sides start with
+empty SRAM), same method:
+
+| key | 1000 | 4000 | 8000 | 12000 | 14500 |
+|---|---|---|---|---|---|
+| equal | 97.38 % | 99.37 % | 99.08 % | 98.93 % | 98.78 % |
+
 - Identical through key 300 (the Square logo, the boot loads).
 - From the first scene load on, the RNG (`$0133`–`$013B`) draws the same values as MesenCE, but up to two
   frames earlier or later; whatever the RNG drives (the demo fights) then parts. That is why the whole-WRAM
