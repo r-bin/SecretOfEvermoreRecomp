@@ -23,8 +23,8 @@ New seeds: `npm run recomp` in the sibling everscript-vscode checkout (writes `r
   `recomp/seed-exclusions.txt`. The seeds `recomp/bank8x..9x.cfg` and the data-region block of
   `recomp/bank00.cfg` are written by everscript-vscode's export: change them there (or through the exclusions
   file), never by hand.
-- `snesrecomp/` is a pinned submodule (PolyForm Noncommercial): never edit it; the one change we
-  need is `tools/patch_framework.py`, applied by CMake.
+- `snesrecomp/` is a pinned submodule (PolyForm Noncommercial): never edit or patch it (owner's
+  rule). Timing the game needs lives in our frame driver `src/soe_frame_driver.c`.
 - `src/gen/` is derived from the ROM: never commit it. No ROM bytes, dumps or screenshots in git.
 
 ## Bugs

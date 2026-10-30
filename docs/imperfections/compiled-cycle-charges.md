@@ -1,6 +1,7 @@
 # Compiled Code Is Billed at Code-Fetch Speed
 
-**Status:** open, in snesrecomp. Not fixed here (owner: no framework changes).
+**Status:** open, in snesrecomp. Not the first difference since 2026-10-30: with our frame driver the native
+build and an all-interpreter run both match MesenCE through NMI key 319 on the attract replay.
 
 ## What hardware does
 Each bus access costs master clocks by region: 6 for FastROM (`$80`–`$FF:8000`+ with `$420D` = 1), 8 for
@@ -8,8 +9,9 @@ WRAM (direct page, stack, `$7E`/`$7F`), 12 for the joypad I/O block; an internal
 FastROM (header `$FFD5` = `$31`, the reset code writes `$420D = 1`).
 
 ## What the recomp does
-- **Interpreter:** charges each bus transfer at its region's speed (`cpu_state.c`). Matches MesenCE: per
-  instruction in the decompressor loop the costs agree within DRAM refresh.
+- **Interpreter:** charges each bus transfer at its region's speed (`cpu_state.c`). Exact: all 331
+  decompressor instructions (`$8C:9880–9BFF`) cost the same master clocks as on MesenCE, refresh stalls aside
+  (MesenCE exec callbacks against `SNESRECOMP_CYC_WATCH`, 300,000 instructions each).
 - **Compiled blocks:** the recompiler folds a block's CPU cycles into one constant and emits
   `cpu->master_cycles += <cycles> * (FastROM ? 6 : 8)` (`recompiler/v2/emit_function.py`, `snes_cycles.py`).
   Every cycle is billed at code speed, so each WRAM access in FastROM code is 2 clocks short. `snes_cycles.py`

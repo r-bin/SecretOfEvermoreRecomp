@@ -21,15 +21,12 @@
 #include "common_rtl.h"
 #include "cpu_state.h"
 #include "desktop/config.h"
+#include "snes/apu.h"
 #include "snes/interp_bridge.h"
 #include "snes/ppu.h"
 #include "snes/saveload.h"
 #include "snes/snes.h"
-
-/* Added to the framework's beam_frame_driver.c by tools/patch_framework.py (run by CMake). */
-uint32_t snes_beam_frame_driver_resume_pc(void);
-bool snes_beam_frame_driver_wai_halted(void);
-void snes_beam_frame_driver_set_resume(uint32_t pc, bool wai_halted);
+#include "soe_frame_driver.h"
 
 extern CpuState g_cpu;
 extern Snes *g_snes;
@@ -46,6 +43,10 @@ extern uint8_t g_ram[0x20000];
  * - SOE_COMPARE_PEEK: WRAM offsets (the mask's syntax) written as "P <frame> <key> <master clock> <hex bytes>"
  *   after every emulated frame (frame 0 = the first from power-on): a probe for a few bytes frame by frame.
  * - SOE_COMPARE_QUIT_AT=<key>: exit once the key reaches it (a replay's script cannot wait for a key).
+ * - SOE_COMPARE_AT=nmi: sample (hash, dump, quit) as each NMI is taken instead of after each frame; the key is
+ *   then the NMI's number since power-on. An instruction boundary, the same on MesenCE; a frame's end is not:
+ *   the recomp's CPU finishes the instruction that crossed V=225, MesenCE stops inside it.
+ *   SOE_COMPARE_NMI_LOG adds "N <nmi> <master clock> <interrupted pc24>" per NMI: where cycles part.
  * Nothing touches the disk: compare reads fd 3 from a pipe.
  */
 enum { CMP_WRAM, CMP_VRAM, CMP_CGRAM, CMP_OAM };
@@ -59,10 +60,14 @@ static struct {
     int npeek;
     long last, frames, quit_at;
     long raw_last, nmis; /* the last $0100 seen (-1 before the reset code's 0) and the key */
+    int at_nmi;          /* SOE_COMPARE_AT=nmi */
+    int nmi_log;         /* SOE_COMPARE_NMI_LOG */
+    long nmis_taken;
     FILE *out;
 } s_cmp;
 
 static uint32_t s_crc_table[256];
+static void CmpNmi(void);
 
 static uint32_t CmpCrc(uint32_t c, const uint8_t *p, size_t n) {
     if (!s_crc_table[1])
@@ -82,6 +87,10 @@ static void CmpInit(void) {
     s_cmp.state = 1;
     if (!stride && !dump && !peek) return;
     s_cmp.quit_at = quit ? strtol(quit, NULL, 10) : -1;
+    const char *at = getenv("SOE_COMPARE_AT");
+    s_cmp.at_nmi = at && !strcmp(at, "nmi");
+    s_cmp.nmi_log = getenv("SOE_COMPARE_NMI_LOG") != NULL;
+    if (s_cmp.at_nmi) soe_frame_driver_nmi_hook = CmpNmi;
     s_cmp.raw_last = -1;
     s_cmp.out = fdopen(3, "wb");
     if (!s_cmp.out) return;
@@ -135,27 +144,9 @@ static const uint8_t *CmpRegion(int r, size_t *n, uint8_t *scratch) {
     }
 }
 
-static void CmpFrame(void) {
+/* Hash, dump or quit at `key`, once per key. */
+static void CmpAt(long key) {
     static uint8_t scratch[0x20000];
-    if (!s_cmp.state) CmpInit();
-    if (s_cmp.state != 2) return;
-    long raw = g_ram[0x100] | (g_ram[0x101] << 8);
-    if (s_cmp.raw_last < 0) {
-        if (raw == 0) s_cmp.raw_last = 0; /* counts from the 0 the reset code writes, as in snes9x */
-    } else if (raw != s_cmp.raw_last) {
-        s_cmp.nmis += raw > s_cmp.raw_last ? raw - s_cmp.raw_last
-                    : s_cmp.raw_last > 0xFF00 ? raw + 0x10000 - s_cmp.raw_last /* wrapped */
-                    : raw;                                                      /* zeroed: the demo looped */
-        s_cmp.raw_last = raw;
-    }
-    long key = s_cmp.raw_last < 0 ? -1 : s_cmp.nmis;
-    if (s_cmp.npeek) {
-        fprintf(s_cmp.out, "P %ld %ld %llu", s_cmp.frames, key, (unsigned long long)g_snes->beamMasterLast);
-        for (int i = 0; i < s_cmp.npeek; i++) fprintf(s_cmp.out, " %02x", g_ram[s_cmp.peek[i]]);
-        fputc('\n', s_cmp.out);
-        fflush(s_cmp.out);
-    }
-    s_cmp.frames++;
     if (key < 0 || key <= s_cmp.last) return;
     s_cmp.last = key;
     if (s_cmp.dump_at >= 0) {
@@ -168,7 +159,6 @@ static void CmpFrame(void) {
         }
         fflush(s_cmp.out);
         s_cmp.dump_at = -1;
-        s_cmp.state = 1;
         if (s_cmp.quit_at >= 0) exit(0);
         return;
     }
@@ -189,37 +179,64 @@ static void CmpFrame(void) {
     }
 }
 
+/* SOE_COMPARE_AT=nmi: sample as each NMI is taken; the key is the NMI's number since power-on (1 = the first). */
+static void CmpNmi(void) {
+    if (s_cmp.state != 2) return;
+    ++s_cmp.nmis_taken;
+    if (s_cmp.nmi_log) { /* "N <nmi> <master clock> <interrupted pc24>": the frame is P, PCL, PCH, PB above S */
+        const uint16_t sp = g_cpu.S;
+        const uint32_t pc = g_ram[(uint16_t)(sp + 2)] | g_ram[(uint16_t)(sp + 3)] << 8 | (uint32_t)g_ram[(uint16_t)(sp + 4)] << 16;
+        fprintf(s_cmp.out, "N %ld %llu %06x\n", s_cmp.nmis_taken, (unsigned long long)g_cpu.master_cycles, pc);
+    }
+    CmpAt(s_cmp.nmis_taken);
+}
+
+static void CmpFrame(void) {
+    if (!s_cmp.state) CmpInit();
+    if (s_cmp.state != 2) return;
+    long raw = g_ram[0x100] | (g_ram[0x101] << 8);
+    if (s_cmp.raw_last < 0) {
+        if (raw == 0) s_cmp.raw_last = 0; /* counts from the 0 the reset code writes, as in snes9x */
+    } else if (raw != s_cmp.raw_last) {
+        s_cmp.nmis += raw > s_cmp.raw_last ? raw - s_cmp.raw_last
+                    : s_cmp.raw_last > 0xFF00 ? raw + 0x10000 - s_cmp.raw_last /* wrapped */
+                    : raw;                                                      /* zeroed: the demo looped */
+        s_cmp.raw_last = raw;
+    }
+    long key = s_cmp.at_nmi ? s_cmp.nmis_taken : s_cmp.raw_last < 0 ? -1 : s_cmp.nmis;
+    if (s_cmp.npeek) {
+        fprintf(s_cmp.out, "P %ld %ld %llu", s_cmp.frames, key, (unsigned long long)g_snes->beamMasterLast);
+        for (int i = 0; i < s_cmp.npeek; i++) fprintf(s_cmp.out, " %02x", g_ram[s_cmp.peek[i]]);
+        fputc('\n', s_cmp.out);
+        fflush(s_cmp.out);
+    }
+    s_cmp.frames++;
+    if (!s_cmp.at_nmi) CmpAt(key);
+}
+
 /*
- * Compare runs keep one host frame per video field. The beam driver runs a frame to the next V=225, so a DMA that
- * outlasts a field (the reset code clears 192 KB: 5 fields in 4 frames) packs several fields into one frame, and
- * every later replay input landed a field late against MesenCE. Here a frame that is owed (the beam already crossed
- * its V=225) only counts, without emulating; its input is overwritten unread, as hardware's joypad latch is in a
- * field the game spends loading. docs/imperfections/host-frames-and-fields.md.
+ * The SPC700 runs from power-on. snesrecomp's APU runs on guest time only once its first CPU->APU port write anchors
+ * that time; before it, only the audio callback moves it, and headless runs have none. So the sound driver's boot ROM
+ * started at the game's first port access and the upload waited 46,700 master clocks for $BBAA that MesenCE does not
+ * (docs/imperfections/apu-time-in-long-frames.md). Writing port 0's power-on value 0 at guest cycle 0 anchors it.
  */
-#define SOE_FIELD_CLOCKS 357368ull
-#define SOE_FIRST_VBLANK (225ull * 1364ull)
-static long s_host_frames;
+static void AnchorApuAtPowerOn(void) {
+    static bool done;
+    if (done) return;
+    done = true;
+    apu_schedulePortWrite(g_snes->apu, 0, 0, 0);
+}
 
 void GameRunOneFrame(void) {
-    if (!s_cmp.state) CmpInit();
-    if (s_cmp.state == 2) {
-        const uint64_t beam = g_snes->beamMasterLast;
-        const long fields = beam < SOE_FIRST_VBLANK ? 0 : (long)((beam - SOE_FIRST_VBLANK) / SOE_FIELD_CLOCKS) + 1;
-        if (s_host_frames > 0 && fields > s_host_frames) {
-            s_host_frames++;
-            CmpFrame();
-            return;
-        }
-        s_host_frames++;
-    }
-    snes_beam_frame_driver_run_frame();
+    AnchorApuAtPowerOn();
+    soe_frame_driver_run_frame();
     CmpFrame();
 }
 
 void GameDrawPpuFrame(void) { snes_beam_frame_driver_draw_ppu_frame(); }
 
 /* A new session (reset / return to title) must not inherit driver state from the last one. */
-void GameSessionReset(void) { snes_beam_frame_driver_reset(); }
+void GameSessionReset(void) { soe_frame_driver_reset(); }
 
 /*
  * Called by the desktop host after config.ini is parsed (hooked in src/main.c as the host
@@ -228,12 +245,22 @@ void GameSessionReset(void) { snes_beam_frame_driver_reset(); }
  * it came out as noise. The reference renderer (ppu_legacy.c) handles every mode: use it until
  * the optimized one learns mode 4. Found 2026-10-12 (docs/game-rtl.md §4).
  */
-void SoeAfterConfig(void) { g_config.new_renderer = false; }
+/*
+ * Extended frame timing: the APU's guest time follows the master clock across a host frame that holds more than
+ * one video field (the reset code's 192 KB of DMA spans 5 fields in 4 host frames; scene loads do the same). By
+ * default snesrecomp clamps it to one field per host frame, so the SPC700 lost the time it runs its boot ROM in:
+ * the first sound-driver upload waited 46,700 master clocks for $BBAA that MesenCE does not wait, and every later
+ * NMI came late (docs/imperfections/apu-time-in-long-frames.md).
+ */
+void SoeAfterConfig(void) {
+    g_config.new_renderer = false;
+    RtlEnableExtendedFrameTiming();
+}
 
 /*
  * Save states. The framework's file snapshot holds the machine (WRAM, PPU, APU, the legacy
  * interpreter's Cpu) but not g_cpu -- the registers the recompiled code and the bridge run on --
- * nor the beam driver's resume PC. A load therefore kept the running session's A/X/Y/S/P and PC
+ * nor the frame driver's resume PC (soe_frame_driver.c). A load therefore kept the running session's A/X/Y/S/P and PC
  * under the saved RAM: it only looked right when both moments sat in the same idle loop, and a
  * load before the first frame (resume PC still 0) cold-booted from the reset vector on top of the
  * loaded RAM, which is a black screen. Found 2026-10-12 (docs/bugs-and-todos.md).
@@ -254,7 +281,7 @@ static bool s_loaded_exec_valid;
 
 static void SoeStateSaveExtra(SaveLoadInfo *sli) {
     SoeExecChunk c = { SOE_EXEC_MAGIC, SOE_EXEC_VERSION, (uint32_t)SOE_CPU_REGS_SIZE,
-                       snes_beam_frame_driver_resume_pc(), snes_beam_frame_driver_wai_halted(), { 0 } };
+                       soe_frame_driver_resume_pc(), soe_frame_driver_wai_halted(), { 0 } };
     sli->func(sli, &c, sizeof(c));
     sli->func(sli, &g_cpu, SOE_CPU_REGS_SIZE);
 }
@@ -279,7 +306,7 @@ static void SoeOnStateLoaded(uint32_t version) {
     s_loaded_exec_valid = false;
     memcpy(&g_cpu, s_loaded_regs, SOE_CPU_REGS_SIZE);
     interp_bridge_set_lle_resume_pc(s_loaded_exec.resume_pc);
-    snes_beam_frame_driver_set_resume(s_loaded_exec.resume_pc, s_loaded_exec.wai_halted != 0);
+    soe_frame_driver_set_resume(s_loaded_exec.resume_pc, s_loaded_exec.wai_halted != 0);
 }
 
 const RtlGameInfo kGameInfo = {

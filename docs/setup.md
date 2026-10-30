@@ -56,7 +56,7 @@ there); what reaches this repository is `recomp/bank*.cfg`.
 | Component | Required Version | Purpose |
 |---|---|---|
 | **snesrecomp** | pinned submodule (`framework_pins.txt`) | 65816 static recompiler and desktop runner |
-| **Python** | $\ge 3.9$ | `tools/regen.sh`, `tools/patch_framework.py` |
+| **Python** | $\ge 3.9$ | `tools/regen.sh` |
 | **Rust / cargo** | stable | snesrecomp's native analyzer (built on the first regen) |
 | **CMake** | $\ge 3.20$ | configures the host C project |
 | **C compiler** | C11 | AppleClang (macOS), GCC (Linux), MSVC (Windows) |
@@ -74,14 +74,13 @@ git submodule update --init --recursive
 
 ```sh
 SNESRECOMP_ROM="/path/to/rom.sfc" bash tools/regen.sh     # verify the ROM, generate src/gen/, re-sync recomp/funcs.h
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release            # also runs tools/patch_framework.py
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 ```
 
 | Step | What happens |
 |---|---|
 | `tools/regen.sh` | checks the ROM against `rom_identity.txt`, seeds the analysis from every `func` in `recomp/*.cfg` (`--cfg-roots`, on by default here), lifts the reachable 65816 code to C in `src/gen/` (never committed) |
-| CMake configure | `tools/patch_framework.py` adds the beam driver's resume accessors to the submodule (save states) |
 | CMake build | `build/SecretOfEvermoreSNESRecomp`, with `assets/` and `mods/` beside it; `saves/`, `config.ini`, `keybinds.ini` are yours and survive rebuilds |
 
 ---
@@ -121,6 +120,5 @@ mirrors.
 |---|---|---|
 | `cargo: command not found` | Rust not on `PATH` | `export PATH="$HOME/.cargo/bin:$PATH"` |
 | `snesrecomp submodule missing` | submodules not checked out | `git submodule update --init --recursive` |
-| `patch_framework: ... layout changed` | the pinned framework moved its statics | adapt `tools/patch_framework.py` to the new `beam_frame_driver.c` |
 | `ROM differs` during the Asar rebuild | the export or the CDL library is broken | see everscript-vscode's `out/recomp/asar.log` |
 | Character-name screen renders garbled | `NewRenderer` active instead of the legacy PPU | check the `SoeAfterConfig` hook in `src/main.c` ([game-rtl.md](game-rtl.md)) |

@@ -54,8 +54,8 @@ both from ever being committed.
 
 `tools/regen.sh` verifies the ROM, generates `src/gen/*.c`, and re-syncs
 `recomp/funcs.h`. Re-run it whenever you change anything under `recomp/`.
-CMake also runs `tools/patch_framework.py`, which adds the beam driver accessors our save
-states need to the framework submodule.
+The framework submodule is never patched; our frame driver (`src/soe_frame_driver.c`) and the
+glue (`src/game_rtl.c`) hold everything this game needs ([docs/game-rtl.md](docs/game-rtl.md)).
 
 New seeds (a bigger CDL, a new exclusion in `recomp/seed-exclusions.txt`) come from
 everscript-vscode: `npm run recomp` in a sibling checkout writes `recomp/bank*.cfg` here
@@ -87,7 +87,7 @@ than mis-executing ten frames in.
 | `src/` | Host code: `game_rtl.c` (our glue), `main.c` |
 | `src/gen/` | Generated C. Never committed — regenerate locally |
 | `snesrecomp/` | Framework submodule (owns `lib/recomp-net`, `lib/retcomm-rbengine`) |
-| `tools/` | `regen.sh` — the ROM → C pipeline; `patch_framework.py`; `bisect.js`, `verify-intro.js`, `check-obj-tiles.js` |
+| `tools/` | `regen.sh` — the ROM → C pipeline; `bisect.js`, `verify-intro.js`, `check-obj-tiles.js` |
 | `scripts/` | `package_release.sh` — player-facing zip |
 | `framework_pins.txt` | Exact framework commits this project was scaffolded against |
 | `docs/` | Status, setup, glue, debugging, headless exploration, bugs and roadmap, research |

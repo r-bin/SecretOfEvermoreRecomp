@@ -84,7 +84,7 @@ up to N (`dump` takes no frame). Then read the bad frame: `ppuw.tsv` (vblank VRA
 |---|---|---|
 | A compiled routine misbehaves | `func <pc24> <reason>` → the export emits `force_lle` (interpreted for every caller); rerun everscript-vscode's `npm run recomp` | `recomp/seed-exclusions.txt` |
 | An indirect-jump directive is wrong | `dispatch <pc24> <reason>` | same file |
-| Host behaviour (frame, save state, renderer) | our glue; the `after_config` hook; framework accessors | `src/game_rtl.c`, `src/main.c`, `tools/patch_framework.py` |
+| Host behaviour (frame, save state, renderer) | our glue; the `after_config` hook; our frame driver | `src/game_rtl.c`, `src/main.c`, `src/soe_frame_driver.c` |
 | snesrecomp itself | work around in glue, write it up under "Upstream" in bugs-and-todos.md §3 | never edit `snesrecomp/` by hand |
 
 Verify an exclusion took: the address has only `NULL` variants in `dispatch_v2.c`.
@@ -98,7 +98,7 @@ Verify an exclusion took: the address has only `NULL` variants in `dispatch_v2.c
 | Seed export logs, report | everscript-vscode's `out/recomp/recomp-host.log`, `out/recomp/REPORT.md` |
 | Disassembly with our names and comments | everscript-vscode's `out/recomp/asar/banks/bank_XX.asm` (bus `$8x`/`$Cx` → file `bank_Cx`), `functions.json` |
 | MesenCE files | everscript-vscode's `out/recomp/asar/mesen/` |
-| Our glue / hooks | `src/game_rtl.c`, `src/main.c` (`after_config`), `tools/patch_framework.py` |
+| Our glue / hooks | `src/game_rtl.c`, `src/main.c` (`after_config`), `src/soe_frame_driver.c` |
 | Seed generation, exclusions | everscript-vscode's `src/platform/cdl/recomp-seeds.ts`; `recomp/seed-exclusions.txt` here |
 | Helpers | `tools/`: `check-obj-tiles.js`, `bisect.js`, `verify-intro.js`; everscript-vscode's `tools/recomp/room-nav.js`, `s9x-run.js`, `tools/compare/` |
 | Clean ROM | yours, outside the repo (`SNESRECOMP_ROM`; SHA-256 in `rom_identity.txt`) |

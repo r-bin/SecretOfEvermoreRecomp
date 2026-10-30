@@ -7,9 +7,9 @@ These rules apply to every AI agent working in this repository.
 1. **Legal first.** No ROM or ROM bytes, no generated C (`src/gen/`), no dumps, screenshots or
    extracted assets in git. Everyone regenerates from their own ROM.
 2. **Never edit the framework.** `snesrecomp/` and `recomp-ui/` are pinned submodules
-   (`framework_pins.txt`). The one change this port needs is applied by `tools/patch_framework.py`
-   at CMake configure time; anything else is worked around in our glue and written up under
-   "Upstream" in `docs/bugs-and-todos.md` §3.
+   (`framework_pins.txt`), not patched either: everything this port needs is in our glue (our own
+   frame driver `src/soe_frame_driver.c` replaces the framework's), and what upstream should change
+   is written up in `docs/imperfections/` and `docs/bugs-and-todos.md` §3.
 3. **Seeds come from everscript-vscode.** `recomp/bank8x..9x.cfg` and the data-region block in
    `recomp/bank00.cfg` are written by its `npm run recomp` (sibling checkout). Change them through
    `recomp/seed-exclusions.txt` and a new export, never by hand.
@@ -30,7 +30,7 @@ These rules apply to every AI agent working in this repository.
 | `src/game_rtl.c` | our glue: frame driver, renderer hook, save states, compare hashes |
 | `src/main.c` | the scaffold's host descriptor, plus our `after_config` line |
 | `recomp/` | seeds (`bank*.cfg`), `seed-exclusions.txt`, `symbols.toml` |
-| `tools/` | `regen.sh` (ROM -> C), `patch_framework.py`, `bisect.js`, `verify-intro.js`, `check-obj-tiles.js` |
+| `tools/` | `regen.sh` (ROM -> C), `bisect.js`, `verify-intro.js`, `check-obj-tiles.js` |
 | `docs/` | `README.md` (status, map), setup, glue, debugging, headless exploration, bugs and roadmap, research |
 
 ## Skills

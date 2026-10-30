@@ -34,14 +34,6 @@ endif()
 # Must precede the include: runner.cmake reads it to add the loader sources.
 set(SNESRECOMP_ENABLE_MODS ON CACHE BOOL
     "Mod package loader + trusted plugins (required for every title)" FORCE)
-# Save states need the beam driver's resume point (src/game_rtl.c); the framework keeps it
-# private, so tools/patch_framework.py adds three accessors to the submodule (idempotent).
-find_package(Python3 REQUIRED COMPONENTS Interpreter)
-execute_process(COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/patch_framework.py
-                RESULT_VARIABLE SOE_PATCH_RESULT)
-if(NOT SOE_PATCH_RESULT EQUAL 0)
-    message(FATAL_ERROR "tools/patch_framework.py failed")
-endif()
 include(${SNESRECOMP_ROOT}/runner/runner.cmake)
 
 add_executable(SecretOfEvermoreSNESRecomp
@@ -49,6 +41,7 @@ add_executable(SecretOfEvermoreSNESRecomp
     src/main.c
     src/host_contract.c
     src/game_rtl.c
+    src/soe_frame_driver.c
     src/gen_stubs.c
 )
 

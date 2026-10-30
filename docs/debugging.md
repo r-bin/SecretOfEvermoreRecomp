@@ -113,8 +113,10 @@ Different emulators spend different numbers of initial cycles clearing memory an
 the PPU. Align on the NMIs counted since power-on: the increases of `$7E0100` from the 0 the reset code
 writes. `$7E0100` itself is no key: the attract demo zeroes it every time it loops (~6,000 NMIs), so the glue
 (`SOE_COMPARE_*`) and the MesenCE script count a drop as a restart from 0, and the glue ends a run itself
-(`SOE_COMPARE_QUIT_AT`). In compare runs the glue also keeps one host frame per video field
-([imperfections/host-frames-and-fields.md](imperfections/host-frames-and-fields.md)).
+(`SOE_COMPARE_QUIT_AT`). Against MesenCE both sides sample as each NMI is taken instead
+(`SOE_COMPARE_AT=nmi`, the key is the NMI's number), an instruction boundary on both
+([imperfections/sampling-point.md](imperfections/sampling-point.md)); `SOE_COMPARE_NMI_LOG` adds each NMI's
+master clock and interrupted address, the quickest way to see where the two clocks part.
 
 #### Rule 2: Synchronize the PRNG State ($7E0133..$7E0139)
 The reset routine `$80:8020` seeds Evermore's pseudorandom number generator from the PPU's

@@ -74,10 +74,20 @@ Secret of Evermore's runtime implementation is located in `src/game_rtl.c`:
 > [View in VFS: soe://rom/code/808020](soe://rom/code/808020?c=1&asm=0)
 
 
-### 3.1 The Beam Frame Driver
-Secret of Evermore uses snesrecomp's `beam_frame_driver`:
-- **Execution granularity:** Advances scanline by scanline across the 262 scanlines of an NTSC field.
-- **Interrupt delivery:** At scanline 225 (the start of VBLANK), the driver asserts NMI.
+### 3.1 The Frame Driver (`src/soe_frame_driver.c`)
+Secret of Evermore runs on its own frame driver, derived from snesrecomp's `beam_frame_driver`
+(which the framework lets a host replace). One host frame is one NTSC field, ending where the beam
+reaches V=225; NMI is taken at the start of the field. Added to the framework's logic, each
+measured against MesenCE ([imperfections/README.md](imperfections/README.md)):
+- **Late NMI:** enabling NMI inside vblank fires it at once (the reset code does, at V=226).
+- **Interrupt cost:** the 8-cycle interrupt sequence is charged (60 master clocks).
+- **DRAM refresh:** a 40-clock stall at H=538 of every line, in place of the runtime's per-CPU-time charge.
+- **SPC700 rate:** the APU's guest anchor follows MesenCE's 1,025,280 Hz instead of 17,088 cycles a frame.
+- **Short scanline:** every other field is 4 clocks shorter; **reset:** the CPU starts at master clock 186.
+- **Sampling hook:** `soe_frame_driver_nmi_hook` runs as each NMI is taken (tools/compare samples there).
+
+The glue adds, around it: the APU anchored at power-on, extended frame timing
+(`RtlEnableExtendedFrameTiming`), and the save-state chunk with the driver's resume point.
 - **Evermore engine interaction:**
   - Evermore enables NMI by writing `$81` to `$4200` (mirrored in WRAM at `$7E0E6B`).
   - When NMI asserts, the CPU jumps to `$80:823A`.
@@ -87,8 +97,7 @@ Secret of Evermore uses snesrecomp's `beam_frame_driver`:
 
 ### 3.2 Session Reset
 When a player loads a save state (F1–F10) or triggers a soft reset (Ctrl+R), `GameSessionReset()`
-calls `snes_beam_frame_driver_reset()`. This clears scanline counters and pending interrupt flags
-so the new session does not inherit stale beam timing from the previous session.
+calls `soe_frame_driver_reset()`, so the new session does not inherit the last one's resume point.
 
 ---
 
@@ -133,12 +142,11 @@ Investigation revealed:
 |---|---|---|
 | **snesrecomp framework** | PolyForm Noncommercial 1.0.0 | the `snesrecomp/` submodule, pinned in `framework_pins.txt`; never copied |
 | **Scaffold files** (`CMakeLists.txt`, `src/main.c`, `src/host_contract.c`, `tools/regen.sh`, CI, packaging) | the scaffold's `LICENSE` | rendered once by snesrecomp's `tools/new_project/setup_project.sh` (the first commit), edited here since |
-| **Our glue** (`src/game_rtl.c`, `tools/patch_framework.py`, `tools/*.js`) | MIT | this repository |
+| **Our glue** (`src/game_rtl.c`, `tools/*.js`) | MIT | this repository |
+| **Our frame driver** (`src/soe_frame_driver.c`) | derived from snesrecomp's `beam_frame_driver.c`: PolyForm Noncommercial | this repository |
 | **Seeds** (`recomp/*.cfg`, `recomp/seed-exclusions.txt`) | ours, no ROM bytes | written by everscript-vscode's export, committed here |
 | **Generated C** (`src/gen/`) | derived from the ROM | never committed: `.gitignore`; everyone regenerates from their own ROM |
 
 ### Changes to the framework
-The framework is never edited by hand. The one change this port needs, three accessors for the
-beam driver's resume point (save states), is applied by `tools/patch_framework.py` when CMake
-configures; it is idempotent and fails loudly when the framework's layout changes. `.gitmodules`
-ignores the dirty submodule tree this leaves.
+None: the framework is neither edited nor patched (owner's rule). Where this game needs other
+behaviour, our glue provides it, chiefly our own frame driver (§3.1).
