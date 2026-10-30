@@ -14,7 +14,8 @@ Overview of the build itself: `recomp` skill. Worked examples of every step belo
 
 1. **Reproduce** in a headless script from a save state → deterministic.
 2. **Signal**: one cheap check that says "broken" (a VRAM tile hash, a WRAM invariant, a room id).
-3. **Reference**: does the same script misbehave on snes9x? No → it is the recomp.
+3. **Reference**: does the same script misbehave on MesenCE? No → it is the recomp. snes9x may point
+   the way but never decides (`docs/reference-emulators.md`).
 4. **Narrow** to the first bad frame without changing timing.
 5. **Classify** (§4): our compiled C, our seeds/directives, our glue, or the snesrecomp runtime.
 6. **Fix** (§5), rebuild, rerun the script, then a longer run (all fights of a room).
@@ -36,6 +37,9 @@ original): `SNESRECOMP_DUMP_DIR=<dir> ./SecretOfEvermoreSNESRecomp --no-launcher
 
 ## 3. Reference emulators
 
+Trust: MesenCE is the reference for WRAM; ares for precision, by hand; the snes9x rows are probes,
+never the reference (`docs/reference-emulators.md`).
+
 | Emulator | Where | Use it for | How |
 |---|---|---|---|
 | **snesrecomp, native** | `build/SecretOfEvermoreSNESRecomp` | the subject | script + dumps |
@@ -46,7 +50,8 @@ original): `SNESRECOMP_DUMP_DIR=<dir> ./SecretOfEvermoreSNESRecomp --no-launcher
 | **snes9x 2005, lockstep** | everscript-vscode's `npm run compare -- recomp=` (runs `build/` here; its `tools/compare/README.md`) | first differing NMI count from power-on (WRAM + VRAM hashes every 60), bytes, snes9x's writers | in sync through counter 300, different at 360 (§1.1 of bugs-and-todos); two recomp builds: `recomp:<a>=rom recomp:<b>=rom` |
 | **snes9x 2005, breakpoints** | everscript-vscode's debugger core in node: `Module.addWriteBreakpoint(addr)`, `onBreakpointHit` | who writes an address on the reference | `src/core/emulator/core/snes9x2005-wasm/DEBUGGER.md` |
 | **Extension emulator panel** | VS Code, everscript-vscode's emulator | play, CDL recording, room overlays | interactive |
-| **Mesen2** | `/Applications/Mesen.app` | cycle-accurate arbiter, trace logger, PPU/sprite viewers | import everscript-vscode's `out/recomp/asar/mesen/labels.mlb` + `rom.cdl`; manual |
+| **MesenCE** (the reference) | `/Applications/Mesen.app` | WRAM comparison, trace logger, PPU/sprite viewers | `Mesen --testRunner s.lua <rom>` headless; or import everscript-vscode's `out/recomp/asar/mesen/labels.mlb` + `rom.cdl` |
+| **ares** (precision, by hand) | `~/romhacking/emulators/ares-v148/ares.app` | a disputed frame | GUI debugger only |
 | **Snes9x (desktop)** | `/Applications/Snes9x.app` | quick visual check of the original | manual |
 | snesref | `snesrecomp/tools/snesref/` (not built; needs SDL2 + a libretro SNES core) | per-frame WRAM diff trace in the debug-server format | build per its README |
 | COSIM build | `snesrecomp/SNES_COSIM.md`, `cosim/` (not tried) | full-state first-divergence; also enables `SNESRECOMP_WRITE_WATCH` | separate build |
@@ -66,7 +71,7 @@ state at **game events** (room entered, fight N over). Same inputs, different ti
 | A seed directive? | `node tools/bisect.js` (debugging.md §6) | `$8F:9F46` dispatch (bugs-and-todos §2) |
 | Renderer? | press `r` in game / `g_config.new_renderer` | mode-4 name screen |
 | Host / save path? | load at frame 0 and mid-game, check the game advances | `g_cpu` not in snapshots |
-| Runtime timing? | lockstep, Mesen2, the bridge switches (`SNESRECOMP_NO_POLLGATE`, `_NO_VBLANK_FF`, `_NO_D9FF`, `_INTERP_STEP_CAP`) | drift from counter ~315 |
+| Runtime timing? | lockstep, MesenCE, the bridge switches (`SNESRECOMP_NO_POLLGATE`, `_NO_VBLANK_FF`, `_NO_D9FF`, `_INTERP_STEP_CAP`) | drift from counter ~315 |
 
 Narrowing: coarse → per action → per frame, replacing `wait N` by `wait`/`dump` pairs that add
 up to N (`dump` takes no frame). Then read the bad frame: `ppuw.tsv` (vblank VRAM addresses),
@@ -92,7 +97,7 @@ Verify an exclusion took: the address has only `NULL` variants in `dispatch_v2.c
 | Seeds, generated C | `recomp/bank*.cfg` (committed); `src/gen/` (never commit; `dispatch_v2.c` = compiled entries); runner sources `snesrecomp/runner/src/` |
 | Seed export logs, report | everscript-vscode's `out/recomp/recomp-host.log`, `out/recomp/REPORT.md` |
 | Disassembly with our names and comments | everscript-vscode's `out/recomp/asar/banks/bank_XX.asm` (bus `$8x`/`$Cx` → file `bank_Cx`), `functions.json` |
-| Mesen2 files | everscript-vscode's `out/recomp/asar/mesen/` |
+| MesenCE files | everscript-vscode's `out/recomp/asar/mesen/` |
 | Our glue / hooks | `src/game_rtl.c`, `src/main.c` (`after_config`), `tools/patch_framework.py` |
 | Seed generation, exclusions | everscript-vscode's `src/platform/cdl/recomp-seeds.ts`; `recomp/seed-exclusions.txt` here |
 | Helpers | `tools/`: `check-obj-tiles.js`, `bisect.js`, `verify-intro.js`; everscript-vscode's `tools/recomp/room-nav.js`, `s9x-run.js`, `tools/compare/` |

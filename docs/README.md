@@ -15,7 +15,7 @@ into a native, standalone, portable C desktop executable using
   everscript-vscode's export. On the pinned framework: 3916 roots, 4871 native variants, 759
   interpreted. Routines that miscompile stay interpreted (`recomp/seed-exclusions.txt`).
 - **Lockstep validation:** WRAM matches snes9x through NMI counter ~300 (timing drift after, see
-  bugs-and-todos.md §1.1).
+  bugs-and-todos.md §1.1). snes9x is not the reference; MesenCE is ([reference-emulators.md](reference-emulators.md)).
 
 ---
 
@@ -30,6 +30,8 @@ into a native, standalone, portable C desktop executable using
 | **[bugs-and-todos.md](bugs-and-todos.md)** | **Open Bugs, Findings & Roadmap**<br>Open issues (timing drift), resolved case studies with their lessons (BG mode 4, stack-resident dispatch, sprite allocator, save states, HUD portrait / force_lle), upstream bug reports, next milestones. |
 | **[snesmod-addons.md](snesmod-addons.md)** | **.snesmod Packages, Addons & Config**<br>ZIP package architecture, TOML manifests, native trusted plugins in C/C++, options (bool, choice, int), and ideal Evermore addons (2-player co-op, bugfixes, MSU-1 audio, QoL). |
 | **[enhancements.md](enhancements.md)** | **Widescreen, Localization & Overlays**<br>Hybrid 16:9/21:9 implementation, Evermore widescreen invariants (scroll phase, room prefill, HUD pinning), declarative TOML translations, in-game map/hitbox overlays, and native randomizer plugins. |
+| **[reference-emulators.md](reference-emulators.md)** | **Which Emulator for What**<br>MesenCE is the trusted, scriptable reference for WRAM comparison; ares the precision reference for probing by hand; snes9x a fast probe, never accurate. How to run each. |
+| **[cdl-and-seeds.md](cdl-and-seeds.md)** | **The CDL and the Seeds**<br>How good the recording is (90 % of the ROM), why it is enough for the recomp, and why only the seeds are committed. |
 | **[lessons-from-mmx-and-lufia2.md](lessons-from-mmx-and-lufia2.md)** | **Lessons from Other Ports**<br>What Mega Man X Recompiled (LLE-first contract, tripwires, validation ladder, replays, coverage capture) and Lufia II Recompiled (proven decomp bindings) do for accuracy, and a prioritised list for our recomp. |
 | **[experimental-renderer.md](experimental-renderer.md)** | **Experimental Graphics & Lighting**<br>Dynamic 2D lighting with 2D shadow casting from collision words, HD Mode 7 flight supersampling, sub-frame motion interpolation, and CIE color-science CRT simulation. |
 

@@ -33,7 +33,8 @@ When an anomaly occurs in the recompiled game:
 
 ## 2. Emulators We Have Access To
 
-We leverage three complementary SNES emulation environments:
+Which one we trust for what, and the rules for comparing: [reference-emulators.md](reference-emulators.md).
+**Only MesenCE is the reference for WRAM comparisons; snes9x is never treated as accurate.**
 
 ### 2.1 snes9x2005-wasm (Embedded Node.js Reference)
 - **Path:** `src/core/emulator/core/snes9x2005-wasm-vanilla/snes9x_2005.js`
@@ -42,16 +43,18 @@ We leverage three complementary SNES emulation environments:
   - Instantly accessible from JavaScript via WebAssembly exports (`_startWithRom`, `_mainLoop`, `_saveState`).
   - Direct WRAM access: 128 KB of WRAM is located at state offset `0x10C14`.
   - Used for automated, frame-by-frame memory lockstep testing.
-- **Limitation:** Not 100% cycle-accurate; slight timing drift during complex ROM decompression loops.
+- **Limitation:** not cycle-accurate; drifts in loops with NMI off. **Not trusted:** a probe for
+  finding where to look, never the reference.
 
-### 2.2 Mesen2 (Cycle-Accurate Reference & Interactive Debugger)
+### 2.2 MesenCE (the Reference: WRAM Comparison & Interactive Debugger)
 - **Integration:** The Asar export automatically writes Mesen2 debug files to everscript-vscode's `out/recomp/asar/mesen/`:
   - `rom.cdl`: Byte-level Code/Data Logger bitfields.
   - `labels.mlb`: Complete symbol map containing all our curated function and WRAM names.
 - **Capabilities:**
   - Cycle-accurate PPU and APU emulation.
   - Interactive trace logger, event viewer, and PPU tile/sprite viewer.
-  - Serves as the ultimate ground-truth arbiter when snes9x and snesrecomp drift in timing.
+  - Headless: `Mesen --testRunner <script.lua> <rom>` with Lua memory access ([reference-emulators.md](reference-emulators.md)).
+  - The reference the recomp's WRAM must match; ares (by hand) settles the rare dispute.
 
 ### 2.3 snesrecomp Desktop Host (The Recompiled Executable)
 - **Path:** `build/SecretOfEvermoreSNESRecomp`
@@ -92,7 +95,9 @@ snesrecomp can be configured to run in multiple diagnostic modes to isolate faul
 ## 4. What and How to Compare
 
 ### 4.1 Lockstep WRAM Comparison (everscript-vscode's `npm run compare`)
-Lockstep runs the clean ROM in `snes9x2005-wasm` and in the recompiled binary side-by-side:
+Lockstep runs the clean ROM in `snes9x2005-wasm` and in the recompiled binary side-by-side. snes9x
+is not the reference: use this to find the first differing frame and its writers, then confirm on
+MesenCE (a MesenCE lockstep harness is not built yet):
 
 ```sh
 npm run compare -- recomp=/path/to/rom.smc                # in everscript-vscode; runs build/ here

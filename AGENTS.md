@@ -16,9 +16,11 @@ These rules apply to every AI agent working in this repository.
 4. **Write down what you learn.** Every bug gets its root cause, fix and lesson in
    `docs/bugs-and-todos.md` in the same commit. Game facts (addresses, routines, RAM) belong in
    everscript-vscode's knowledge entries, not here.
-5. **A picture is not a running game.** Verify headless (`docs/headless-exploration.md`): the room
+5. **MesenCE is the reference.** WRAM comparisons are against MesenCE; snes9x is a probe and is never
+   treated as accurate; ares settles disputes by hand (`docs/reference-emulators.md`).
+6. **A picture is not a running game.** Verify headless (`docs/headless-exploration.md`): the room
    id, `$7E0B19` advancing, a screenshot that matches the game.
-6. **Branches.** Work on `develop`; `main` holds releases. Several agents may share this checkout:
+7. **Branches.** Work on `develop`; `main` holds releases. Several agents may share this checkout:
    stage only your own files, never `git add -A`.
 
 ## Where things are
@@ -34,4 +36,5 @@ These rules apply to every AI agent working in this repository.
 ## Skills
 
 `.agents/skills/<name>/SKILL.md` (Claude Code reads them through `.claude/skills`):
-`recomp` (build, ownership, seeds), `recomp-debugging` (reproduce, compare, classify, fix).
+`recomp` (build, ownership, seeds), `recomp-debugging` (reproduce, compare, classify, fix),
+`reference-emulators` (MesenCE decides, ares by hand, snes9x only probes).

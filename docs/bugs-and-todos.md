@@ -21,8 +21,10 @@ next steps for the Secret of Evermore static recompilation.
     **CPU cycle timing differences** between snes9x2005 and snesrecomp's beam driver during loops
     where NMI is disabled (`$7E0F3A != 0`).
 - **How to Fix / Next Steps:**
-  1. Compare execution against **Mesen2** (cycle-accurate) to determine which emulator is deviating from
-     real SNES hardware timings.
+  1. Compare against **MesenCE**, the reference ([reference-emulators.md](reference-emulators.md)): a
+     headless Lua harness hashing WRAM per NMI count, read against the recomp's `SOE_COMPARE_*`
+     output. snes9x is not trusted, so its drift alone says nothing about the recomp. ares settles a
+     disputed frame by hand.
   2. The drift is currently harmless for gameplay, but resolving it will extend automated lockstep verification
      deep into later rooms.
 
@@ -108,7 +110,16 @@ These issues should be submitted to the [RetroPortingToolKit/snesrecomp](https:/
 - Lockstep WRAM comparison validates that hand-written C behaves identically to the original 65816 assembly.
 
 ### Milestone 4: Broaden Static CDL Coverage
-- Use Ghidra / REA headless exports (`static.json`) to seed unplayed routines, raising native C
-  coverage from ~10% toward 100%.
+- The CDL covers 90.3 % of the ROM since 2026-10-30, enough for now ([cdl-and-seeds.md](cdl-and-seeds.md)).
+  Ghidra / REA exports (`static.json`) could seed the rest; more native code is speed, not correctness.
+
+### Open tasks (2026-10-30), most important first
+1. **Re-verify on the current framework pin** (`ef0b3ff`): `tools/verify-intro.js`, the 21 fights in
+   room `0x38`, save states. Only the save load and the hut -> village walk were checked on it; the
+   pin moved far and native code grew from 1237 to 4871 variants.
+2. **Publish**: settle `LICENSE` (the scaffold's names its author), then push `main` and `develop`.
+3. **MesenCE lockstep harness** for §1.1.
+4. **Replays as regression tests**: drive the recomp with everscript-vscode's 86 recorded replays
+   and compare at game events (room entered, fight over), not frame numbers (milestone 2).
 
 
