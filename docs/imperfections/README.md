@@ -12,6 +12,8 @@ tools). What snesrecomp would have to change is written down here as a candidate
 | [compiled-cycle-charges.md](compiled-cycle-charges.md) | snesrecomp recompiler | compiled code is billed every CPU cycle at code-fetch speed; WRAM accesses cost 8 clocks on hardware, so FastROM code that works on WRAM runs ~4 % fast | open (framework) |
 | [host-frames-and-fields.md](host-frames-and-fields.md) | snesrecomp frame driver | a DMA longer than a field packs several fields into one host frame, so replay inputs landed a field late | worked around in the glue for compare runs |
 
+Per replay, identical frames and what would fix them: [../replay-sync.md](../replay-sync.md).
+
 ## Measured (2026-10-30, `01-no-inputs-4m.evsmv`, native build)
 
 WRAM bytes equal, recomp at key *k* against MesenCE at the best key within *k*−3…*k*+8 (timing-noise bytes,
