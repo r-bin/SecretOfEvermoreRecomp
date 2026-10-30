@@ -7,26 +7,12 @@ next steps for the Secret of Evermore static recompilation.
 
 ## 1. Open Bugs & Active Investigations
 
-### 1.1 Timing Drift Against snes9x After NMI Counter ~315
-- **Status:** **Open Investigation**.
-- **Symptoms:**
-  WRAM comparison against `snes9x2005-wasm` matches bit-for-bit through NMI counter 305.
-  - At counter 315: 4 bytes differ (`$7E0106` brightness shadow, `$7E0128`).
-  - At counters 325–335 (intro fade and asset decompression): divergence spikes to 500–2,100 bytes.
-  - At counters 345–479: divergence settles at 70–190 bytes (mostly shifted RNG sequence).
-- **Findings to Date:**
-  - **Identical Across Recomp Modes:** The pure interpreter-only build and the native-variant build
-    diverge from snes9x at the **exact same frame counter by the exact same byte counts**.
-  - This proves the divergence is **not** caused by recompiled C code. It is an artifact of
-    **CPU cycle timing differences** between snes9x2005 and snesrecomp's beam driver during loops
-    where NMI is disabled (`$7E0F3A != 0`).
-- **How to Fix / Next Steps:**
-  1. Compare against **MesenCE**, the reference ([reference-emulators.md](reference-emulators.md)): a
-     headless Lua harness hashing WRAM per NMI count, read against the recomp's `SOE_COMPARE_*`
-     output. snes9x is not trusted, so its drift alone says nothing about the recomp. ares settles a
-     disputed frame by hand.
-  2. The drift is currently harmless for gameplay, but resolving it will extend automated lockstep verification
-     deep into later rooms.
+### 1.1 Timing Against MesenCE (the reference)
+- **Status:** ~99 % (2026-10-30): WRAM equal through NMI key 300, 98.3–99.95 % equal up to key 5800 on the
+  attract replay, the rest from known framework limits. One file per known difference, with the
+  measurements: [imperfections/README.md](imperfections/README.md).
+- The earlier snes9x drift after counter ~315 (identical in interpreter and native runs) is explained by the
+  first of them: the NMI the game raises by enabling NMI inside vblank ([imperfections/late-nmi.md](imperfections/late-nmi.md)).
 
 ---
 
@@ -118,7 +104,8 @@ These issues should be submitted to the [RetroPortingToolKit/snesrecomp](https:/
    room `0x38`, save states. Only the save load and the hut -> village walk were checked on it; the
    pin moved far and native code grew from 1237 to 4871 variants.
 2. **Publish**: settle `LICENSE` (the scaffold's names its author), then push `main` and `develop`.
-3. **MesenCE lockstep harness** for §1.1.
+3. **Attribute the rest of the MesenCE difference** (§1.1): what remains in an all-interpreter run after the
+   missed NMIs; the 208 flagged pushed-address returns ([imperfections/README.md](imperfections/README.md)).
 4. **Replays as regression tests**: drive the recomp with everscript-vscode's 86 recorded replays
    and compare at game events (room entered, fight over), not frame numbers (milestone 2).
 

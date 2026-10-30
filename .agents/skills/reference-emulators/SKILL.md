@@ -26,6 +26,8 @@ applyTo: "**"
 ## Traps
 - MesenCE `--testRunner` exited with 255 although the script called `emu.exit(0)`: read the
   script's output, not the exit code.
-- No MesenCE lockstep harness exists yet; until it does, a snes9x lockstep result is a lead only.
+- The Lua testrunner has no `io` library; memory callbacks see one bank only (`$00:4200` ≠ `$80:4200`).
+- The recomp differs from MesenCE in known ways (late NMIs, compiled cycle charges): check
+  `docs/imperfections/` before chasing a difference.
 
 Details and how to run each: `docs/reference-emulators.md`.

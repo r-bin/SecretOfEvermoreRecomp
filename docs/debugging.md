@@ -95,29 +95,33 @@ snesrecomp can be configured to run in multiple diagnostic modes to isolate faul
 ## 4. What and How to Compare
 
 ### 4.1 Lockstep WRAM Comparison (everscript-vscode's `npm run compare`)
-Lockstep runs the clean ROM in `snes9x2005-wasm` and in the recompiled binary side-by-side. snes9x
-is not the reference: use this to find the first differing frame and its writers, then confirm on
-MesenCE (a MesenCE lockstep harness is not built yet):
+Lockstep runs the clean ROM in a reference and in the recompiled binary side by side. MesenCE is the
+reference; snes9x only finds the first differing frame and its writers:
 
 ```sh
-npm run compare -- recomp=/path/to/rom.smc                # in everscript-vscode; runs build/ here
-npm run compare -- recomp=rom.smc --verbose              # every count, not every 60th
+# in everscript-vscode; runs build/ here
+node tools/compare/compare.mts rom.smc --backend mesen,recomp --replay tools/compare/replays/01-no-inputs-4m.evsmv
+npm run compare -- recomp=/path/to/rom.smc                # against snes9x: a lead
 ```
+
+Known differences from MesenCE and how they were measured: [imperfections/README.md](imperfections/README.md).
 
 `tools/compare/README.md` has every option; the report goes to `out/compare/`.
 
-#### Rule 1: Align on the NMI Frame Counter ($7E0100)
-**Never align runs by elapsed host frame numbers.**
+#### Rule 1: Align on the NMI Count, Not on Host Frames
 Different emulators spend different numbers of initial cycles clearing memory and setting up
-the PPU. Always align on the engine's internal NMI frame counter at `$7E0100`:
-- Wait until `$7E0100` reaches the target value in both runners before comparing WRAM.
+the PPU. Align on the NMIs counted since power-on: the increases of `$7E0100` from the 0 the reset code
+writes. `$7E0100` itself is no key: the attract demo zeroes it every time it loops (~6,000 NMIs), so the glue
+(`SOE_COMPARE_*`) and the MesenCE script count a drop as a restart from 0, and the glue ends a run itself
+(`SOE_COMPARE_QUIT_AT`). In compare runs the glue also keeps one host frame per video field
+([imperfections/host-frames-and-fields.md](imperfections/host-frames-and-fields.md)).
 
 #### Rule 2: Synchronize the PRNG State ($7E0133..$7E0139)
 The reset routine `$80:8020` seeds Evermore's pseudorandom number generator from the PPU's
 horizontal and vertical beam counters. Because different emulators boot with different beam positions,
 their RNG seeds immediately diverge.
-- `tools/compare` waits for counter 115 in snes9x, reads snes9x's 8-byte RNG state (`$7E0133..$7E013A`), and
-  `poke`s it into the recompiled game.
+- `tools/compare` waits for key 115 in the reference (MesenCE or snes9x), reads its 8-byte RNG state
+  (`$7E0133..$7E013A`), and `poke`s it into the recompiled game after the same frame.
 
 #### Rule 3: Mask Non-Deterministic Timing Noise
 Exclude addresses that naturally fluctuate due to sub-frame interrupt timing:

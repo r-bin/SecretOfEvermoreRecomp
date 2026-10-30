@@ -36,8 +36,11 @@ so only that one decides whether the recomp is right.
   the recorded code/data split.
 - AI access: `mesen2-mcp` (sibling checkout) bridges an agent to a running Mesen via a Lua script
   (`lua/mcp_bridge.lua`): memory read/write, input, frame step, save states.
-- Not built yet: a lockstep harness that hashes WRAM per NMI count, like the recomp's
-  `SOE_COMPARE_*` output (`src/game_rtl.c`), so the two can be compared without a frame match.
+- Lockstep against the recomp: everscript-vscode's `tools/compare` (`--backend mesen,recomp`) runs a
+  generated Lua script that hashes per NMI key, like the recomp's `SOE_COMPARE_*` output
+  (`src/game_rtl.c`). Results and the known differences: [imperfections/README.md](imperfections/README.md).
+- Lua traps: the testrunner has no `io` library (dumps go over stdout); memory callbacks on a CPU address
+  only see that bank, so register `$00:4200` and `$80:4200`, `$00:0106` and `$7E:0106`.
 
 ### ares
 - `ares.app` (v148). Load the ROM, use its debugger

@@ -36,11 +36,17 @@ extern Snes *g_snes;
 extern uint8_t g_ram[0x20000];
 
 /*
- * tools/compare (docs/debugging.md): when SOE_COMPARE_STRIDE is set, hash memory each time the NMI frame
- * counter $7E0100 reaches a new multiple of the stride and write "H <counter> <crc> ..." lines to fd 3, one CRC-32
- * per region of SOE_COMPARE_REGIONS (wram, vram, cgram, oam). SOE_COMPARE_MASK lists WRAM offsets zeroed before
- * hashing (hex, "a-b" ranges, comma separated). SOE_COMPARE_DUMP=<counter> instead writes "D <counter>\n" and the
- * raw regions once. Nothing touches the disk: compare reads fd 3 from a pipe.
+ * tools/compare (docs/debugging.md). The key is the number of NMIs counted since power-on: the increases of the
+ * frame counter $7E0100, from the 0 the reset code writes. The game zeroes $0100 again when the attract demo loops,
+ * so the raw counter is not a key; a drop counts as a restart from 0.
+ * - SOE_COMPARE_STRIDE: hash memory each time the key reaches a new multiple of the stride and write
+ *   "H <key> <crc> ..." to fd 3, one CRC-32 per region of SOE_COMPARE_REGIONS (wram, vram, cgram, oam).
+ * - SOE_COMPARE_MASK: WRAM offsets zeroed before hashing (hex, "a-b" ranges, comma separated).
+ * - SOE_COMPARE_DUMP=<key>: write "D <key>\n" and the raw regions once.
+ * - SOE_COMPARE_PEEK: WRAM offsets (the mask's syntax) written as "P <frame> <key> <master clock> <hex bytes>"
+ *   after every emulated frame (frame 0 = the first from power-on): a probe for a few bytes frame by frame.
+ * - SOE_COMPARE_QUIT_AT=<key>: exit once the key reaches it (a replay's script cannot wait for a key).
+ * Nothing touches the disk: compare reads fd 3 from a pipe.
  */
 enum { CMP_WRAM, CMP_VRAM, CMP_CGRAM, CMP_OAM };
 static struct {
@@ -49,7 +55,10 @@ static struct {
     long dump_at;
     int regions[4], nregions;
     uint8_t mask[0x20000 / 8];
-    long last;
+    uint32_t peek[256];
+    int npeek;
+    long last, frames, quit_at;
+    long raw_last, nmis; /* the last $0100 seen (-1 before the reset code's 0) and the key */
     FILE *out;
 } s_cmp;
 
@@ -69,8 +78,11 @@ static uint32_t CmpCrc(uint32_t c, const uint8_t *p, size_t n) {
 
 static void CmpInit(void) {
     const char *stride = getenv("SOE_COMPARE_STRIDE"), *dump = getenv("SOE_COMPARE_DUMP");
+    const char *peek = getenv("SOE_COMPARE_PEEK"), *quit = getenv("SOE_COMPARE_QUIT_AT");
     s_cmp.state = 1;
-    if (!stride && !dump) return;
+    if (!stride && !dump && !peek) return;
+    s_cmp.quit_at = quit ? strtol(quit, NULL, 10) : -1;
+    s_cmp.raw_last = -1;
     s_cmp.out = fdopen(3, "wb");
     if (!s_cmp.out) return;
     s_cmp.stride = stride ? (unsigned)strtoul(stride, NULL, 10) : 0;
@@ -91,6 +103,13 @@ static void CmpInit(void) {
         unsigned long a = strtoul(p, &end, 16), b = a;
         if (*end == '-') b = strtoul(end + 1, &end, 16);
         for (unsigned long o = a; o <= b && o < 0x20000; o++) s_cmp.mask[o >> 3] |= (uint8_t)(1u << (o & 7));
+        p = *end == ',' ? end + 1 : NULL;
+    }
+    for (const char *p = peek; p && *p;) {
+        char *end;
+        unsigned long a = strtoul(p, &end, 16), b = a;
+        if (*end == '-') b = strtoul(end + 1, &end, 16);
+        for (unsigned long o = a; o <= b && o < 0x20000 && s_cmp.npeek < 256; o++) s_cmp.peek[s_cmp.npeek++] = (uint32_t)o;
         p = *end == ',' ? end + 1 : NULL;
     }
     s_cmp.state = 2;
@@ -120,9 +139,24 @@ static void CmpFrame(void) {
     static uint8_t scratch[0x20000];
     if (!s_cmp.state) CmpInit();
     if (s_cmp.state != 2) return;
-    long key = g_ram[0x100] | (g_ram[0x101] << 8);
-    if (s_cmp.last < 0 && key != 0) return; /* counts from the 0 the reset code writes, as in snes9x */
-    if (key <= s_cmp.last) return;
+    long raw = g_ram[0x100] | (g_ram[0x101] << 8);
+    if (s_cmp.raw_last < 0) {
+        if (raw == 0) s_cmp.raw_last = 0; /* counts from the 0 the reset code writes, as in snes9x */
+    } else if (raw != s_cmp.raw_last) {
+        s_cmp.nmis += raw > s_cmp.raw_last ? raw - s_cmp.raw_last
+                    : s_cmp.raw_last > 0xFF00 ? raw + 0x10000 - s_cmp.raw_last /* wrapped */
+                    : raw;                                                      /* zeroed: the demo looped */
+        s_cmp.raw_last = raw;
+    }
+    long key = s_cmp.raw_last < 0 ? -1 : s_cmp.nmis;
+    if (s_cmp.npeek) {
+        fprintf(s_cmp.out, "P %ld %ld %llu", s_cmp.frames, key, (unsigned long long)g_snes->beamMasterLast);
+        for (int i = 0; i < s_cmp.npeek; i++) fprintf(s_cmp.out, " %02x", g_ram[s_cmp.peek[i]]);
+        fputc('\n', s_cmp.out);
+        fflush(s_cmp.out);
+    }
+    s_cmp.frames++;
+    if (key < 0 || key <= s_cmp.last) return;
     s_cmp.last = key;
     if (s_cmp.dump_at >= 0) {
         if (key < s_cmp.dump_at) return;
@@ -135,20 +169,49 @@ static void CmpFrame(void) {
         fflush(s_cmp.out);
         s_cmp.dump_at = -1;
         s_cmp.state = 1;
+        if (s_cmp.quit_at >= 0) exit(0);
         return;
     }
-    if (!s_cmp.stride || key % s_cmp.stride) return;
-    fprintf(s_cmp.out, "H %ld", key);
-    for (int i = 0; i < s_cmp.nregions; i++) {
-        size_t n;
-        const uint8_t *p = CmpRegion(s_cmp.regions[i], &n, scratch);
-        fprintf(s_cmp.out, " %08x", CmpCrc(0, p, n));
+    const int quit_now = s_cmp.quit_at >= 0 && key >= s_cmp.quit_at;
+    if (s_cmp.stride && (key % s_cmp.stride == 0 || quit_now)) {
+        fprintf(s_cmp.out, "H %ld", key);
+        for (int i = 0; i < s_cmp.nregions; i++) {
+            size_t n;
+            const uint8_t *p = CmpRegion(s_cmp.regions[i], &n, scratch);
+            fprintf(s_cmp.out, " %08x", CmpCrc(0, p, n));
+        }
+        fputc('\n', s_cmp.out);
+        fflush(s_cmp.out);
     }
-    fputc('\n', s_cmp.out);
-    fflush(s_cmp.out);
+    if (quit_now) {
+        fflush(s_cmp.out);
+        exit(0);
+    }
 }
 
+/*
+ * Compare runs keep one host frame per video field. The beam driver runs a frame to the next V=225, so a DMA that
+ * outlasts a field (the reset code clears 192 KB: 5 fields in 4 frames) packs several fields into one frame, and
+ * every later replay input landed a field late against MesenCE. Here a frame that is owed (the beam already crossed
+ * its V=225) only counts, without emulating; its input is overwritten unread, as hardware's joypad latch is in a
+ * field the game spends loading. docs/imperfections/host-frames-and-fields.md.
+ */
+#define SOE_FIELD_CLOCKS 357368ull
+#define SOE_FIRST_VBLANK (225ull * 1364ull)
+static long s_host_frames;
+
 void GameRunOneFrame(void) {
+    if (!s_cmp.state) CmpInit();
+    if (s_cmp.state == 2) {
+        const uint64_t beam = g_snes->beamMasterLast;
+        const long fields = beam < SOE_FIRST_VBLANK ? 0 : (long)((beam - SOE_FIRST_VBLANK) / SOE_FIELD_CLOCKS) + 1;
+        if (s_host_frames > 0 && fields > s_host_frames) {
+            s_host_frames++;
+            CmpFrame();
+            return;
+        }
+        s_host_frames++;
+    }
     snes_beam_frame_driver_run_frame();
     CmpFrame();
 }
