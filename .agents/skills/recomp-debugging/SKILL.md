@@ -114,3 +114,7 @@ Verify an exclusion took: the address has only `NULL` variants in `dispatch_v2.c
 4. Changing a `wait` while narrowing changes the run; keep the frame total.
 5. Writing coordinates during a fade-in is ignored; a teleport into the canopy hides the Boy.
 6. States from before 2026-10-12 cannot be restored; F1 *loads*.
+7. The interpreter reaches registers and APU ports at an instruction's *start* clock (it adds the clocks after
+   running it); MesenCE samples 2 clocks into the access cycle (+20 for an absolute `LDA`/`BIT`/`CMP`).
+8. MesenCE SPC callbacks need `emu.cpuType.spc, emu.memType.spcMemory`, and their `masterClock` is frozen (the SPC
+   runs in catch-up batches): time them with `spc.cycle / spc.clockRatio`.

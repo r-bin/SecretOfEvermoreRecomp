@@ -83,7 +83,13 @@ measured against MesenCE ([imperfections/README.md](imperfections/README.md)):
 - **Interrupt cost:** the 8-cycle interrupt sequence is charged (60 master clocks).
 - **DRAM refresh:** a 40-clock stall at H=538 of every line, in place of the runtime's per-CPU-time charge.
 - **SPC700 rate:** the APU's guest anchor follows MesenCE's 1,025,280 Hz instead of 17,088 cycles a frame.
-- **Short scanline:** every other field is 4 clocks shorter; **reset:** the CPU starts at master clock 186.
+- **Short scanline:** every other field is 4 clocks shorter, aligned from wherever the beam stands on line 225;
+  **reset:** the CPU starts at master clock 186.
+- **Auto-joypad read:** `$4212` bit 0 busy from MesenCE's 256-clock start point, for the interpreter's read lead.
+- **NMI recognition:** the CPU runs to V=225+12 and one instruction more when the last one's last cycle began
+  before +6 (`src/soe_last_cycle.c` sizes it).
+- **APU access point:** the APU's guest anchor starts 20 clocks back (MesenCE syncs the SPC 20 clocks into an
+  absolute `$2140` access).
 - **Sampling hook:** `soe_frame_driver_nmi_hook` runs as each NMI is taken (tools/compare samples there).
 
 The glue adds, around it: the APU anchored at power-on, extended frame timing
