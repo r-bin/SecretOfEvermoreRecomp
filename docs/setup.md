@@ -1,21 +1,23 @@
 # Setting Up the Recompilation Pipeline
 
-This guide details the complete prerequisites, information requirements, environment configuration,
-and step-by-step build pipeline for compiling Secret of Evermore into a native C executable.
+This guide covers what the build needs, the toolchain, and the two halves of the pipeline: the
+seeds, which everscript-vscode derives from the recorded game, and the build here.
 
 ---
 
 ## 1. What Information We Need
 
 The recompilation pipeline does not generate code blindly from raw bytes; it synthesizes
-runtime observations with verified structural knowledge about Secret of Evermore.
+runtime observations with verified structural knowledge about Secret of Evermore. Sections 1.2 to
+1.4 live in [everscript-vscode](https://github.com/r-bin/everscript-vscode) (paths below are
+there); what reaches this repository is `recomp/bank*.cfg`.
 
 ### 1.1 The Clean ROM
 - **Target:** *Secret of Evermore (USA)*, 3,145,728 bytes (3 MB), HiROM layout.
 - **SHA-1:** `79e7738630fff5699217ef58ecc421bc8fcbcd89`
 - **Role:** Source of all game machine code and binary assets. snesrecomp analyzes these exact bytes,
   and the Asar rebuild step must match this checksum byte-for-byte.
-- **Location:** the Evermore base ROM of the ROM library (`npm run roms -- add <path>`), or `--rom <path>`.
+- **Location:** anywhere on your drive: `tools/regen.sh --rom <path>` or `SNESRECOMP_ROM`; never in the repository.
 
 ### 1.2 The CDL Library (Code/Data Logger)
 - **Source:** Generated during play sessions in the embedded emulator panel or headless test harness.
@@ -51,103 +53,65 @@ runtime observations with verified structural knowledge about Secret of Evermore
 
 ## 2. Toolchain Prerequisites
 
-| Component | Required Version | Purpose | Setup / Resolution |
-|---|---|---|---|
-| **Node.js** | $\ge 20.0$ | Orchestration scripts (`tools/recomp/*.js`) | System package / `nvm` |
-| **Asar** | $\ge 1.90\text{pre}$ | SNES assembler for disassembly verification | `--asar` / `ASAR` / PATH / `../asar/bin/asar` |
-| **snesrecomp** | `main` branch | 65816 static recompiler & host project template | Git clone with submodules (see below) |
-| **Python** | $\ge 3.9$ | snesrecomp script execution | System Python 3 |
-| **Rust / cargo** | Stable | Compiles snesrecomp's native 65816 analyzer | `curl https://sh.rustup.rs -sSf \| sh` |
-| **CMake** | $\ge 3.20$ | Configures the host C project | System package |
-| **C Compiler** | Modern C11 | Compiles generated C and desktop runner | AppleClang (macOS), GCC (Linux), MSVC (Windows) |
-
-### Setting Up snesrecomp
-Clone the snesrecomp repository alongside `everscript-vscode` (or specify via `SNESRECOMP`):
-```sh
-git clone https://github.com/RetroPortingToolKit/snesrecomp
-cd snesrecomp
-git submodule update --init --depth 1
-```
-*(On macOS and Linux, the first run builds snesrecomp's native analyzer using Cargo, taking ~30 seconds).*
-
----
-
-## 3. Environment Variables & Command Line Flags
-
-| Variable / Flag | Default | Description |
+| Component | Required Version | Purpose |
 |---|---|---|
-| `--rom` | the ROM library's base ROM | Absolute path to the clean Secret of Evermore ROM |
-| `SNESRECOMP` / `--snesrecomp` | `../snesrecomp` | Path to the snesrecomp checkout |
-| `ASAR` / `--asar` | `asar` on PATH | Path to the Asar assembler binary |
-| `SOE_RECOMP_EXE` / `--exe` | Built output binary | Path to recompiled executable (for lockstep tests) |
-| `--fresh` | `false` | Deletes the repository root and scaffolds from scratch |
-| `--strict` | `false` | Treats warnings and incomplete directives as fatal build errors |
-| `--no-build` | `false` | Generates the C source files but skips CMake compilation |
-| `--no-recomp` | `false` | Stops after the Asar export and rebuild step (~2 s) |
-| `--lib` | Global storage | Override path to the CDL library |
+| **snesrecomp** | pinned submodule (`framework_pins.txt`) | 65816 static recompiler and desktop runner |
+| **Python** | $\ge 3.9$ | `tools/regen.sh`, `tools/patch_framework.py` |
+| **Rust / cargo** | stable | snesrecomp's native analyzer (built on the first regen) |
+| **CMake** | $\ge 3.20$ | configures the host C project |
+| **C compiler** | C11 | AppleClang (macOS), GCC (Linux), MSVC (Windows) |
+| **Node.js** | $\ge 20$ | `tools/*.js` (bisection, intro check, OBJ tile check) |
+| everscript-vscode | sibling checkout | only to make new seeds: its `npm run recomp` (Asar for the byte-identical rebuild) |
+
+```sh
+git submodule update --init --recursive
+```
+*(The first regen builds snesrecomp's analyzer with cargo, about 30 seconds.)*
 
 ---
 
-## 4. The End-to-End Build Pipeline (`npm run recomp`)
+## 3. Building
 
-When you invoke:
 ```sh
-npm run recomp
+SNESRECOMP_ROM="/path/to/rom.sfc" bash tools/regen.sh     # verify the ROM, generate src/gen/, re-sync recomp/funcs.h
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release            # also runs tools/patch_framework.py
+cmake --build build -j
 ```
-`tools/recomp/build.js` executes the following sequence:
 
-### Step 1: Input Gathering & Validation
-- Validates the ROM SHA-1 against `79e7738630fff5699217ef58ecc421bc8fcbcd89`.
-- Locates the CDL library for this SHA-1 in global storage.
-- Loads curated function names from `src/games/evermore/localizations/functions.ts` and tables from `tables.js`.
+| Step | What happens |
+|---|---|
+| `tools/regen.sh` | checks the ROM against `rom_identity.txt`, seeds the analysis from every `func` in `recomp/*.cfg` (`--cfg-roots`, on by default here), lifts the reachable 65816 code to C in `src/gen/` (never committed) |
+| CMake configure | `tools/patch_framework.py` adds the beam driver's resume accessors to the submodule (save states) |
+| CMake build | `build/SecretOfEvermoreSNESRecomp`, with `assets/` and `mods/` beside it; `saves/`, `config.ini`, `keybinds.ini` are yours and survive rebuilds |
 
-### Step 2: Asar Export
-- Generates `out/recomp/asar/`:
-  - `main.asm`, `banks/bank_XX.asm` with function labels and caller/access comments.
-  - `rooms/room_XX.bin` containing extracted room data.
-  - `tables/` containing editable lookup tables.
-  - `ram.asm`, `enums.asm`, `structs.asm`, `structs.h`, and `functions.json`.
-  - Mesen2 debugging files: `labels.mlb` and `rom.cdl`.
-  - snesrecomp seed directives: `recomp/cfg/bankXX.cfg`.
+---
 
-### Step 3: Byte-Identical Rebuild Verification
-- Invokes Asar to assemble `main.asm` into `build/out.sfc`.
-- Performs a byte-by-byte SHA-1 verification against the clean ROM.
-- If a single byte differs, the build halts immediately with `asar.log`.
+## 4. New Seeds (`npm run recomp` in everscript-vscode)
 
-### Step 4: Host Project Scaffolding
-- If the repository root does not exist (or `--fresh` is passed):
-  - Calls snesrecomp's `tools/new_project/setup_project.sh`:
-    `--players 1 --no-netplay --no-ci --no-fetch-boxart --no-github --no-generate --no-build`
-  - Initializes git submodules for the desktop runner and SDL frontend.
-  - Configures the project under the repository root (git-ignored).
+The seeds change when the CDL grows or an exclusion is added. In everscript-vscode, with this
+repository as a sibling (`../SecretOfEvermoreRecomp`; else `--repo` or `SOE_RECOMP`):
 
-### Step 5: Game RTL Glue Overlay & Main Hook
-- Copies `tools/recomp/host/` onto the repository root, replacing `src/game_rtl.c`.
-- Patches the scaffold's generated `src/main.c` to add `.after_config = SoeAfterConfig`.
-- Overwrites `project/recomp/bank8x/9x.cfg` with our generated seeds.
-- Injects `data_region` directives into `project/recomp/bank00.cfg`.
+```sh
+npm run recomp                 # everything below, then regen + build here
+npm run recomp -- --no-build   # stop after writing recomp/bank*.cfg
+npm run recomp -- --no-recomp  # only the Asar export and rebuild (~2 s)
+```
 
-### Step 6: Code Generation (`regen.sh`)
-- Runs `bash tools/regen.sh --cfg-roots --rom <clean_rom>`.
-- The snesrecomp analyzer evaluates function graphs, tracks M/X widths, resolves entry points,
-  and lifts 65816 instructions into native C functions in `project/src/gen/*.c`.
+1. **Inputs:** the clean ROM, the CDL library, curated names and RAM entries, ROM asset regions,
+   and this repository's `recomp/seed-exclusions.txt`.
+2. **Asar export** (`out/recomp/asar/` there): `banks/*.asm` with names and comments, `ram.asm`,
+   `structs.h`, `functions.json`, Mesen2 `labels.mlb` + `rom.cdl`, and the seeds.
+3. **Byte-identical rebuild:** Asar assembles the export; one differing byte stops the run.
+4. **Seeds into this repository:** `recomp/bank8x..9x.cfg` replaced; `recomp/bank00.cfg` keeps its
+   own text and gets one `data_region` block between the `everscript data regions` markers.
+5. **Regen + build** here (skipped with `--no-build`), then `out/recomp/REPORT.md` there:
+   coverage, names, native vs interpreted variants, the next steps.
 
-### Step 7: Host Compilation
-- Runs CMake configure: `cmake -S . -B build -DCMAKE_BUILD_TYPE=Release`.
-- Compiles the project: `cmake --build build -j --config Release`.
-- Produces `SecretOfEvermoreSNESRecomp` executable.
-
-### Step 8: Standalone Packaging
-- Creates `out/recomp/SecretOfEvermore-<os>-<arch>/`:
-  - Copies executable, `assets/`, and `mods/`.
-  - Generates launcher scripts: `play.command` (macOS), `play.sh` (Linux), or `play.bat` (Windows).
-  - Preserves user save files in `saves/` (`save.srm`, `save<N>.sav`) and configuration files
-    (`config.ini`, `keybinds.ini`) across rebuilds.
-
-### Step 9: Report Generation
-- Writes `out/recomp/REPORT.md` and `out/recomp/report.json`, detailing coverage percentages,
-  named functions, native vs LLE variants, and prioritized next steps.
+### `recomp/seed-exclusions.txt`
+One line per directive the export must not emit, each a bug in [bugs-and-todos.md](bugs-and-todos.md):
+`func <pc24> <reason>` (no root, plus `force_lle`: interpreted for every caller) or
+`dispatch <pc24> <reason>` (no `indirect_dispatch` at that site). An address covers all its HiROM
+mirrors.
 
 ---
 
@@ -155,9 +119,8 @@ npm run recomp
 
 | Symptom | Cause | Solution |
 |---|---|---|
-| `cargo: command not found` | Rust binary directory not in shell `PATH` | Ensure `export PATH="$HOME/.cargo/bin:$PATH"` is in your profile |
-| `scaffold failed (recomp-host.log)` | Missing submodules in snesrecomp repository | Run `git submodule update --init --depth 1` in `snesrecomp/` |
-| `ROM differs` during Asar rebuild | Uncommitted modifications or corrupt export | Run `npm run recomp -- --fresh` to force a clean re-export |
-| `recomp-host.log: regen failed` | Python 3 or Cargo build issue | Check `out/recomp/recomp-host.log` for compilation stack trace |
-| Character-name screen renders garbled | `NewRenderer` active instead of legacy PPU | Verify `SoeAfterConfig` hook is present in `src/main.c` (see [game-rtl.md](game-rtl.md)) |
-
+| `cargo: command not found` | Rust not on `PATH` | `export PATH="$HOME/.cargo/bin:$PATH"` |
+| `snesrecomp submodule missing` | submodules not checked out | `git submodule update --init --recursive` |
+| `patch_framework: ... layout changed` | the pinned framework moved its statics | adapt `tools/patch_framework.py` to the new `beam_frame_driver.c` |
+| `ROM differs` during the Asar rebuild | the export or the CDL library is broken | see everscript-vscode's `out/recomp/asar.log` |
+| Character-name screen renders garbled | `NewRenderer` active instead of the legacy PPU | check the `SoeAfterConfig` hook in `src/main.c` ([game-rtl.md](game-rtl.md)) |

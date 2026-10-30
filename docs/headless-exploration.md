@@ -1,7 +1,7 @@
 # Headless Exploration: Reaching Any Scene Without Playing
 
 How to drive the recompiled game (and snes9x) to a room, an enemy or a glitch from a script,
-reproducibly. Found while hunting the HUD-portrait corruption (v0.201.17–19); every step below
+reproducibly. Found while hunting the HUD-portrait corruption (2026-10-12); every step below
 was verified in that hunt.
 
 The idea: **read where the game is from WRAM, read where to go from the room data in the ROM,
@@ -18,8 +18,8 @@ Headless scripts are the runner's `--script` files (commands in [debugging.md §
 |---|---|
 | Start from the player's progress | Continue the in-game save (`saves/save.srm`) from the title: `wait 700`, `press start 2`, `wait 400`, `press start 2`, `wait 150` opens the load list with the first save **already selected**; `press b 4`, `wait 60`, `press b 4` (select, confirm), `wait 500`. Pressing down first selects an empty slot. |
 | A save state of a moment | There is no `savestate` script command. Set `Autosave = 1` in `config.ini`: the host loads slot 0 on start and **saves slot 0 on exit**, so a script that ends in `quit` leaves `saves/save0.sav`. Copy it aside and set `Autosave = 0` again, or every later run starts from it. |
-| Start every run from that moment | `loadstate 0` as the first line. Since v0.201.18 states carry the CPU and resume PC, so this works on frame 0. |
-| Same thing on snes9x | `node tools/recomp/s9x-run.js <rom> <save.srm> <script> <outdir>`: same commands; start with the title sequence above (it ignores `loadstate`). |
+| Start every run from that moment | `loadstate 0` as the first line. States carry the CPU and resume PC, so this works on frame 0. |
+| Same thing on snes9x | everscript-vscode: `node tools/recomp/s9x-run.js <rom> <save.srm> <script> <outdir>`: same commands; start with the title sequence above (it ignores `loadstate`). |
 
 A run from a state is **deterministic**: the same script gives byte-identical dumps. Keep that
 property when narrowing a bug down (§5).
@@ -37,7 +37,7 @@ All from a `dump` (`<tag>.wram.bin`, 128 KB, offset = address − `$7E0000`):
 | `$7E0F86` / `$0F88` | room origin in 16-px cells (also bytes 0/1 of the room's data blob) |
 | `$7E0100` | NMI frame counter; `$7E0B19` field frame counter. If `$0100` rises but `$0B19` does not, the game logic is frozen. |
 
-## 3. Where Can I Go? (`tools/recomp/room-nav.js`)
+## 3. Where Can I Go? (everscript-vscode's `tools/recomp/room-nav.js`)
 
 ```sh
 node tools/recomp/room-nav.js out/rom.sfc 25            # table: triggers with destinations, enemy spawns
@@ -111,8 +111,8 @@ Throw-away helpers during the hunt that are now proper tools or documented steps
 
 | Hunt helper | Now |
 |---|---|
-| reading trigger boxes and spawns by hand | `tools/recomp/room-nav.js` |
+| reading trigger boxes and spawns by hand | everscript-vscode's `tools/recomp/room-nav.js` |
 | list-consistency check over dumps | `tools/check-obj-tiles.js` |
-| same script on snes9x | `tools/recomp/s9x-run.js` |
+| same script on snes9x | everscript-vscode's `tools/recomp/s9x-run.js` |
 | a tour generator (teleport + 10 swings per spawn) | `room-nav.js --script`, one block per spawn |
 | bisection over compiled entries | the procedure in [debugging.md §5.4](debugging.md) |

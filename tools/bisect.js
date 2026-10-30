@@ -1,17 +1,21 @@
-// TODO port to TS (docs/todo/port-to-ts.md)
 'use strict';
+// Bisect the seed banks against a headless check (docs/debugging.md §6).
+//   SNESRECOMP_ROM=<rom> node tools/bisect.js
+// Works on recomp/ in place: the committed bank cfgs are the full set (git restores them after a run).
 
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
-const REPO = path.resolve(__dirname, '..', '..');
-const PROJECT = path.join(REPO, 'out', 'recomp', 'project');
-const SAVED = path.join(REPO, 'out', 'recomp', 'saved_cfgs');
+const PROJECT = path.resolve(__dirname, '..');
+const SAVED = path.join(PROJECT, 'build', 'bisect-cfgs');
 const CFG_DIR = path.join(PROJECT, 'recomp');
-const ROM = path.join(REPO, 'out', 'rom.sfc');
+const ROM = process.env.SNESRECOMP_ROM;
 const EXE = path.join(PROJECT, 'build', 'SecretOfEvermoreSNESRecomp' + (process.platform === 'win32' ? '.exe' : ''));
-const DUMP_DIR = '/tmp/recomp-bisect-dump';
+const DUMP_DIR = path.join(PROJECT, 'build', 'bisect-dump');
+if (!ROM) { console.error('set SNESRECOMP_ROM to the clean ROM'); process.exit(2); }
+fs.mkdirSync(SAVED, { recursive: true });
+for (const f of fs.readdirSync(CFG_DIR)) if (/^bank[0-9a-f]{2}\.cfg$/i.test(f)) fs.copyFileSync(path.join(CFG_DIR, f), path.join(SAVED, f));
 
 function run(cmd, argv, opts) {
   const r = spawnSync(cmd, argv, { encoding: 'utf8', maxBuffer: 64 << 20, ...opts });
@@ -41,7 +45,7 @@ function configure(bankFiles) {
 
   // Regen
   const env = { ...process.env, SNESRECOMP_ROM: ROM, PATH: require('os').homedir() + '/.cargo/bin:' + process.env.PATH };
-  const rGen = run('bash', ['tools/regen.sh', '--cfg-roots', '--rom', ROM], { cwd: PROJECT, env });
+  const rGen = run('bash', ['tools/regen.sh', '--rom', ROM], { cwd: PROJECT, env });
   if (rGen.status !== 0) {
     console.error('Regen failed:\n', rGen.out);
     return false;

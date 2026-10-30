@@ -3,7 +3,9 @@
 A native recompilation of **Secret of Evermore** (USA), built on
 [snesrecomp](https://github.com/RetroPortingToolKit/snesrecomp).
 
-_Add a short description here._
+The seeds come from [everscript-vscode](https://github.com/r-bin/everscript-vscode), which
+records the running game (CDL) and turns what it learns into snesrecomp input; the glue, the
+docs and the debugging tools live here.
 
 
 
@@ -13,10 +15,10 @@ _Add a short description here._
 
 ## Status
 
-Scaffolded on 2026-10-12 — **not yet a working port.** The layout, build,
-regeneration pipeline, CI, and packaging are wired up; the game does not run
-until the host work in `src/game_rtl.c` is done. See
-[Porting from here](#porting-from-here).
+Playable in the field: intro, title, continue from a save, Prehistoria village and jungle with
+combat, save states (F1). Seeds from a CDL covering 90 % of the ROM; on the pinned framework
+3916 roots, 4871 native variants, 759 interpreted. Details and the bug history:
+[docs/README.md](docs/README.md), [docs/bugs-and-todos.md](docs/bugs-and-todos.md).
 
 ## ROM identity
 
@@ -52,6 +54,12 @@ both from ever being committed.
 
 `tools/regen.sh` verifies the ROM, generates `src/gen/*.c`, and re-syncs
 `recomp/funcs.h`. Re-run it whenever you change anything under `recomp/`.
+CMake also runs `tools/patch_framework.py`, which adds the beam driver accessors our save
+states need to the framework submodule.
+
+New seeds (a bigger CDL, a new exclusion in `recomp/seed-exclusions.txt`) come from
+everscript-vscode: `npm run recomp` in a sibling checkout writes `recomp/bank*.cfg` here
+([docs/setup.md](docs/setup.md) §4).
 
 ## Run
 
@@ -74,14 +82,15 @@ than mis-executing ten frames in.
 
 | Path | What lives there |
 |---|---|
-| `recomp/` | Analysis input: `bank*.cfg`, `symbols.toml`, generated `funcs.h` |
+| `recomp/` | Analysis input: `bank*.cfg` (seeds), `seed-exclusions.txt`, `symbols.toml`, generated `funcs.h` |
 | `rom_identity.txt` | ROM digests — read by the build, `tools/regen.sh` and CI |
-| `src/` | Host code you own: `main.c`, `game_rtl.c` |
+| `src/` | Host code: `game_rtl.c` (our glue), `main.c` |
 | `src/gen/` | Generated C. Never committed — regenerate locally |
 | `snesrecomp/` | Framework submodule (owns `lib/recomp-net`, `lib/retcomm-rbengine`) |
-| `tools/` | `regen.sh` — the ROM → C pipeline |
+| `tools/` | `regen.sh` — the ROM → C pipeline; `patch_framework.py`; `bisect.js`, `verify-intro.js`, `check-obj-tiles.js` |
 | `scripts/` | `package_release.sh` — player-facing zip |
 | `framework_pins.txt` | Exact framework commits this project was scaffolded against |
+| `docs/` | Status, setup, glue, debugging, headless exploration, bugs and roadmap, research |
 
 ## Porting from here
 

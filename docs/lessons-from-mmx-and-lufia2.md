@@ -62,9 +62,9 @@ original address. It never falls back to the nearest compiled sibling. An unreso
 jump keeps *live* interpreter dispatch and does not need a per-game target table. Hand-written
 hints are treated as migration tests: each one is removed once the generic path handles that case.
 
-**For us.** Several entries in `src/platform/cdl/recomp-analysis.ts` are hand-written workarounds
-for exactly these classes: `DISPATCH_EXCLUSIONS` for the stack-resident loop at `$8F:9F46` and
-the dynamic hook at `$80:84BE`, and `FUNC_EXCLUSIONS` plus `force_lle` for the sprite allocator
+**For us.** Several entries in `recomp/seed-exclusions.txt` are hand-written workarounds
+for exactly these classes: `dispatch` lines for the stack-resident loop at `$8F:9F46` and
+the dynamic hook at `$80:84BE`, and `func` lines (plus `force_lle`) for the sprite allocator
 cluster (bugs-and-todos.md §2). A newer framework may classify them as `LLE_ONLY` itself. Each
 one should become a test: remove it, regenerate, and see whether the bug comes back.
 
@@ -126,7 +126,7 @@ the program is generated with and without the overlay, and the execution manifes
 C (names, comments and declaration order removed) must be identical. This check was run across
 X1–X3.
 
-**For us.** `tools/recomp/names.js` writes our curated names into the cfgs. The same A/B check
+**For us.** everscript-vscode's `tools/recomp/names.js` writes our curated names into the cfgs. The same A/B check
 (regenerate without names, normalize, compare) would show whether naming ever changes what gets
 compiled.
 
@@ -281,14 +281,14 @@ Until a routine passes this, call its C a description, not a decompilation.
 
 | # | Step | Why | Where |
 |---|---|---|---|
-| 1 | Pin snesrecomp: record the SHA in `tools/recomp/`, refuse another or dirty checkout unless a flag allows it, and move to a current revision | Builds are reproducible; MMX's pin is 77 commits ahead of ours | `tools/recomp/host.js`, `setup.md` |
-| 2 | Arm the tripwires in every headless run; fail on the first trip | Stack and M/X bugs surface at the routine, not frames later | `debugging.md`, `tools/recomp/` |
+| 1 | ~~Pin snesrecomp~~ done: the `snesrecomp/` submodule, `framework_pins.txt` | Builds are reproducible | `setup.md` |
+| 2 | Arm the tripwires in every headless run; fail on the first trip | Stack and M/X bugs surface at the routine, not frames later | `debugging.md`, `tools/` |
 | 3 | Make interpreted vs native (bounce on/off) the primary lockstep; keep snes9x/Mesen2 for hardware questions | Sidesteps the NMI-315 timing drift | `tools/compare`, bugs-and-todos.md §1.1 |
-| 4 | Turn each exclusion in `recomp-analysis.ts` into a test: drop it on the new framework, regenerate, rerun the bug's repro | Hints are migration tests; the framework may now prove these `LLE_ONLY` itself | `src/platform/cdl/recomp-analysis.ts` |
-| 5 | Record replays in the recomp and replay them after each regeneration, stopping at the first divergence; pin the save-state and reset cases as tests | Regression evidence that survives timing changes | `tools/recomp/`, `sample-playbacks` |
-| 6 | Run a long playthrough with coverage capture on; ingest it as seeds bound to the ROM SHA | 394 variants still interpreted; the CDL used so far covers ~10 s | `setup.md`, `README.md` §1 |
-| 7 | Export a ROM-byte-free layout (asset regions as data) for the framework's authority input | Gets ROM-tab data regions into snesrecomp | `tools/recomp/`, ROM tab model |
-| 8 | A/B check that names do not change the emitted C | Naming must stay cosmetic | `tools/recomp/names.js` |
+| 4 | Turn each line of `recomp/seed-exclusions.txt` into a test: drop it on the new framework, regenerate, rerun the bug's repro | Hints are migration tests; the framework may now prove these `LLE_ONLY` itself | `recomp/seed-exclusions.txt` |
+| 5 | Record replays in the recomp and replay them after each regeneration, stopping at the first divergence; pin the save-state and reset cases as tests | Regression evidence that survives timing changes | `tools/`, `sample-playbacks` |
+| 6 | Run a long playthrough with coverage capture on; ingest it as seeds bound to the ROM SHA | done 2026-10-30: the CDL covers 90 % of the ROM; 759 variants still interpreted | `setup.md`, `README.md` §1 |
+| 7 | Export a ROM-byte-free layout (asset regions as data) for the framework's authority input | Gets ROM-tab data regions into snesrecomp | everscript-vscode's seed export, ROM tab model |
+| 8 | A/B check that names do not change the emitted C | Naming must stay cosmetic | everscript-vscode's `tools/recomp/names.js` |
 | 9 | Prove decompiled C before binding it (§3) | Turns `docs/disassembly/` into verified code | `decomp-curator` agent |
 
 Each step needs its own session and its own evidence. None of them was started with this page.

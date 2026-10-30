@@ -8,16 +8,14 @@ into a native, standalone, portable C desktop executable using
 
 ## 1. Status
 
-- **Status (2026-10-12, v0.201.20): playable in the field.** Boots, intro, attract demo, title,
-  continue from the SRAM save, Prehistoria village and South jungle with combat, verified
-  headless against snes9x (no sprite or HUD corruption over 21 fights). Save states (F1) work.
-- **Byte-identical rebuild:** Asar produces a ROM bit-for-bit identical to the vanilla cartridge.
-- **Native execution:** 685 of 1079 function variants (400 roots) compile to native C; 394 run
-  in the interpreter. Routines that miscompile stay on the interpreter via `force_lle`.
-- **Coverage:** the CDL used so far is a ~10-second recording (9.3 % of the ROM, ~42 KB of
-  code); most of the game's code has never run in a test. Next: a full-play CDL, then test play.
-- **Lockstep validation:** WRAM matches snes9x bit-for-bit through NMI counter 305 (timing drift
-  after, see bugs-and-todos.md §1.1).
+- **Status (2026-10-30): playable in the field.** Boots, intro, attract demo, title, continue
+  from the SRAM save, Prehistoria village and South jungle with combat, verified headless against
+  snes9x (no sprite or HUD corruption over 21 fights). Save states (F1) work.
+- **Seeds:** a CDL covering 90.3 % of the ROM (a full playthrough), written into `recomp/` by
+  everscript-vscode's export. On the pinned framework: 3916 roots, 4871 native variants, 759
+  interpreted. Routines that miscompile stay interpreted (`recomp/seed-exclusions.txt`).
+- **Lockstep validation:** WRAM matches snes9x through NMI counter ~300 (timing drift after, see
+  bugs-and-todos.md §1.1).
 
 ---
 
@@ -25,7 +23,7 @@ into a native, standalone, portable C desktop executable using
 
 | Guide | Contents |
 |---|---|
-| **[setup.md](setup.md)** | **Setup & Build Pipeline**<br>Prerequisites, required assets (ROM, CDL, knowledge), environment variables, and the end-to-end `npm run recomp` pipeline. |
+| **[setup.md](setup.md)** | **Setup & Build Pipeline**<br>Prerequisites, required assets (ROM, CDL, knowledge), environment variables, the build, and how the seeds come from everscript-vscode. |
 | **[game-rtl.md](game-rtl.md)** | **Game Runtime Layer (Game RTL / Glue Code)**<br>Why "Game RTL" is the proper architectural term, how `game_rtl.c` drives frames and interrupts, host configuration hooks (`SoeAfterConfig`), and licensing isolation. |
 | **[debugging.md](debugging.md)** | **Debugging, Emulators & Comparison**<br>Available emulators (snes9x2005-wasm, Mesen2, desktop host), execution modes (native vs interpreter, renderer modes), WRAM lockstep diffing, headless script automation, and seed bisection. |
 | **[headless-exploration.md](headless-exploration.md)** | **Headless Exploration**<br>Into the game from SRAM, save states without a UI, reading rooms (`room-nav.js`), teleporting onto step-on triggers, fighting, narrowing a glitch to its frame, snes9x comparison. |
@@ -39,79 +37,38 @@ into a native, standalone, portable C desktop executable using
 
 ## 3. Quick Start
 
-### Build the Recompiled Game
+### Build and play
 ```sh
-# One command: exports Asar disasm, verifies byte-identical rebuild, scaffolds host, generates C, compiles & packages
-npm run recomp
-
-# Re-scaffold the host project cleanly and enforce strict checks
-npm run recomp -- --fresh --strict
-
-# Stop after Asar rebuild (fast disasm check, ~2 s)
-npm run recomp -- --no-recomp
+git submodule update --init --recursive
+SNESRECOMP_ROM="/path/to/Secret of Evermore (U) [!].smc" bash tools/regen.sh   # ROM -> src/gen/ (~2-3 min)
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j
+./build/SecretOfEvermoreSNESRecomp "/path/to/Secret of Evermore (U) [!].smc"
 ```
+*(Player data in `build/saves/`, `build/config.ini` and `build/keybinds.ini` survive rebuilds.)*
 
-### Play the Game
+### New seeds from a new CDL
+In an everscript-vscode checkout next to this one (it finds `../SecretOfEvermoreRecomp`; else
+`--repo` or `SOE_RECOMP`):
 ```sh
-# macOS
-open "out/recomp/SecretOfEvermore-macos-arm64/play.command"
-
-# Linux
-./out/recomp/SecretOfEvermore-linux-x64/play.sh
-
-# Windows
-out\recomp\SecretOfEvermore-windows-x64\play.bat
+npm run recomp               # export, byte-identical Asar rebuild, seeds into recomp/, regen + build here
+npm run recomp -- --no-build # only write recomp/bank*.cfg (reads recomp/seed-exclusions.txt)
 ```
-*(Player data in `saves/`, `config.ini`, and `keybinds.ini` survive rebuilds).*
+Commit the changed `recomp/bank*.cfg` here.
 
-### Run Lockstep Verification
-```sh
-npm run recomp:lockstep -- --rom "/path/to/Secret of Evermore (U) [!].smc"
-```
+### Lockstep against snes9x
+From everscript-vscode: `npm run compare -- recomp=` runs this repository's `build/` game.
 
 ---
 
 ## 4. Pipeline Architecture
 
 ```text
- ┌──────────────────────────────────────────────┐
- │             Input Information                │
- │  • Clean ROM (SHA-1 79e7738...)              │
- │  • CDL Library (<globalStorage>/cdl-library) │
- │  • Curated Knowledge (functions, tables, RAM)│
- │  • ROM Asset Models (rooms, text, gfx)       │
- └──────────────────────┬───────────────────────┘
-                        │
-                        ▼
- ┌──────────────────────────────────────────────┐
- │     Step 1: Asar Disassembly & Rebuild       │
- │  • Emits banks/*.asm with symbol names       │
- │  • Emits recomp/cfg/bank*.cfg seed directives│
- │  • Verifies byte-identical ROM hash          │
- └──────────────────────┬───────────────────────┘
-                        │
-                        ▼
- ┌──────────────────────────────────────────────┐
- │  Step 2: Host Scaffolding & Game RTL Overlay │
- │  • snesrecomp CMake project scaffold         │
- │  • tools/recomp/host/ (Game RTL glue) overlay│
- │  • main.c patched with SoeAfterConfig hook   │
- └──────────────────────┬───────────────────────┘
-                        │
-                        ▼
- ┌──────────────────────────────────────────────┐
- │        Step 3: snesrecomp Code Gen           │
- │  • tools/regen.sh --cfg-roots                │
- │  • Lifts 65816 machine code to native C      │
- │  • Outputs project/src/gen/*.c               │
- └──────────────────────┬───────────────────────┘
-                        │
-                        ▼
- ┌──────────────────────────────────────────────┐
- │     Step 4: Compilation & Packaging          │
- │  • CMake Release compilation                 │
- │  • Packaged to out/recomp/SecretOfEvermore-* │
- │  • Generates REPORT.md and report.json       │
- └──────────────────────────────────────────────┘
+ everscript-vscode (npm run recomp)            this repository
+ ┌────────────────────────────────────┐        ┌────────────────────────────────────┐
+ │ clean ROM + CDL library + names    │        │ recomp/bank*.cfg   seeds (committed)│
+ │ -> Asar disassembly, byte-identical│ seeds  │ recomp/seed-exclusions.txt         │
+ │    rebuild, Mesen2 labels          │ ─────▶ │ src/game_rtl.c     our glue        │
+ │ -> recomp seeds (func roots, exit  │ ◀───── │ tools/regen.sh     ROM -> src/gen/ │
+ │    widths, dispatch, data regions) │ exclu- │ CMake              -> build/       │
+ └────────────────────────────────────┘ sions  └────────────────────────────────────┘
 ```
-

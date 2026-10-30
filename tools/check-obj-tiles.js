@@ -1,12 +1,11 @@
-// TODO port to TS (docs/todo/port-to-ts.md)
 'use strict';
 
-// Check the game's OBJ tile cache in WRAM dumps (recomp `dump` or tools/recomp/s9x-run.js output).
+// Check the game's OBJ tile cache in WRAM dumps (recomp `dump`, or everscript-vscode's tools/recomp/s9x-run.js).
 //   node tools/check-obj-tiles.js <tag.wram.bin>... [--vram]
 // The game keeps its 128 dynamic 8x8 OBJ tiles in two doubly linked lists: next[] at $7E9727,
-// prev[] at $7E96A5, sentinel $80 = LRU cache, $81 = used this frame (knowledge/ram/7e9727.md).
+// prev[] at $7E96A5, sentinel $80 = LRU cache, $81 = used this frame (everscript knowledge ram/7e9727).
 // On real hardware and snes9x they stay consistent at every frame boundary; a broken link
-// hands out OBJ tile $81 and overwrites the HUD portrait (bugs-and-todos.md, v0.201.19).
+// hands out OBJ tile $81 and overwrites the HUD portrait (docs/bugs-and-todos.md).
 // With --vram it also prints a hash of OBJ tile $81 from the matching <tag>.vram.bin
 // (clean portrait: 326e64).
 

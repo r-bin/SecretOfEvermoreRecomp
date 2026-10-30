@@ -1,16 +1,17 @@
-// TODO port to TS (docs/todo/port-to-ts.md)
 'use strict';
+// Headless intro and attract demo over three cycles: title, Thraxx HUD portrait, demo, reboot.
+//   SNESRECOMP_ROM=<rom> node tools/verify-intro.js        (after a build)
 
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
-const REPO = path.resolve(__dirname, '..', '..');
-const ROM = path.join(REPO, 'out', 'rom.sfc');
-const EXE = path.join(REPO, 'out', 'recomp', 'SecretOfEvermore-macos-arm64', 'SecretOfEvermore');
-const DUMP_DIR = path.join(REPO, 'out', 'recomp', 'verify_dump');
+const REPO = path.resolve(__dirname, '..');
+const ROM = process.env.SNESRECOMP_ROM || '';
+const EXE = path.join(REPO, 'build', 'SecretOfEvermoreSNESRecomp' + (process.platform === 'win32' ? '.exe' : ''));
+const DUMP_DIR = path.join(REPO, 'build', 'verify_dump');
 
-if (!fs.existsSync(ROM)) {
+if (!ROM || !fs.existsSync(ROM)) {
   console.error('ROM not found at', ROM);
   process.exit(1);
 }

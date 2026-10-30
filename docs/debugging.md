@@ -1,7 +1,7 @@
 # Debugging the Recomp: Emulators, Modes, and Comparison
 
 How to systematically debug visual glitches, state divergence, and logic errors in the
-Secret of Evermore static recompilation (`out/recomp/SecretOfEvermore-<os>-<arch>/`).
+Secret of Evermore static recompilation (`build/SecretOfEvermoreSNESRecomp`).
 
 ---
 
@@ -45,7 +45,7 @@ We leverage three complementary SNES emulation environments:
 - **Limitation:** Not 100% cycle-accurate; slight timing drift during complex ROM decompression loops.
 
 ### 2.2 Mesen2 (Cycle-Accurate Reference & Interactive Debugger)
-- **Integration:** The Asar export automatically writes Mesen2 debug files to `out/recomp/asar/mesen/`:
+- **Integration:** The Asar export automatically writes Mesen2 debug files to everscript-vscode's `out/recomp/asar/mesen/`:
   - `rom.cdl`: Byte-level Code/Data Logger bitfields.
   - `labels.mlb`: Complete symbol map containing all our curated function and WRAM names.
 - **Capabilities:**
@@ -54,7 +54,7 @@ We leverage three complementary SNES emulation environments:
   - Serves as the ultimate ground-truth arbiter when snes9x and snesrecomp drift in timing.
 
 ### 2.3 snesrecomp Desktop Host (The Recompiled Executable)
-- **Path:** `out/recomp/SecretOfEvermore-<os>-<arch>/SecretOfEvermore`
+- **Path:** `build/SecretOfEvermoreSNESRecomp`
 - **Interactive Controls:**
   - `Shift+F1`...`F10`: Save state to slot.
   - `F1`...`F10`: Load state from slot.
@@ -72,7 +72,7 @@ snesrecomp can be configured to run in multiple diagnostic modes to isolate faul
 
 ### 3.1 Native Recompiled Mode (Full Seeds)
 - Generated with `tools/regen.sh --cfg-roots --rom <rom>`.
-- Translates all verified CDL roots into native C functions (`project/src/gen/*.c`).
+- Translates all verified CDL roots into native C functions (`src/gen/*.c`).
 - Unresolved branches and indirect dispatches fall back to `interp_tier_dispatch_tail`.
 - **Target state:** Maximum execution speed (~400+ FPS), full C call graph.
 
@@ -91,11 +91,11 @@ snesrecomp can be configured to run in multiple diagnostic modes to isolate faul
 
 ## 4. What and How to Compare
 
-### 4.1 Lockstep WRAM Comparison (`npm run recomp:lockstep`)
+### 4.1 Lockstep WRAM Comparison (everscript-vscode's `npm run compare`)
 Lockstep runs the clean ROM in `snes9x2005-wasm` and in the recompiled binary side-by-side:
 
 ```sh
-npm run recomp:lockstep -- --rom "/path/to/rom.smc"      # = npm run compare -- recomp=
+npm run compare -- recomp=/path/to/rom.smc                # in everscript-vscode; runs build/ here
 npm run compare -- recomp=rom.smc --verbose              # every count, not every 60th
 ```
 
@@ -156,7 +156,7 @@ When `dump <tag>` is executed with `SNESRECOMP_DUMP_DIR=/path/to/dumps`, six fil
 | `<tag>.regs.json` | PPU register state | Check BG mode (`$2105`), screen display (`$2100`), OBSEL (`$2101`) |
 | `<tag>.ppuw.tsv` | Complete register write trace | Full log of every PPU write with exact frame and scanline number |
 
-### 5.3 Same Script on snes9x (`tools/recomp/s9x-run.js`)
+### 5.3 Same Script on snes9x (everscript-vscode's `tools/recomp/s9x-run.js`)
 `node tools/recomp/s9x-run.js <rom> <save.srm | -> <script> <outdir>` runs the same commands on
 the extension's snes9x core (about 10,000 frames per second) and writes `<tag>.wram.bin`,
 `<tag>.vram.bin` and `<tag>.fb.bmp` in the recomp's layout. Start it from SRAM with the title
@@ -176,8 +176,8 @@ variants and rediscovered callees still run natively. For a real differential:
 2. List every compiled entry: the `g_dispatch_table` rows of `src/gen/dispatch_v2.c`
    whose variant pointers are not all `NULL` (in the `$0x`, `$8x` and `$Cx` mirrors), and bisect that
    list through the target file against a deterministic script and a WRAM invariant.
-3. Keep the culprit off the native tier for good with `force_lle <pc24>` in a `bank*.cfg`; our
-   generator emits it for every `FUNC_EXCLUSIONS` entry (`src/platform/cdl/recomp-analysis.ts`).
+3. Keep the culprit off the native tier for good with `force_lle <pc24>`: add a `func <pc24> <reason>`
+   line to `recomp/seed-exclusions.txt` and rerun the seed export, which emits it.
 
 ---
 
@@ -228,7 +228,7 @@ every bytecode fetch:
 ### 7.2 Native Trusted Plugin vs. `.snesmod`
 Because `.snesmod` archives follow a strict data-only security model (no arbitrary shared libraries or executable code),
 a `.snesmod` alone cannot open network sockets or control process execution threads:
-1. **The Engine (Native Trusted Plugin):** Written in C/C++ in `tools/recomp/host/`, statically linked into the executable. Runs a local TCP server listening for Debug Adapter Protocol (DAP) messages and synchronizes breakpoints across threads.
+1. **The Engine (Native Trusted Plugin):** Written in C/C++ in `src/`, statically linked into the executable. Runs a local TCP server listening for Debug Adapter Protocol (DAP) messages and synchronizes breakpoints across threads.
 2. **The Front-End (`soe-evs-debugger.snesmod`):** Exposes options in the launcher UI to toggle the debug server, select the TCP listening port, and choose whether to halt execution on game boot.
 
 ### 7.3 Workflow Comparison: Recomp vs. snes9x Webview

@@ -94,8 +94,8 @@ so the new session does not inherit stale beam timing from the previous session.
 
 ## 4. Host Configuration Hook (`SoeAfterConfig`)
 
-In addition to `game_rtl.c`, our build pipeline patches the desktop runner's entry point (`src/main.c`)
-via `tools/recomp/host.js`.
+In addition to `game_rtl.c`, the desktop runner's entry point `src/main.c` (from the scaffold)
+carries one line of ours: `.after_config = SoeAfterConfig` in the host descriptor.
 
 ### The Hook Mechanism
 In `src/main.c`:
@@ -129,18 +129,16 @@ Investigation revealed:
 
 ## 5. Licensing and Structural Separation
 
-To prevent license contamination:
-
-| Component | License | Repository Status |
+| Component | License | Where |
 |---|---|---|
-| **snesrecomp framework & templates** | PolyForm Noncommercial 1.0.0 | **Never committed.** Cloned and scaffolded at build time in the repository root (git-ignored). |
-| **everscript-vscode & Game RTL glue** | MIT | Committed in `tools/recomp/host/` and tracked in git. |
+| **snesrecomp framework** | PolyForm Noncommercial 1.0.0 | the `snesrecomp/` submodule, pinned in `framework_pins.txt`; never copied |
+| **Scaffold files** (`CMakeLists.txt`, `src/main.c`, `src/host_contract.c`, `tools/regen.sh`, CI, packaging) | the scaffold's `LICENSE` | rendered once by snesrecomp's `tools/new_project/setup_project.sh` (the first commit), edited here since |
+| **Our glue** (`src/game_rtl.c`, `tools/patch_framework.py`, `tools/*.js`) | MIT | this repository |
+| **Seeds** (`recomp/*.cfg`, `recomp/seed-exclusions.txt`) | ours, no ROM bytes | written by everscript-vscode's export, committed here |
+| **Generated C** (`src/gen/`) | derived from the ROM | never committed: `.gitignore`; everyone regenerates from their own ROM |
 
-### How the Overlay Works
-1. `npm run recomp` runs `setup_project.sh` from snesrecomp to create the repository root.
-2. `tools/recomp/host.js` copies our `tools/recomp/host/` directory directly over the repository root.
-3. Our `src/game_rtl.c` replaces the scaffold's default template.
-4. Our `hookMain()` patches `src/main.c` with the `SoeAfterConfig` hook.
-5. Clean, strict legal separation is maintained: no proprietary or PolyForm template files ever enter
-   the everscript-vscode repository.
-
+### Changes to the framework
+The framework is never edited by hand. The one change this port needs, three accessors for the
+beam driver's resume point (save states), is applied by `tools/patch_framework.py` when CMake
+configures; it is idempotent and fails loudly when the framework's layout changes. `.gitmodules`
+ignores the dirty submodule tree this leaves.
