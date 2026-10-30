@@ -1,27 +1,31 @@
 ---
 name: recomp
-description: Use when building, running or testing the Secret of Evermore static recompilation (npm run recomp): commands, the generated host project, our glue, CDL seeds, headless runs.
-applyTo: "tools/recomp/**,docs/**,src/platform/cdl/recomp-*.js"
+description: Use when building, running or testing the Secret of Evermore recompilation: regen and build, the seeds from everscript-vscode, our glue, the framework pin, headless runs.
+applyTo: "**"
 ---
 
 # Skill: the SoE recomp
 
-Docs: `docs/README.md` (status, map), `headless-exploration.md` (driving the game from a
-script), `debugging.md` (modes, dumps, bisection), `bugs-and-todos.md` (open and solved bugs,
-each with its lesson), `game-rtl.md` (our glue). Read the bug table before a new hunt: the same
-failure classes repeat.
+Docs: `docs/README.md` (status, map), `setup.md` (build, new seeds), `headless-exploration.md`
+(driving the game from a script), `debugging.md` (modes, dumps, bisection), `bugs-and-todos.md`
+(open and solved bugs, each with its lesson), `game-rtl.md` (our glue). Read the bug table before a
+new hunt: the same failure classes repeat.
 
 ## Commands
-`npm run recomp -- --rom out/rom.sfc` builds the game into `out/recomp/SecretOfEvermore-*/`; start it with that folder's
-`play.command` (macOS) or `play.sh`; `npm run recomp:lockstep` compares it with snes9x. `out/rom.sfc` is the clean ROM. Headless: `<game>/SecretOfEvermore
---no-launcher --script s.txt <rom>` with `SNESRECOMP_DUMP_DIR`. Copy the package to the scratchpad
-before experimenting: `saves/`, `config.ini` belong to the user.
+`SNESRECOMP_ROM=<rom> bash tools/regen.sh` (ROM -> `src/gen/`, ~2-3 min), then
+`cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j` -> `build/SecretOfEvermoreSNESRecomp`.
+Headless: `build/SecretOfEvermoreSNESRecomp --no-launcher --script s.txt <rom>` with `SNESRECOMP_DUMP_DIR`.
+Copy `build/` to a scratch folder before experimenting: `saves/`, `config.ini` belong to the user.
+New seeds: `npm run recomp` in the sibling everscript-vscode checkout (writes `recomp/bank*.cfg` here).
 
 ## Ownership
-- the repository root is generated (snesrecomp, PolyForm Noncommercial): never commit it, never
-  copy its files into the repo. Change it only through `tools/recomp/host.js` hooks (it patches
-  snesrecomp's `main.c` and `beam_frame_driver.c`) or our glue `src/game_rtl.c`.
-- Seeds come from `src/platform/cdl/recomp-seeds.ts` / `recomp-analysis.ts`.
+- Ours: `src/game_rtl.c`, the `after_config` line in `src/main.c`, `tools/`, `docs/`,
+  `recomp/seed-exclusions.txt`. The seeds `recomp/bank8x..9x.cfg` and the data-region block of
+  `recomp/bank00.cfg` are written by everscript-vscode's export: change them there (or through the exclusions
+  file), never by hand.
+- `snesrecomp/` is a pinned submodule (PolyForm Noncommercial): never edit it; the one change we
+  need is `tools/patch_framework.py`, applied by CMake.
+- `src/gen/` is derived from the ROM: never commit it. No ROM bytes, dumps or screenshots in git.
 
 ## Bugs
 Reproducing, comparing against snes9x / Mesen2, classifying and fixing a recomp bug, and where
@@ -29,5 +33,5 @@ every file lives: **`recomp-debugging` skill**. Its trap list is the short versi
 `docs/bugs-and-todos.md` §2.
 
 ## Finishing
-Record every address learned (`game-knowledge` skill), add the bug with its lesson to
-`docs/bugs-and-todos.md`, then the `release-ritual`.
+Add the bug with its lesson to `docs/bugs-and-todos.md`; game facts (addresses, routines) go to
+everscript-vscode's knowledge entries. Work on `develop`; `main` only takes releases. Commit only your files.

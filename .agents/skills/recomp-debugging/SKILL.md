@@ -1,7 +1,7 @@
 ---
 name: recomp-debugging
 description: Use when the recompiled game misbehaves or must be compared with the original: headless repro, reference emulators, deciding whether C, seeds, glue or snesrecomp is at fault.
-applyTo: "tools/recomp/**,docs/**,src/platform/cdl/recomp-*.js"
+applyTo: "**"
 ---
 
 # Skill: reproduce and fix recomp bugs
@@ -25,29 +25,28 @@ Overview of the build itself: `recomp` skill. Worked examples of every step belo
 
 | Source | How |
 |---|---|
-| A player's state | Ask for `saves/saveN.sav` (in-game: **Shift+F1..F10 save, F1..F10 load**; F1 = slot 0). Only states from v0.201.18 on carry the CPU and load. |
+| A player's state | Ask for `saves/saveN.sav` (in-game: **Shift+F1..F10 save, F1..F10 load**; F1 = slot 0). Only states from 2026-10-12 on carry the CPU and load. |
 | The player's in-game save | `saves/save.srm`; continue from the title (inputs in headless-exploration.md §1). |
-| Any room / enemy | `node tools/recomp/room-nav.js out/rom.sfc <room> --script` → teleport + walk lines. |
+| Any room / enemy | everscript-vscode: `node tools/recomp/room-nav.js <rom> <room> --script` → teleport + walk lines. |
 | A state from a script | `Autosave = 1` in `config.ini`, end the script with `quit` → `saves/save0.sav`. |
 
-Run on a **copy** of `out/recomp/SecretOfEvermore-<os>-<arch>/` in the scratchpad (the user's
-saves and config live in the original):
-`SNESRECOMP_DUMP_DIR=<dir> ./SecretOfEvermore --no-launcher --script s.txt out/rom.sfc`.
+Run on a **copy** of `build/` in a scratch folder (the user's saves and config live in the
+original): `SNESRECOMP_DUMP_DIR=<dir> ./SecretOfEvermoreSNESRecomp --no-launcher --script s.txt <rom>`.
 `dump <tag>` writes wram/vram/cgram/oam/regs/ppuw/dma/apu + `fb.bmp`; `sips -s format png` to view.
 
 ## 3. Reference emulators
 
 | Emulator | Where | Use it for | How |
 |---|---|---|---|
-| **snesrecomp, native** | `out/recomp/SecretOfEvermore-*/` | the subject | script + dumps |
+| **snesrecomp, native** | `build/SecretOfEvermoreSNESRecomp` | the subject | script + dumps |
 | **snesrecomp, compiled bodies off** | same binary, `SNESRECOMP_LLE_BOUNCE=0` | "is our generated C wrong?" — must be bit-exact with the run above | env var |
 | **snesrecomp, chosen entries interpreted** | `SNESRECOMP_LLE_INTERP_TARGET_FILE=<file>` (one PC24 per line, plain hex without `$`, all of the `0x/8x/Cx` mirrors) | bisecting compiled entries; a list of roots alone is **not** interpreter-only | env var |
-| **snesrecomp, zero seeds** | rebuild without `bank8x/9x.cfg` (debugging.md §3.2) | framework vs seeds | rebuild |
-| **snes9x 2005, headless** | `tools/recomp/s9x-run.js` (debugger core `src/core/emulator/core/snes9x2005-wasm/`) | same script on a reference; ~10,000 fps | `node tools/recomp/s9x-run.js out/rom.sfc <save.srm> s.txt <dir>`; dumps in the recomp layout |
-| **snes9x 2005, lockstep** | `npm run compare -- recomp=` (alias `recomp:lockstep`; `tools/compare/README.md`) | first differing NMI count from power-on (WRAM + VRAM hashes every 60), bytes, snes9x's writers | in sync through counter 300, different at 360 (§1.1 of bugs-and-todos); two recomp builds: `recomp:<a>=rom recomp:<b>=rom` |
-| **snes9x 2005, breakpoints** | debugger core in node: `Module.addWriteBreakpoint(addr)`, `onBreakpointHit` | who writes an address on the reference | `src/core/emulator/core/snes9x2005-wasm/DEBUGGER.md` |
-| **Extension emulator panel** | VS Code, Everscript emulator | play, CDL recording, room overlays | interactive |
-| **Mesen2** | `/Applications/Mesen.app` | cycle-accurate arbiter, trace logger, PPU/sprite viewers | import `out/recomp/asar/mesen/labels.mlb` + `rom.cdl`; manual |
+| **snesrecomp, zero seeds** | regen + build with `recomp/bank8x/9x.cfg` moved aside (debugging.md §3.2) | framework vs seeds | rebuild |
+| **snes9x 2005, headless** | everscript-vscode's `tools/recomp/s9x-run.js` | same script on a reference; ~10,000 fps | `node tools/recomp/s9x-run.js <rom> <save.srm> s.txt <dir>` there; dumps in the recomp layout |
+| **snes9x 2005, lockstep** | everscript-vscode's `npm run compare -- recomp=` (runs `build/` here; its `tools/compare/README.md`) | first differing NMI count from power-on (WRAM + VRAM hashes every 60), bytes, snes9x's writers | in sync through counter 300, different at 360 (§1.1 of bugs-and-todos); two recomp builds: `recomp:<a>=rom recomp:<b>=rom` |
+| **snes9x 2005, breakpoints** | everscript-vscode's debugger core in node: `Module.addWriteBreakpoint(addr)`, `onBreakpointHit` | who writes an address on the reference | `src/core/emulator/core/snes9x2005-wasm/DEBUGGER.md` |
+| **Extension emulator panel** | VS Code, everscript-vscode's emulator | play, CDL recording, room overlays | interactive |
+| **Mesen2** | `/Applications/Mesen.app` | cycle-accurate arbiter, trace logger, PPU/sprite viewers | import everscript-vscode's `out/recomp/asar/mesen/labels.mlb` + `rom.cdl`; manual |
 | **Snes9x (desktop)** | `/Applications/Snes9x.app` | quick visual check of the original | manual |
 | snesref | `snesrecomp/tools/snesref/` (not built; needs SDL2 + a libretro SNES core) | per-frame WRAM diff trace in the debug-server format | build per its README |
 | COSIM build | `snesrecomp/SNES_COSIM.md`, `cosim/` (not tried) | full-state first-divergence; also enables `SNESRECOMP_WRITE_WATCH` | separate build |
@@ -61,9 +60,9 @@ state at **game events** (room entered, fight N over). Same inputs, different ti
 | Question | Test | Seen |
 |---|---|---|
 | Real art, not a glitch? | the ROM's own frames: `soe://rom/assets/characters/<id>/animations/<anim>/frames/` | Boy's hit-pose hair streaks |
-| Frozen though it draws? | `$7E0B19` (field frames) must advance with `$7E0100` | v0.201.18 save states |
+| Frozen though it draws? | `$7E0B19` (field frames) must advance with `$7E0100` | the save-state fix |
 | Recomp only? | same script on `s9x-run.js` | portrait corruption |
-| Our compiled C? | `SNESRECOMP_LLE_BOUNCE=0` removes it → yes; bisect the compiled entries of `src/gen/dispatch_v2.c` (rows without all-`NULL` variants) through the target file | `$80:9033` (v0.201.19) |
+| Our compiled C? | `SNESRECOMP_LLE_BOUNCE=0` removes it → yes; bisect the compiled entries of `src/gen/dispatch_v2.c` (rows without all-`NULL` variants) through the target file | `$80:9033`  |
 | A seed directive? | `node tools/bisect.js` (debugging.md §6) | `$8F:9F46` dispatch (bugs-and-todos §2) |
 | Renderer? | press `r` in game / `g_config.new_renderer` | mode-4 name screen |
 | Host / save path? | load at frame 0 and mid-game, check the game advances | `g_cpu` not in snapshots |
@@ -78,10 +77,10 @@ up to N (`dump` takes no frame). Then read the bad frame: `ppuw.tsv` (vblank VRA
 
 | Cause | Fix | Where |
 |---|---|---|
-| A compiled routine misbehaves | `FUNC_EXCLUSIONS` entry → emitted as `force_lle` (keeps it interpreted for every caller) | `src/platform/cdl/recomp-analysis.ts` |
-| An indirect-jump directive is wrong | `DISPATCH_EXCLUSIONS` | same file |
-| Host behaviour (frame, save state, renderer) | our glue `game_rtl.c` hooks; scaffold patches in `host.js` (`hookMain`, `hookBeamDriver`) | `tools/recomp/host/`, `tools/recomp/host.js` |
-| snesrecomp itself | work around in glue, write it up under "Upstream" in bugs-and-todos.md §3 | never edit the repository root by hand |
+| A compiled routine misbehaves | `func <pc24> <reason>` → the export emits `force_lle` (interpreted for every caller); rerun everscript-vscode's `npm run recomp` | `recomp/seed-exclusions.txt` |
+| An indirect-jump directive is wrong | `dispatch <pc24> <reason>` | same file |
+| Host behaviour (frame, save state, renderer) | our glue; the `after_config` hook; framework accessors | `src/game_rtl.c`, `src/main.c`, `tools/patch_framework.py` |
+| snesrecomp itself | work around in glue, write it up under "Upstream" in bugs-and-todos.md §3 | never edit `snesrecomp/` by hand |
 
 Verify an exclusion took: the address has only `NULL` variants in `dispatch_v2.c`.
 
@@ -89,16 +88,16 @@ Verify an exclusion took: the address has only `NULL` variants in `dispatch_v2.c
 
 | What | Where |
 |---|---|
-| Built game, saves, config | `out/recomp/SecretOfEvermore-<os>-<arch>/` (`saves/`, `config.ini`, `keybinds.ini`) |
-| Generated host project (never commit) | the repository root; seeds `recomp/bank*.cfg`; C `src/gen/` (`dispatch_v2.c` = compiled entries); runner sources `snesrecomp/runner/src/` |
-| Build logs, report | `out/recomp/recomp-host.log`, `out/recomp/REPORT.md` |
-| Disassembly with our names and comments | `out/recomp/asar/banks/bank_XX.asm` (bus `$8x`/`$Cx` → file `bank_Cx`), `functions.json` |
-| Mesen2 files | `out/recomp/asar/mesen/` |
-| Our glue / hooks | `src/game_rtl.c`, `tools/recomp/host.js` |
-| Seed generation, exclusions | `src/platform/cdl/recomp-seeds.ts`, `recomp-analysis.ts` |
-| Helpers | `tools/recomp/`: `room-nav.js`, `check-obj-tiles.js`, `s9x-run.js`, `bisect.js`; `tools/compare/` for lockstep, `verify-intro.js` |
-| Clean ROM | `out/rom.sfc` (SHA-1 `79e77386…`) |
-| Game facts | `src/games/evermore/localizations/knowledge/{ram,rom}/`, MCP `soe://` (`rom/assets/maps/<room>/scripts/`, `characters/`) |
+| Built game, saves, config | `build/` (`saves/`, `config.ini`, `keybinds.ini`) |
+| Seeds, generated C | `recomp/bank*.cfg` (committed); `src/gen/` (never commit; `dispatch_v2.c` = compiled entries); runner sources `snesrecomp/runner/src/` |
+| Seed export logs, report | everscript-vscode's `out/recomp/recomp-host.log`, `out/recomp/REPORT.md` |
+| Disassembly with our names and comments | everscript-vscode's `out/recomp/asar/banks/bank_XX.asm` (bus `$8x`/`$Cx` → file `bank_Cx`), `functions.json` |
+| Mesen2 files | everscript-vscode's `out/recomp/asar/mesen/` |
+| Our glue / hooks | `src/game_rtl.c`, `src/main.c` (`after_config`), `tools/patch_framework.py` |
+| Seed generation, exclusions | everscript-vscode's `src/platform/cdl/recomp-seeds.ts`; `recomp/seed-exclusions.txt` here |
+| Helpers | `tools/`: `check-obj-tiles.js`, `bisect.js`, `verify-intro.js`; everscript-vscode's `tools/recomp/room-nav.js`, `s9x-run.js`, `tools/compare/` |
+| Clean ROM | yours, outside the repo (`SNESRECOMP_ROM`; SHA-256 in `rom_identity.txt`) |
+| Game facts | everscript-vscode's `src/games/evermore/localizations/knowledge/{ram,rom}/`, MCP `soe://` (`rom/assets/maps/<room>/scripts/`, `characters/`) |
 | Runner switches | `grep -rhoE 'getenv\("SNESRECOMP_[A-Z0-9_]+' snesrecomp/runner/src` |
 | Script commands | `snesrecomp/runner/src/desktop/host_main.c` (`LoadScript`); docs: debugging.md §5.1 |
 
@@ -109,4 +108,4 @@ Verify an exclusion took: the address has only `NULL` variants in `dispatch_v2.c
 3. A picture is not a running game: check `$7E0B19`.
 4. Changing a `wait` while narrowing changes the run; keep the frame total.
 5. Writing coordinates during a fade-in is ignored; a teleport into the canopy hides the Boy.
-6. States from before v0.201.18 cannot be restored; F1 *loads*.
+6. States from before 2026-10-12 cannot be restored; F1 *loads*.
