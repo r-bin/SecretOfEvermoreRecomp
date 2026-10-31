@@ -46,7 +46,8 @@ These issues should be submitted to the [RetroPortingToolKit/snesrecomp](https:/
    `beam_frame_driver.c` keeps `s_resume_pc` / `s_wai_halted` as statics with no accessor. Any game
    on the beam driver loses its place on load. Our glue works around it (§2); upstream should
    save both and drop the `booting` path when a state was loaded.
-3. **Stack-Frame Context Loss in `interp_tier_dispatch_tail`:**
+3. **Access-exact timing** (closes the open MesenCE differences): [upstream-access-timing.md](upstream-access-timing.md).
+4. **Stack-Frame Context Loss in `interp_tier_dispatch_tail`:**
    - **Issue:** When an indirect jump index exceeds the directive count inside a function that has
      allocated stack-frame variables (e.g. via `PEA` or `PHA`), transitioning to the interpreter
      fallback can misalign the stack frame, causing corrupt return addresses or register loads.

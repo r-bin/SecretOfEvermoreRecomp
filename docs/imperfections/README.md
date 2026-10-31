@@ -5,7 +5,7 @@ through everscript-vscode's `tools/compare` (`--backend mesen,recomp`). Each fil
 recomp differs: what it is, how it was measured, and how it was fixed or what would fix it. The owner's
 rule: **snesrecomp is not changed**; we work only in the files that adjust the game (glue `src/`, our frame
 driver `src/soe_frame_driver.c`, seeds `recomp/`, tools). What snesrecomp itself should change is written down
-here for upstream.
+here for upstream; all open ones together as one proposal: [../upstream-access-timing.md](../upstream-access-timing.md).
 
 Ordered as found, measured on `01-no-inputs-4m.evsmv` (all against MesenCE 2.2.1):
 
