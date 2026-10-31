@@ -114,12 +114,16 @@ MesenCE's cycles; every NMI 2–319 is exact; the load after NMI 319 matches for
 still parts at 320 (native and interpreted; develop too), so the replay does not sync yet. Details and the numbers:
 [imperfections/README.md](imperfections/README.md).
 
+Second round (2026-10-31): exact per-access clocks from the interpreter (writes at the end of their bus cycle),
+SPC timers on their cycle, `$4212` H-blank at the read's clock, and three S-DSP fixes (key-on delay, ENDX point,
+shared rate counter). Interpreted, the attract replay is now identical at every NMI key from 120 to 1491 except
+320–321 (an SRAM-content byte, not timing).
+
 Still open, in the order they part the run:
-1. MesenCE's SPC catch-up rounding at a CPU read (apu-port-handshake.md, "Left open").
+1. The S-DSP stepped per sample, not per clock (imperfections/dsp-timing.md): first difference at NMI 1492.
 2. B, compiled code billed at code speed: the native build is exact only to NMI 1 (compiled-cycle-charges.md).
-3. 16-bit port writes land both bytes at once (port-word-writes.md).
-4. Our frame driver takes the short line's 4 clocks at V=225, so the beam is 4 clocks off MesenCE's in lines
-   225–240 of every other field (the auto-joypad rule works around it; refresh does not need it, measured).
+3. Our frame driver takes the short line's 4 clocks at V=225, so the beam is 4 clocks off MesenCE's in lines
+   225–240 of every other field (auto-joypad and refresh use MesenCE's line start there; other beam reads do not).
 
 How it was measured (probes outside the repo, in the session's scratch space; worth adding to everscript-vscode's
 `tools/compare/probes/` once kept): MesenCE Lua callbacks on `$2140–$2143` and SPC `$F4–$F7` with `masterClock` and

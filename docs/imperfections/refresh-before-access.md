@@ -13,6 +13,7 @@ Our frame driver charges the stall after the instruction (dram-refresh.md), so t
 before it: one poll pass early about every 25 handshakes.
 
 ## Fix
-The access clock is the instruction's start plus the lead (20 for absolute), plus 40 when a refresh point lies from
-the start to 4 clocks past the access. The 4 clocks are measured, not derived: with 0 the load's port accesses match
-MesenCE's through the 3,384th after NMI 319, with 4 through the 12,748th.
+The access clock is the instruction's start plus the access's own lead, plus 40 when a refresh point lies from the
+instruction's start up to the access. With MesenCE's refresh positions (dram-refresh.md) this one rule fits all
+14,780 port reads of the load. (A first version used a 4-clock slack past the access; it only stood in for the
+wrong refresh position.)

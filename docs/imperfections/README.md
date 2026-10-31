@@ -23,7 +23,8 @@ Ordered as found, measured on `01-no-inputs-4m.evsmv` (all against MesenCE 2.2.1
 | [apu-port-handshake.md](apu-port-handshake.md) | snesrecomp SPC700 model | SPC instructions do their port accesses on their first cycle: 55 % of sound-port handshakes take one poll pass more or fewer | **open on develop: the first difference left;** mostly fixed in snesrecomp on branch `spc-access-cycles` |
 | [dma-overhead.md](dma-overhead.md) | snesrecomp DMA | start/end alignment 2–8 clocks off per DMA; an empty `$420B` write costs 12 | open on develop; fixed in snesrecomp on branch `spc-access-cycles` (rule measured) |
 | [refresh-before-access.md](refresh-before-access.md) | our frame driver | a refresh stall inside an instruction came after its port access | fixed on branch `snesrecomp-spc-access-cycles` |
-| [port-word-writes.md](port-word-writes.md) | snesrecomp port writes | a 16-bit port write lands both bytes at once, high first | open |
+| [port-word-writes.md](port-word-writes.md) | snesrecomp port writes | a 16-bit port write lands both bytes at once, high first | fixed on branch `spc-access-cycles` (per-byte clocks, queue in time order) |
+| [dsp-timing.md](dsp-timing.md) | snesrecomp S-DSP | per-sample DSP: key-on, ENDX and envelope steps off; directory reads not at their clock | partly fixed on branch `spc-access-cycles`; **the first difference left (NMI 1492)** |
 | [compiled-cycle-charges.md](compiled-cycle-charges.md) | snesrecomp recompiler | compiled code billed at code speed: FastROM WRAM work ~4 % fast | open, not the first difference now |
 | [host-frames-and-fields.md](host-frames-and-fields.md) | snesrecomp frame driver | a long DMA packs several fields into one host frame: replay input lands late | open for replays with input |
 
@@ -35,6 +36,14 @@ interpreted: every NMI from 2 to 319 has MesenCE's clock and interrupted address
 upload's handshakes take MesenCE's number of polls in 212 of 214 (develop: 160), the load after NMI 319 in 63 %
 (develop: 45 %), and its port accesses match MesenCE's one for one through the 12,748th. WRAM still parts at key 320 on both; the native
 build is exact only to NMI 1 (compiled-cycle-charges.md).
+
+### Second round (2026-10-31)
+All interpreted, `01-no-inputs-4m.evsmv` against MesenCE: every NMI from 2 to 1491 exact; all 18,461 handshakes
+of the first load exact; WRAM identical at every NMI key from 120 to 319 and from 322 to 1491 (develop: 120–319).
+Keys 320–321 differ in one stack byte, `$7E1FF5`: the V flag the NMI pushes inside the boot's SRAM checksum
+(`$8D:B478`, `ADC` over battery RAM), from different SRAM contents on the two sides, not from timing. From key 1492
+on: the S-DSP ([dsp-timing.md](dsp-timing.md)). `02-newgame-boy-available.evsmv`: identical 120–319, 322–331 and
+335–396. The native build is still exact only to NMI 1 ([compiled-cycle-charges.md](compiled-cycle-charges.md)).
 
 ## Measured (2026-10-30, all fixes above)
 

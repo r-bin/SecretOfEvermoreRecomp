@@ -102,13 +102,28 @@ void (*soe_frame_driver_nmi_hook)(void);
 #define REFRESH_CLOCKS 40u
 static uint64_t s_line0; /* master clock where this field's first line (V=225) started */
 
+static uint64_t mesen_line0(void);
+/*
+ * Refresh point j of the field (line 225 + j). MesenCE (memoryManager.dramRefreshPosition) puts it at 538 - (the
+ * line's start & 7) clocks into the line: lines are 1364 clocks (4 mod 8), so it alternates between H=538 and 534.
+ * Lines 225-240 of the fields whose short line this driver takes at V=225 start 4 clocks later on MesenCE
+ * (mesen_line0); from line 241 on its lines and the beam's agree.
+ */
+static uint64_t refresh_point(uint64_t j) {
+    const uint64_t line = (j < 16 ? mesen_line0() : s_line0) + j * LINE_CLOCKS;
+    return line + REFRESH_H - (line & 7u);
+}
+
 static uint64_t refresh_points_upto(uint64_t m) {
-    const uint64_t first = s_line0 + REFRESH_H;
-    return m < first ? 0 : (m - first) / LINE_CLOCKS + 1;
+    if (m < refresh_point(0)) return 0;
+    uint64_t j = (m - s_line0) / LINE_CLOCKS;
+    while (j > 0 && refresh_point(j) > m) j--;
+    while (refresh_point(j + 1) <= m) j++;
+    return j + 1;
 }
 
 static uint64_t next_refresh_after(uint64_t m) {
-    return s_line0 + REFRESH_H + refresh_points_upto(m) * LINE_CLOCKS;
+    return refresh_point(refresh_points_upto(m));
 }
 
 /*
@@ -137,16 +152,14 @@ static void slow_apu_to_reference(void) {
 }
 
 /*
- * The clock of a port access `lead` clocks into the instruction starting at `start`, for the framework's
- * master-clock APU timeline. MesenCE stalls the CPU for DRAM refresh at the refresh point itself; this driver
- * charges the stall after the instruction. A refresh point from the instruction's start to 4 clocks past the access
- * comes before it: measured on the sound uploads of 01-no-inputs-4m.evsmv (port handshakes identical to MesenCE's
- * through the 12,748th port access after NMI 319; to the 3,384th with the access itself as the limit).
+ * The clock of a port access `lead` clocks into the instruction starting at `start` (the interpreter supplies the
+ * access's own lead), for the framework's master-clock APU timeline. MesenCE stalls the CPU for DRAM refresh at the
+ * refresh point itself; this driver charges the stall after the instruction. A refresh point from the instruction's
+ * start up to the access comes before it (fitted on 14,780 port reads of the attract run's loads: no exception).
  */
-#define ACCESS_REFRESH_SLACK 4u
 static uint64_t access_clock(uint64_t start, uint32_t lead) {
     const uint64_t a = start + lead;
-    return refresh_points_upto(a + ACCESS_REFRESH_SLACK) > refresh_points_upto(start) ? a + REFRESH_CLOCKS : a;
+    return refresh_points_upto(a) > refresh_points_upto(start - 1) ? a + REFRESH_CLOCKS : a;
 }
 
 static void refresh_begin(void) { snes_refresh_state_set(0, g_cpu.master_cycles); }
@@ -184,8 +197,6 @@ static void refresh_end(uint64_t before) {
 #define AUTO_JOY_CLOCKS 4352u
 #define AUTO_JOY_READ_LEAD 20u /* BIT/LDA absolute: 3 fetches at 6, then MesenCE's sample 2 clocks into the read */
 static bool s_auto_joy_due; /* this field's read still needs MesenCE's timing */
-
-static uint64_t mesen_line0(void);
 
 static void auto_joypad_begin(void) {
     if (!s_auto_joy_due || g_snes->beamMasterLast <= s_line0) return;
@@ -378,7 +389,7 @@ static uint64_t field_end(uint64_t k) { return FIRST_VBLANK + k * MEAN_FIELD + (
 static uint64_t mesen_line0(void) {
     if (s_line0 < FIRST_VBLANK) return s_line0;
     const uint64_t k = (s_line0 - FIRST_VBLANK + MEAN_FIELD / 2) / MEAN_FIELD;
-    return field_end(k);
+    return field_end(k) == s_line0 + 4 ? s_line0 + 4 : s_line0; /* only once the field grid holds (not in boot) */
 }
 
 static void align_field_length(void) {

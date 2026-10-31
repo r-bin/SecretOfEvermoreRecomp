@@ -62,8 +62,10 @@ Measured (all interpreted, `01-no-inputs-4m.evsmv`): every SPC write to a port l
 the 5,000th; 212 of the boot upload's 214 handshakes and every port access of the load after NMI 319 through the
 12,748th match MesenCE's. WRAM still parts at key 320: the load runs about 18,000 handshakes before NMI 320.
 
-## Left open
-At the 12,748th access both sides run the same `CMP $2140` at the same H (516) with the refresh inside it, and the
-SPC writes the echo on the same half-cycle; MesenCE sees it in one such case and not in another. The two differ only
-in the fraction of the master-to-SPC conversion at the read (x = …210.95 sees a write 1.05 half-cycles later,
-x = …707.06 misses one 0.94 later). MesenCE's catch-up rounding at that point is not modelled yet.
+## Closed (2026-10-31, second round)
+The case "Left open" before was the access clock, not MesenCE's rounding: the interpreter now hands over each
+port access's own clock (2 clocks into its bus cycle, per byte), a CPU write lands at the end of its bus cycle
+(4 clocks later), and a DRAM refresh before the access in the same instruction delays it (refresh-before-access.md,
+with MesenCE's alternating refresh position, dram-refresh.md). Fitted on all 14,780 port reads of the load: one
+rule, no exception. Result: all 18,461 handshakes of the attract run's first load take MesenCE's number of polls,
+and every NMI from 2 to 1491 is exact.

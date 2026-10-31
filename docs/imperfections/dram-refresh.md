@@ -19,3 +19,9 @@ none and the stall lands after the instruction that reached H=538.
 
 ## Left
 The ±7-clock jitter of MesenCE's refresh position (`538 - (clock & 7)`) is not modelled.
+
+## Correction (2026-10-31, branch `snesrecomp-spc-access-cycles`)
+MesenCE's refresh point is not a fixed H=538: `memoryManager.dramRefreshPosition` is 538 − (the line's start & 7),
+and lines are 1364 clocks (4 mod 8), so it alternates between 538 and 534 line by line. In the fields whose short
+line our driver takes at V=225 (short-scanline.md), MesenCE's lines 225–240 start 4 clocks after the beam's; from
+line 241 on they agree. Both matter for a port access a few clocks from a refresh point.
