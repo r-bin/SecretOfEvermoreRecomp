@@ -119,10 +119,17 @@ SPC timers on their cycle, `$4212` H-blank at the read's clock, and three S-DSP 
 shared rate counter). Interpreted, the attract replay is now identical at every NMI key from 120 to 1491 (with
 cleared SRAM on both sides; before, keys 320–321 parted on an SRAM-content byte, not timing).
 
+Third round (2026-10-31): the S-DSP per clock (`dsp_clock.c`) and the SPC timers' prescaler phase
+(imperfections/dsp-timing.md). Interpreted, the attract replay is identical at every NMI key from 120 to 2514,
+then 2516–3862; 4,773 of its 9,287 keys (51.4 %). With cleared SRAM the replay holds fewer NMIs than before
+(9,406, was 10,787), so the totals are not comparable with earlier rounds'.
+
 Still open, in the order they part the run:
-1. The S-DSP stepped per sample, not per clock (imperfections/dsp-timing.md): first difference at NMI 1492.
-2. B, compiled code billed at code speed: the native build is exact only to NMI 1 (compiled-cycle-charges.md).
-3. Our frame driver takes the short line's 4 clocks at V=225, so the beam is 4 clocks off MesenCE's in lines
+1. Attract replay key 2515 (one key) and from 3863 on: not looked at yet.
+2. `02-newgame-boy-available.evsmv` parts at 332–334 and from 397 on (unchanged by the DSP): not looked at yet;
+   likely where replay input lands (imperfections/host-frames-and-fields.md).
+3. B, compiled code billed at code speed: the native build is exact only to NMI 1 (compiled-cycle-charges.md).
+4. Our frame driver takes the short line's 4 clocks at V=225, so the beam is 4 clocks off MesenCE's in lines
    225–240 of every other field (auto-joypad and refresh use MesenCE's line start there; other beam reads do not).
 
 How it was measured (probes outside the repo, in the session's scratch space; worth adding to everscript-vscode's

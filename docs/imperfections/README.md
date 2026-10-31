@@ -24,7 +24,7 @@ Ordered as found, measured on `01-no-inputs-4m.evsmv` (all against MesenCE 2.2.1
 | [dma-overhead.md](dma-overhead.md) | snesrecomp DMA | start/end alignment 2–8 clocks off per DMA; an empty `$420B` write costs 12 | open on develop; fixed in snesrecomp on branch `spc-access-cycles` (rule measured) |
 | [refresh-before-access.md](refresh-before-access.md) | our frame driver | a refresh stall inside an instruction came after its port access | fixed on branch `snesrecomp-spc-access-cycles` |
 | [port-word-writes.md](port-word-writes.md) | snesrecomp port writes | a 16-bit port write lands both bytes at once, high first | fixed on branch `spc-access-cycles` (per-byte clocks, queue in time order) |
-| [dsp-timing.md](dsp-timing.md) | snesrecomp S-DSP | per-sample DSP: key-on, ENDX and envelope steps off; directory reads not at their clock | partly fixed on branch `spc-access-cycles`; **the first difference left (NMI 1492)** |
+| [dsp-timing.md](dsp-timing.md) | snesrecomp S-DSP | per-sample DSP: key-on, ENDX and envelope steps off; directory reads not at their clock | fixed on branch `spc-access-cycles` (per-clock S-DSP, timer phase) |
 | [compiled-cycle-charges.md](compiled-cycle-charges.md) | snesrecomp recompiler | compiled code billed at code speed: FastROM WRAM work ~4 % fast | open, not the first difference now |
 | [host-frames-and-fields.md](host-frames-and-fields.md) | snesrecomp frame driver | a long DMA packs several fields into one host frame: replay input lands late | open for replays with input |
 
@@ -47,6 +47,11 @@ cleared SRAM in a compare run (MesenCE through a ROM link of its own name, the r
 `SOE_COMPARE_SAVE_ROOT`), and keys 120–1491 are identical without a gap. From key 1492
 on: the S-DSP ([dsp-timing.md](dsp-timing.md)). `02-newgame-boy-available.evsmv`: identical 120–319, 322–331 and
 335–396. The native build is still exact only to NMI 1 ([compiled-cycle-charges.md](compiled-cycle-charges.md)).
+
+### Third round (2026-10-31)
+S-DSP per clock and the SPC timers' prescaler phase ([dsp-timing.md](dsp-timing.md)), cleared SRAM on both sides.
+All interpreted: `01-no-inputs-4m.evsmv` identical at every NMI key from 120 to 2514 and 2516–3862, 4,773 of
+9,287 keys (51.4 %); `02-newgame-boy-available.evsmv` as before (120–331, 335–396; 274 of 9,227).
 
 ## Measured (2026-10-30, all fixes above)
 

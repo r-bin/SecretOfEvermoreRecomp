@@ -1,7 +1,7 @@
 # S-DSP Timing
 
-**Status:** partly fixed in snesrecomp on branch `spc-access-cycles` (`runner/src/snes/dsp.c`); the rest is open
-and is now the first difference on the attract replay (NMI 1492).
+**Status:** fixed in snesrecomp on branch `spc-access-cycles`: the S-DSP runs per clock
+(`runner/src/snes/dsp_clock.c`, `SNESRECOMP_DSP_PER_CLOCK=0` for the old per-sample model in `dsp.c`).
 
 ## What MesenCE does
 Its S-DSP runs voice by voice through the 32 SPC cycles of a sample: each voice reads its directory entry, decodes
@@ -20,9 +20,23 @@ SPC read of `$F3` with MesenCE's, from SPC cycle 8.19 M of `01-no-inputs-4m.evsm
 
 With these, the SPC's instruction stream matches MesenCE's to SPC cycle 8.82 M (was 8.31 M).
 
-## Left open
-The sound driver switches a voice's `SRCN` and toggles `FLG` within about 5 samples. Whether a loop in that window
+## Per clock (2026-10-31)
+The sound driver switches a voice's `SRCN` and toggles `FLG` within about 5 samples; whether a loop in that window
 takes the old or the new loop address depends on the clock inside the sample at which the voice reads its
-directory entry. That needs the DSP stepped per clock (voice by voice), not per sample. Until then the SPC's music
-code drifts after cycle 8.82 M, and at NMI 1492 a sound command (`apu_command_handshake`, `$8C:8214`) is answered
-240 SPC cycles late.
+directory entry. `dsp_clock.c` runs the hardware's schedule: 32 clocks per sample, nine steps per voice at fixed
+clocks, staggered from voice to voice (anomie's S-DSP document), every register read at its own step; the SPC
+steps it to the cycle of a `$F3` access before the access (`apu_dspTo`, as `apu_timersTo` does for the timers).
+Our own code; behaviour checked against MesenCE's `$F3` reads.
+
+That moved the first `$F3` read that differs from SPC cycle 8.82 M to 10.45 M, where the driver reads timer 0
+(`MOV A,$FD` at SPC `$0741`) one cycle before MesenCE's tick: MesenCE's prescaler clocks a timer on the falling
+edge of a half-period toggle, so a timer ticks on the last cycle of each 128-cycle (timer 2: 16) period from
+power-on, ours did on the first. With that phase (`apu.c`, `SNESRECOMP_SPC_TIMER_PHASE`, default 1 with access
+cycles) all 252,759 compared `$F3` reads match MesenCE's through NMI 1495.
+
+## Left for a PR
+- `tests/audio/dsp_output_voices_test.c` checks `sizeof(Dsp)` against the saved-state size; the fields added on
+  the branch (`konDelay` on) sit after the saved range (`dsp_saveload` stops at `konDelay`) but grow the struct,
+  so the check fails since round two. Move the host fields out of `Dsp` or restate the check.
+- `apu_native.inc` (`SNESRECOMP_APU_NATIVE`, off by default) still runs the per-sample model.
+- On the per-clock path the output filter and the enhancement shadow of `dsp_cycle` are not applied.
