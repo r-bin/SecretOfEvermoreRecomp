@@ -34,6 +34,19 @@ Per-NMI clocks and interrupted addresses (`SOE_COMPARE_NMI_LOG` against MesenCE'
   differences were not traced one by one; the known source is the sound-port handshakes
   ([apu-port-handshake.md](apu-port-handshake.md)).
 
+## DMA in the last instruction (2026-10-31)
+MesenCE runs a general DMA started by a `$420B` write in the next instruction's first cycle, and the edge detector
+looks after the transfer. snesrecomp charges the transfer to the write. So when the last instruction of the
+approach started a DMA, its clocks do not count as a cycle of that instruction (`g_snes_dma_charged`, a running
+total in snesrecomp's `snes.c` on branch `spc-access-cycles`, read before and after it). Found at NMI 3876 of the
+attract replay: `STA $420B` at `$8C:B040`, then `REP #$20`; MesenCE takes the NMI after the `REP`.
+
+## Refresh inside the interrupt sequence (2026-10-31)
+The 8-cycle interrupt sequence was charged without a look at the refresh points; the handler's refresh accounting
+starts after it, so a refresh point inside the sequence was never charged and the CPU stayed 40 clocks early.
+`run_interrupt` now adds the stall when a point falls inside it (same NMI 3876: MesenCE's handler starts 40 clocks
+later).
+
 ## Limits
 - The classifier ignores an index or D that the instruction itself changed.
-- MesenCE delays the NMI after a DMA (`IrqLock`); that is not modelled.
+- An HDMA running at the edge (`IrqLock`) is not modelled.

@@ -21,6 +21,12 @@ While NMI is off and the vblank flag is set, our driver runs the CPU one instruc
 master-clock deadline one clock ahead) and takes the NMI after the instruction that enabled it. Measured:
 the recomp's NMIs 2–400 land within ±32 master clocks of MesenCE's.
 
+## One instruction more (2026-10-31)
+MesenCE's `$4200` write sets the NMI counter to 2 (`SnesCpu::SetNmiFlag(2)`), counted down at each following
+cycle start, so the NMI comes after the instruction that follows the enabling write, not after the write itself.
+Our driver took it one instruction early: NMI 2515 of the attract replay (`STA $4200` at `$8C:D717`, then
+`REP #$20`) came 18 clocks early and the interrupted address differed. It now runs one more instruction first.
+
 ## Upstream
 In `snes.c` `$4200`: when bit 7 rises while `rdnmiPending` is set, signal the frame driver; it pulls the
 bridge's deadline to now and runs the NMI there.

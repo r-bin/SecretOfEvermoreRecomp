@@ -124,13 +124,19 @@ Third round (2026-10-31): the S-DSP per clock (`dsp_clock.c`) and the SPC timers
 then 2516–3862; 4,773 of its 9,287 keys (51.4 %). With cleared SRAM the replay holds fewer NMIs than before
 (9,406, was 10,787), so the totals are not comparable with earlier rounds'.
 
+Fourth round (2026-10-31): the late NMI one instruction later, NMI recognition past a DMA's cycle, refresh inside
+the interrupt sequence, the DMA start behind the line-0 HDMA init event, line 225 counted back when a host frame
+starts late, the H/V latch (WRIO gate, flip-flops, access clock, open bus), and replay input on MesenCE's fields
+(everscript-vscode `tools/compare/recomp.mts`). Interpreted: `02-newgame-boy-available.evsmv` identical at every NMI
+key to its end (9,227 of 9,227); `01-no-inputs-4m.evsmv` at every key from 120 to 5997, every NMI through 6358 on
+MesenCE's clock.
+
 Still open, in the order they part the run:
-1. Attract replay key 2515 (one key) and from 3863 on: not looked at yet.
-2. `02-newgame-boy-available.evsmv` parts at 332–334 and from 397 on (unchanged by the DSP): not looked at yet;
-   likely where replay input lands (imperfections/host-frames-and-fields.md).
-3. B, compiled code billed at code speed: the native build is exact only to NMI 1 (compiled-cycle-charges.md).
-4. Our frame driver takes the short line's 4 clocks at V=225, so the beam is 4 clocks off MesenCE's in lines
-   225–240 of every other field (auto-joypad and refresh use MesenCE's line start there; other beam reads do not).
+1. PPU reads during rendering (imperfections/hv-counter-latch.md): `$2138` and `$213B` on a visible line return what
+   the PPU itself reads at that dot on MesenCE. The attract replay's RNG seed at key 5998 depends on them.
+2. B, compiled code billed at code speed: the native build is exact only to NMI 1 (compiled-cycle-charges.md).
+3. Our frame driver takes the short line's 4 clocks at V=225, so the beam is 4 clocks off MesenCE's in lines
+   225–240 of every other field; and on line 124 of one field it stood 8 clocks off (hv-counter-latch.md).
 
 How it was measured (probes outside the repo, in the session's scratch space; worth adding to everscript-vscode's
 `tools/compare/probes/` once kept): MesenCE Lua callbacks on `$2140–$2143` and SPC `$F4–$F7` with `masterClock` and

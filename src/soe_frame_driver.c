@@ -201,10 +201,17 @@ static bool s_auto_joy_due; /* this field's read still needs MesenCE's timing */
 static void auto_joypad_begin(void) {
     if (!s_auto_joy_due || g_snes->beamMasterLast <= s_line0) return;
     s_auto_joy_due = false;
-    if (!g_snes->autoJoyRead) return;
     const uint64_t from = mesen_line0() + AUTO_JOY_MIN_AFTER;
     const uint64_t start = from + (AUTO_JOY_GRID - from % 256u + 256u) % 256u;
     const uint64_t end = start + AUTO_JOY_CLOCKS - AUTO_JOY_READ_LEAD, beam = g_snes->beamMasterLast;
+    static int log = -1;
+    if (log < 0) log = getenv("SOE_AUTO_JOY_LOG") != NULL;
+    if (log)
+        fprintf(stderr, "[aj] line0=%llu start=%llu end=%llu beam=%llu cpu=%llu on=%d timer=%u\n",
+                (unsigned long long)mesen_line0(), (unsigned long long)start, (unsigned long long)end,
+                (unsigned long long)beam, (unsigned long long)g_cpu.master_cycles, g_snes->autoJoyRead,
+                (unsigned)g_snes->autoJoyTimer);
+    if (!g_snes->autoJoyRead) return;
     g_snes->autoJoyTimer = end > beam ? (uint16_t)(end - beam) : 0;
 }
 
@@ -220,7 +227,11 @@ static void auto_joypad_begin(void) {
 static void run_interrupt(uint32_t vector, uint64_t deadline, bool nmi) {
     cpu_push_interrupt_frame_at(&g_cpu, s_resume_pc);
     g_cpu.cycles += INTERRUPT_CYCLES;
+    /* A refresh point inside the sequence stalls it (MesenCE: the handler starts 40 clocks later); the handler's
+     * own refresh accounting below only starts after it. */
+    const uint64_t seq = g_cpu.master_cycles;
     g_cpu.master_cycles += INTERRUPT_CLOCKS;
+    if (refresh_points_upto(g_cpu.master_cycles - 1) > refresh_points_upto(seq - 1)) g_cpu.master_cycles += REFRESH_CLOCKS;
     if (nmi && s_auto_joy_due) {
         snes_sync_master_clock(g_snes, g_cpu.master_cycles); /* the beam crosses V=225 before the handler reads $4212 */
         auto_joypad_begin();
@@ -256,13 +267,21 @@ static void run_nmi(uint64_t deadline) {
 #define NMI_SEEN_CLOCKS 12u
 
 static uint32_t s_last_pc;
-static void record_pc(uint32_t pc24, int m_flag, int x_flag) { (void)m_flag; (void)x_flag; s_last_pc = pc24; }
+static uint64_t s_last_dma; /* g_snes_dma_charged as the last instruction started */
+static void record_pc(uint32_t pc24, int m_flag, int x_flag) {
+    (void)m_flag; (void)x_flag;
+    s_last_pc = pc24;
+    s_last_dma = g_snes_dma_charged;
+}
 
 /* After the slice that reached V=225+12: run one more instruction if MesenCE would. */
 static void finish_nmi_approach(uint64_t frame_end) {
     if (!s_last_pc || g_cpu.master_cycles < frame_end + NMI_SEEN_CLOCKS) return;
+    /* A DMA the last instruction started ($420B) runs in the next instruction's first cycle on MesenCE: its clocks,
+     * which snesrecomp charges to the write, do not count as a cycle of this instruction. */
+    const uint64_t dma = g_snes_dma_charged - s_last_dma;
     const unsigned last = soe_last_cycle_clocks(s_last_pc, s_resume_pc);
-    if (g_cpu.master_cycles - last >= frame_end + NMI_LINE_CLOCKS) return;
+    if (g_cpu.master_cycles - dma - last >= frame_end + NMI_LINE_CLOCKS) return;
     const uint64_t before = g_cpu.master_cycles;
     refresh_begin();
     interp_bridge_set_master_deadline(before + 1);
@@ -295,7 +314,11 @@ void soe_frame_driver_run_frame(void) {
     snes_set_hdma_beam_enabled(g_snes, false);
     snes_set_raster_irq_beam_enabled(true);
     ppu_rasterBegin(g_ppu);
+    /* Line 225's start: a host frame can begin lines past it (the last one ran on, as a late NMI's watch or a long
+     * DMA does); the auto-joypad window and the refresh points count from line 225 itself. */
     s_line0 = g_snes->beamMasterLast - g_snes->hPos;
+    if (g_snes->vPos > VBLANK_LINE && g_snes->vPos < 262u)
+        s_line0 -= (uint64_t)(g_snes->vPos - VBLANK_LINE) * LINE_CLOCKS;
     s_auto_joy_due = !booting;
     RtlSetCpuAccessClockHook(access_clock);
 
@@ -310,7 +333,9 @@ void soe_frame_driver_run_frame(void) {
             const uint64_t before = g_cpu.master_cycles;
             uint64_t deadline = watch ? before + 1 : next_refresh_after(before) + 1;
             if (deadline > cpu_end) deadline = cpu_end;
-            const bool approach = deadline == cpu_end && !g_interp_bridge_pc_hook;
+            /* Every slice records its instructions: a slice that stops for a refresh can still end past V=225 (a
+             * long DMA), and its last instruction decides the NMI as the final slice's does. */
+            const bool approach = !g_interp_bridge_pc_hook;
             if (approach) { s_last_pc = 0; g_interp_bridge_pc_hook = record_pc; }
             refresh_begin();
             interp_bridge_set_master_deadline(deadline);
@@ -328,6 +353,15 @@ void soe_frame_driver_run_frame(void) {
                 late_steps++;
                 slices--; /* single steps do not count against the field's slice budget */
                 if (g_snes->nmiEnabled && g_snes->rdnmiPending) {
+                    /* MesenCE (InternalRegisters $4200, SnesCpu::DetectNmiSignalEdge): the write sets a counter of 2,
+                     * counted down at each following cycle start, so the NMI comes after the next instruction. */
+                    const uint64_t at = g_cpu.master_cycles;
+                    refresh_begin();
+                    interp_bridge_set_master_deadline(at + 1);
+                    (void)interp_bridge_run_until_quiescent(&g_cpu, s_resume_pc);
+                    interp_bridge_set_master_deadline(0);
+                    refresh_end(at);
+                    update_resume_pc();
                     snes_sync_master_clock(g_snes, g_cpu.master_cycles);
                     run_nmi(frame_end);
                 }

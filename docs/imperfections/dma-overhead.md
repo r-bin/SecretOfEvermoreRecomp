@@ -21,6 +21,16 @@ reset code (before the first WRAM clear) made the CPU 18 clocks late on MesenCE 
 2–8 clocks short per DMA. With both fixed, the CPU reaches the first DMA and every NMI through 108 on MesenCE's
 clock (then auto-joypad-read.md).
 
+## HDMA init at line 0 (2026-10-31)
+At line 0, H = 12 + (line start & 7), MesenCE's HDMA init event raises a start delay and an HDMA init, also with no
+HDMA channel on (`SnesMemoryManager::ProcessEvent`, `SnesDmaController::BeginHdmaInit`). Each takes one CPU cycle
+start, and a pending DMA waits behind both (`ProcessPendingTransfers` checks the delay, then HDMA, then DMA). An
+event from the cycle before the `$420B` write up to the next opcode fetch moves the DMA's start one cycle (6 clocks)
+later, one up to the DMA's own cycle two. The CPU runs its next instruction's cycles in the meantime, so only the
+start alignment changes: one DMA of the attract replay's frame 4975 (H=22 of line 0) was 6 clocks shorter on
+MesenCE, and every NMI after it 6 clocks later. snesrecomp's `$420B` rule (branch `spc-access-cycles`) takes it from
+the beam's line.
+
 ## Limits
 The clock is taken as the instruction's start plus 30 (`SNESRECOMP_DMA_LEAD`), right for `STA abs` in FastROM code
 run by the interpreter; compiled code reports its block clock (compiled-cycle-charges.md). The end wait assumes
