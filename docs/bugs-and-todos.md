@@ -46,8 +46,13 @@ These issues should be submitted to the [RetroPortingToolKit/snesrecomp](https:/
    `beam_frame_driver.c` keeps `s_resume_pc` / `s_wai_halted` as statics with no accessor. Any game
    on the beam driver loses its place on load. Our glue works around it (§2); upstream should
    save both and drop the `booting` path when a state was loaded.
-3. **Access-exact timing** (closes the open MesenCE differences): [upstream-access-timing.md](upstream-access-timing.md).
-4. **Stack-Frame Context Loss in `interp_tier_dispatch_tail`:**
+3. **Access-exact timing** (closes the open MesenCE differences): [upstream-access-timing.md](upstream-access-timing.md);
+   prototype on snesrecomp branch `spc-access-cycles`.
+4. **An empty `$420B` write is charged as a DMA:** `snes.c` bills `12 + Σ` even when no channel is set; hardware
+   starts nothing. Evermore's reset code writes 0 there before its first WRAM clear, which put the CPU 18 clocks
+   behind MesenCE (found 2026-10-31 by MesenCE's exec clock at the first `STA $420B`: 2934 against the recomp's
+   2952; lesson: compare the absolute clock at the first event of a kind before fitting a formula to many).
+5. **Stack-Frame Context Loss in `interp_tier_dispatch_tail`:**
    - **Issue:** When an indirect jump index exceeds the directive count inside a function that has
      allocated stack-frame variables (e.g. via `PEA` or `PHA`), transitioning to the interpreter
      fallback can misalign the stack frame, causing corrupt return addresses or register loads.

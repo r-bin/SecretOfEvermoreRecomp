@@ -5,7 +5,9 @@
  * - late NMI: enabling NMI ($4200 bit 7) while the vblank flag is still set fires it at once (late-nmi.md);
  * - the reset clock and the short scanline: field lengths as MesenCE's (short-scanline.md);
  * - the interrupt sequence's 60 clocks (interrupt-cost.md) and DRAM refresh at H=538 (dram-refresh.md);
- * - the SPC700's clock rate and port access point (spc-clock-rate.md, apu-port-handshake.md);
+ * - the SPC700's clock rate and port access point (spc-clock-rate.md, apu-port-handshake.md); on branch
+ *   snesrecomp-spc-access-cycles both come from the framework's master-clock APU timeline instead, fed the port
+ *   access clock with the refresh stall in front of it (access_clock);
  * - the automatic joypad read's busy window (auto-joypad-read.md);
  * - where the field's NMI is recognised (nmi-recognition.md, with soe_last_cycle.c).
  *
@@ -121,6 +123,7 @@ static uint64_t next_refresh_after(uint64_t m) {
 #define SPC_PER_MASTER (1025280.0 / 21477270.0)
 #define APU_ACCESS_LEAD 20.0
 static void slow_apu_to_reference(void) {
+    if (rtl_apu_master_clock()) return; /* the framework's master-clock timeline has MesenCE's rate and access point */
     static uint64_t last;
     static double owed = -APU_ACCESS_LEAD * SPC_PER_MASTER;
     const uint64_t now = g_cpu.master_cycles;
@@ -131,6 +134,19 @@ static void slow_apu_to_reference(void) {
         g_snes->apu->portGuestAnchor += whole;
         owed -= (double)whole;
     }
+}
+
+/*
+ * The clock of a port access `lead` clocks into the instruction starting at `start`, for the framework's
+ * master-clock APU timeline. MesenCE stalls the CPU for DRAM refresh at the refresh point itself; this driver
+ * charges the stall after the instruction. A refresh point from the instruction's start to 4 clocks past the access
+ * comes before it: measured on the sound uploads of 01-no-inputs-4m.evsmv (port handshakes identical to MesenCE's
+ * through the 12,748th port access after NMI 319; to the 3,384th with the access itself as the limit).
+ */
+#define ACCESS_REFRESH_SLACK 4u
+static uint64_t access_clock(uint64_t start, uint32_t lead) {
+    const uint64_t a = start + lead;
+    return refresh_points_upto(a + ACCESS_REFRESH_SLACK) > refresh_points_upto(start) ? a + REFRESH_CLOCKS : a;
 }
 
 static void refresh_begin(void) { snes_refresh_state_set(0, g_cpu.master_cycles); }
@@ -153,26 +169,31 @@ static void refresh_end(uint64_t before) {
 }
 
 /*
- * The automatic joypad read. MesenCE (InternalRegisters::SetAutoJoypadReadClock) starts it at the first multiple
- * of 256 master clocks at least 130 clocks after V=225 and holds $4212 bit 0 for 4224 clocks from there.
- * snesrecomp's beam holds it for 4224 clocks from V=225 itself: 130-385 clocks short, so the NMI handler's wait at
- * $80:8473 (BIT $4212 / BNE, interpreted in both builds) left up to 9 passes early. The interpreter also reads a
- * register at the instruction's start clock (it adds the instruction's clocks after running it), where MesenCE
- * samples 2 clocks into the access cycle: 20 clocks in for BIT/LDA absolute. Once the beam has crossed V=225 (its
- * timer then runs, or was skipped because the field-length alignment moved H off 0), the timer is set to end that
- * much before MesenCE's end. The bit reads set from V=225 rather than from the 256-clock point; the game polls it
- * later than that (docs/imperfections/auto-joypad-read.md).
+ * The automatic joypad read. MesenCE (internalRegisters.autoReadClockStart) starts it on the first master clock
+ * that is 128 past a multiple of 256 and at least 3 clocks after its line 225 began, and $4212 bit 0 reads busy
+ * for 4352 clocks (17 x 256) from there, as the interpreter samples it: at the instruction's start clock, where
+ * MesenCE samples 2 clocks into the access cycle, 20 clocks in for BIT/LDA absolute. MesenCE's line 225 is
+ * field_end(k): in the fields whose short line this driver takes at V=225 the beam's line 225 starts 4 clocks
+ * earlier (see the short scanline below). Measured over NMIs 2-330 of 01-no-inputs-4m.evsmv: every start, and with
+ * it every NMI's clock and interrupted address through 319 (docs/imperfections/auto-joypad-read.md).
+ * snesrecomp's beam holds the bit from V=225 for 4224 clocks; once the beam has crossed V=225 the timer is set to end
+ * at MesenCE's end.
  */
-#define AUTO_JOY_CLOCKS 4224u
+#define AUTO_JOY_GRID 128u
+#define AUTO_JOY_MIN_AFTER 3u
+#define AUTO_JOY_CLOCKS 4352u
 #define AUTO_JOY_READ_LEAD 20u /* BIT/LDA absolute: 3 fetches at 6, then MesenCE's sample 2 clocks into the read */
 static bool s_auto_joy_due; /* this field's read still needs MesenCE's timing */
+
+static uint64_t mesen_line0(void);
 
 static void auto_joypad_begin(void) {
     if (!s_auto_joy_due || g_snes->beamMasterLast <= s_line0) return;
     s_auto_joy_due = false;
     if (!g_snes->autoJoyRead) return;
-    const uint64_t start = (s_line0 + 130u + 255u) & ~(uint64_t)255u, end = start + AUTO_JOY_CLOCKS - AUTO_JOY_READ_LEAD;
-    const uint64_t beam = g_snes->beamMasterLast;
+    const uint64_t from = mesen_line0() + AUTO_JOY_MIN_AFTER;
+    const uint64_t start = from + (AUTO_JOY_GRID - from % 256u + 256u) % 256u;
+    const uint64_t end = start + AUTO_JOY_CLOCKS - AUTO_JOY_READ_LEAD, beam = g_snes->beamMasterLast;
     g_snes->autoJoyTimer = end > beam ? (uint16_t)(end - beam) : 0;
 }
 
@@ -265,6 +286,7 @@ void soe_frame_driver_run_frame(void) {
     ppu_rasterBegin(g_ppu);
     s_line0 = g_snes->beamMasterLast - g_snes->hPos;
     s_auto_joy_due = !booting;
+    RtlSetCpuAccessClockHook(access_clock);
 
     if (!booting && g_snes->nmiEnabled) run_nmi(frame_end);
 
@@ -350,6 +372,14 @@ void soe_frame_driver_run_frame(void) {
 #define MEAN_FIELD 357366ull
 
 static uint64_t field_end(uint64_t k) { return FIRST_VBLANK + k * MEAN_FIELD + (k & 1 ? 2 : 0); }
+
+/* Where MesenCE's line 225 of this field started: field_end(k). Our beam's starts 4 clocks earlier in the fields
+ * whose short line it takes at V=225 (see above). */
+static uint64_t mesen_line0(void) {
+    if (s_line0 < FIRST_VBLANK) return s_line0;
+    const uint64_t k = (s_line0 - FIRST_VBLANK + MEAN_FIELD / 2) / MEAN_FIELD;
+    return field_end(k);
+}
 
 static void align_field_length(void) {
     /* The beam can stand past H=0 here: an instruction that ended after V=225 already moved it. */

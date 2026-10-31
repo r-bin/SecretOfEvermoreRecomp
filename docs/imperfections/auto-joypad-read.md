@@ -1,6 +1,7 @@
 # The Automatic Joypad Read's Busy Window
 
-**Status:** fixed in our frame driver (`src/soe_frame_driver.c`, `auto_joypad_begin`), 2026-10-30.
+**Status:** fixed in our frame driver (`src/soe_frame_driver.c`, `auto_joypad_begin`), 2026-10-30; the rule
+corrected on branch `snesrecomp-spc-access-cycles` (2026-10-31, below).
 
 ## What hardware does (MesenCE)
 `InternalRegisters::SetAutoJoypadReadClock` runs when a field ends (V=225). The read starts at the first multiple
@@ -25,3 +26,17 @@ later in the handler.
 MesenCE `$4212` read callbacks in frames 200 and 245 of `01-no-inputs-4m.evsmv`: bit 0 reads 1 up to 34 clocks
 before the computed end and 0 at 8 clocks after it. The one-frame trace diff (MesenCE exec callbacks against
 `SNESRECOMP_CYC_WATCH`) matched the handler instruction for instruction in both frames after the fix.
+
+## Correction (2026-10-31, branch `snesrecomp-spc-access-cycles`)
+The rule above was measured on two frames and is wrong in its parts; they cancelled out in most frames. MesenCE's
+`internalRegisters.autoReadClockStart`, read at every NMI from 2 to 330 of `01-no-inputs-4m.evsmv`:
+- every start is 128 past a multiple of 256 (not on the multiple), at least 3 clocks after MesenCE's line 225 began;
+- `$4212` bit 0 reads busy for 4352 clocks (17 × 256) from there, as the interpreter samples it (start clock, 20-clock
+  lead), not 4224;
+- MesenCE's line 225 starts at `field_end(k)`. In the fields whose short line our driver takes at V=225, the beam's
+  line 225 starts 4 clocks earlier (short-scanline.md), and that parity decided the borderline frames.
+
+The old rule (multiple of 256, ≥ 130 clocks, 4224) ended the window at the same clock whenever the 128-clock grid
+offset went one way, and 256 clocks early when it went the other: frame 108, where the NMI handler's wait at
+`$80:8473` left one pass early. With the corrected rule every NMI from 2 to 319 has MesenCE's clock and interrupted
+address (all interpreted).

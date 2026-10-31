@@ -1,8 +1,9 @@
 # Upstream Proposal: Access-Exact Timing in snesrecomp
 
-**Status:** proposal for [snesrecomp](https://github.com/RetroPortingToolKit/snesrecomp), not started. We do not
-change the framework ([../AGENTS.md](../AGENTS.md) rule 2); this file describes the change we would offer upstream.
-It holds no Evermore facts: every rule below is SNES hardware, so every game on snesrecomp gains from it.
+**Status:** prototype of A, C, D1 and part of E on snesrecomp branch `spc-access-cycles` (this repo's branch
+`snesrecomp-spc-access-cycles` pins it); owner's experiment for an upstream PR, `develop` keeps the pinned framework
+([../AGENTS.md](../AGENTS.md) rule 2). It holds no Evermore facts: every rule below is SNES hardware, so every game on
+snesrecomp gains from it. Results and what is left: [Prototype](#prototype-2026-10-31).
 
 ## Goal
 WRAM identical to MesenCE at every NMI, for the whole run, native build included. Today we have that through NMI
@@ -96,3 +97,33 @@ tight loops, checked against MesenCE.
 - Correctness of compiled code (pushed-address returns, [imperfections/README.md](imperfections/README.md) "Open
   risk"): not timing.
 - Rendering (Mode 4, [bugs-and-todos.md](bugs-and-todos.md) §3): does not touch WRAM.
+
+## Prototype (2026-10-31)
+On snesrecomp branch `spc-access-cycles`; switches in the code, off switches as env vars for A/B runs:
+
+| Part | Where | Switch |
+|---|---|---|
+| A, C: master-clock APU timeline (half-cycles, no rebase, no relative catch-up, frame end to the exact clock) | `common_rtl.c` | `RtlApuUseMasterClock(on, lead)` (our glue: on, 20); `SNESRECOMP_APU_MASTER_CLOCK` |
+| C: host access clock (refresh stalls in front of a port access) | `common_rtl.c` | `RtlSetCpuAccessClockHook` |
+| D1: per-access SPC cycles, hold of the straddling opcode, read lookahead, reset 3 cycles, no rebase on small lateness | `spc.c`, `apu.c` | `SNESRECOMP_SPC_ACCESS_CYCLES=0` |
+| E (part): MesenCE's DMA start/end rule, empty `$420B` free | `snes.c` | `SNESRECOMP_DMA_ALIGN=0` |
+| diagnostics | `common_rtl.c`, `apu.c`, `snes.c` | `SNESRECOMP_PORT_LOG=1`, `SNESRECOMP_DMA_LOG=1` |
+
+Measured on `01-no-inputs-4m.evsmv`, all interpreted, against MesenCE 2.2.1: the SPC's port writes land on
+MesenCE's cycles; every NMI 2–319 is exact; the load after NMI 319 matches for 12,748 port accesses. Per-key WRAM
+still parts at 320 (native and interpreted; develop too), so the replay does not sync yet. Details and the numbers:
+[imperfections/README.md](imperfections/README.md).
+
+Still open, in the order they part the run:
+1. MesenCE's SPC catch-up rounding at a CPU read (apu-port-handshake.md, "Left open").
+2. B, compiled code billed at code speed: the native build is exact only to NMI 1 (compiled-cycle-charges.md).
+3. 16-bit port writes land both bytes at once (port-word-writes.md).
+4. Our frame driver takes the short line's 4 clocks at V=225, so the beam is 4 clocks off MesenCE's in lines
+   225–240 of every other field (the auto-joypad rule works around it; refresh does not need it, measured).
+
+How it was measured (probes outside the repo, in the session's scratch space; worth adding to everscript-vscode's
+`tools/compare/probes/` once kept): MesenCE Lua callbacks on `$2140–$2143` and SPC `$F4–$F7` with `masterClock` and
+`spc.cycle` (2 per SPC cycle), against the recomp's `SNESRECOMP_PORT_LOG`; NMI clocks from both sides' NMI logs;
+`dmaController.dmaClockCounter`, `memoryManager.hClock` and `internalRegisters.autoReadClockStart` from MesenCE's
+state. MesenCE's exec callbacks on every instruction are slow enough that the runner stops a long job: arm them from
+an NMI event.

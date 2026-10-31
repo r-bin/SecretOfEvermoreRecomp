@@ -255,6 +255,9 @@ void GameSessionReset(void) { soe_frame_driver_reset(); }
 void SoeAfterConfig(void) {
     g_config.new_renderer = false;
     RtlEnableExtendedFrameTiming();
+    /* Branch snesrecomp-spc-access-cycles: the SPC700's time is the master clock since power-on (MesenCE's rate and
+     * rounding); the CPU reaches the ports 20 clocks into an absolute CMP/STA (docs/upstream-access-timing.md). */
+    RtlApuUseMasterClock(true, 20);
 }
 
 /*

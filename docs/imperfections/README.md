@@ -20,10 +20,21 @@ Ordered as found, measured on `01-no-inputs-4m.evsmv` (all against MesenCE 2.2.1
 | [spc-clock-rate.md](spc-clock-rate.md) | snesrecomp APU constant | SPC700 0.16 % fast | corrected in our frame driver |
 | [auto-joypad-read.md](auto-joypad-read.md) | snesrecomp beam | `$4212` bit 0 busy from V=225, not from MesenCE's 256-clock point: the NMI handler's wait up to 9 passes short | fixed in our frame driver |
 | [nmi-recognition.md](nmi-recognition.md) | snesrecomp frame driver | NMI taken after the first instruction past V=225, not after the first with a cycle from V=225+6 | fixed in our frame driver |
-| [apu-port-handshake.md](apu-port-handshake.md) | snesrecomp SPC700 model | SPC instructions do their port accesses on their first cycle: 55 % of sound-port handshakes take one poll pass more or fewer | **open: the first difference left; needs snesrecomp** |
-| [dma-overhead.md](dma-overhead.md) | snesrecomp DMA | start/end alignment a few clocks off per DMA | open, small |
+| [apu-port-handshake.md](apu-port-handshake.md) | snesrecomp SPC700 model | SPC instructions do their port accesses on their first cycle: 55 % of sound-port handshakes take one poll pass more or fewer | **open on develop: the first difference left;** mostly fixed in snesrecomp on branch `spc-access-cycles` |
+| [dma-overhead.md](dma-overhead.md) | snesrecomp DMA | start/end alignment 2–8 clocks off per DMA; an empty `$420B` write costs 12 | open on develop; fixed in snesrecomp on branch `spc-access-cycles` (rule measured) |
+| [refresh-before-access.md](refresh-before-access.md) | our frame driver | a refresh stall inside an instruction came after its port access | fixed on branch `snesrecomp-spc-access-cycles` |
+| [port-word-writes.md](port-word-writes.md) | snesrecomp port writes | a 16-bit port write lands both bytes at once, high first | open |
 | [compiled-cycle-charges.md](compiled-cycle-charges.md) | snesrecomp recompiler | compiled code billed at code speed: FastROM WRAM work ~4 % fast | open, not the first difference now |
 | [host-frames-and-fields.md](host-frames-and-fields.md) | snesrecomp frame driver | a long DMA packs several fields into one host frame: replay input lands late | open for replays with input |
+
+## Branch `snesrecomp-spc-access-cycles` (2026-10-31)
+snesrecomp changed on its own branch `spc-access-cycles` (the owner's experiment for an upstream PR;
+[../upstream-access-timing.md](../upstream-access-timing.md)): access-exact SPC ports, the master-clock APU timeline,
+MesenCE's DMA rule. With it and the corrected auto-joypad rule ([auto-joypad-read.md](auto-joypad-read.md)), all
+interpreted: every NMI from 2 to 319 has MesenCE's clock and interrupted address (develop: 86 of 328), the boot
+upload's handshakes take MesenCE's number of polls in 212 of 214 (develop: 160), the load after NMI 319 in 63 %
+(develop: 45 %), and its port accesses match MesenCE's one for one through the 12,748th. WRAM still parts at key 320 on both; the native
+build is exact only to NMI 1 (compiled-cycle-charges.md).
 
 ## Measured (2026-10-30, all fixes above)
 
