@@ -41,7 +41,10 @@ build is exact only to NMI 1 (compiled-cycle-charges.md).
 All interpreted, `01-no-inputs-4m.evsmv` against MesenCE: every NMI from 2 to 1491 exact; all 18,461 handshakes
 of the first load exact; WRAM identical at every NMI key from 120 to 319 and from 322 to 1491 (develop: 120–319).
 Keys 320–321 differ in one stack byte, `$7E1FF5`: the V flag the NMI pushes inside the boot's SRAM checksum
-(`$8D:B478`, `ADC` over battery RAM), from different SRAM contents on the two sides, not from timing. From key 1492
+(`$8D:B478`, `ADC` over battery RAM), from different SRAM contents on the two sides, not from timing: MesenCE
+loaded the owner's save from its Saves folder, the recomp its own `saves/save.srm`. Since then both start from
+cleared SRAM in a compare run (MesenCE through a ROM link of its own name, the recomp through
+`SOE_COMPARE_SAVE_ROOT`), and keys 120–1491 are identical without a gap. From key 1492
 on: the S-DSP ([dsp-timing.md](dsp-timing.md)). `02-newgame-boy-available.evsmv`: identical 120–319, 322–331 and
 335–396. The native build is still exact only to NMI 1 ([compiled-cycle-charges.md](compiled-cycle-charges.md)).
 

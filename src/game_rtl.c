@@ -47,7 +47,8 @@ extern uint8_t g_ram[0x20000];
  *   then the NMI's number since power-on. An instruction boundary, the same on MesenCE; a frame's end is not:
  *   the recomp's CPU finishes the instruction that crossed V=225, MesenCE stops inside it.
  *   SOE_COMPARE_NMI_LOG adds "N <nmi> <master clock> <interrupted pc24>" per NMI: where cycles part.
- * Nothing touches the disk: compare reads fd 3 from a pipe.
+ * - SOE_COMPARE_SAVE_ROOT=<dir>: battery RAM from that folder (empty: cleared SRAM), see SoeAfterConfig.
+ * Nothing else touches the disk: compare reads fd 3 from a pipe.
  */
 enum { CMP_WRAM, CMP_VRAM, CMP_CGRAM, CMP_OAM };
 static struct {
@@ -258,6 +259,12 @@ void SoeAfterConfig(void) {
     /* Branch snesrecomp-spc-access-cycles: the SPC700's time is the master clock since power-on (MesenCE's rate and
      * rounding); the CPU reaches the ports 20 clocks into an absolute CMP/STA (docs/upstream-access-timing.md). */
     RtlApuUseMasterClock(true, 20);
+    /* SOE_COMPARE_SAVE_ROOT: battery RAM from (and back to) this folder instead of saves/, so a compare run starts
+     * from cleared SRAM as MesenCE's does (the harness gives an empty folder) and never touches a player's save:
+     * the game's SRAM checksum leaves a stack byte that differs with the contents (NMI keys 320-321 of the attract
+     * replay). Set here because RtlReadSram runs after after_config. */
+    const char *save_root = getenv("SOE_COMPARE_SAVE_ROOT");
+    if (save_root && *save_root) RtlSetSaveRoot(save_root);
 }
 
 /*

@@ -116,8 +116,8 @@ still parts at 320 (native and interpreted; develop too), so the replay does not
 
 Second round (2026-10-31): exact per-access clocks from the interpreter (writes at the end of their bus cycle),
 SPC timers on their cycle, `$4212` H-blank at the read's clock, and three S-DSP fixes (key-on delay, ENDX point,
-shared rate counter). Interpreted, the attract replay is now identical at every NMI key from 120 to 1491 except
-320–321 (an SRAM-content byte, not timing).
+shared rate counter). Interpreted, the attract replay is now identical at every NMI key from 120 to 1491 (with
+cleared SRAM on both sides; before, keys 320–321 parted on an SRAM-content byte, not timing).
 
 Still open, in the order they part the run:
 1. The S-DSP stepped per sample, not per clock (imperfections/dsp-timing.md): first difference at NMI 1492.
