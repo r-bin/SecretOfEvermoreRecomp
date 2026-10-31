@@ -11,6 +11,9 @@ next steps for the Secret of Evermore static recompilation.
 - **Status:** ~99 % (2026-10-30): WRAM equal through NMI key 300, 98.3–99.95 % equal up to key 5800 on the
   attract replay, the rest from known framework limits. One file per known difference, with the
   measurements: [imperfections/README.md](imperfections/README.md).
+- **Branch `snesrecomp-spc-access-cycles` (2026-10-31):** the 02 replay identical at every NMI key, the attract
+  replay through key 5997, all interpreted; glue alone stopped at 319. Lessons and the A/B per framework switch:
+  [mesence-parity-lessons.md](mesence-parity-lessons.md).
 - The earlier snes9x drift after counter ~315 (identical in interpreter and native runs) is explained by the
   first of them: the NMI the game raises by enabling NMI inside vblank ([imperfections/late-nmi.md](imperfections/late-nmi.md)).
 

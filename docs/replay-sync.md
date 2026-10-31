@@ -28,6 +28,12 @@ The key counts are the keys both runs reported (the probe compares only keys pre
 Probe: a per-key hash run (`stride: 1`, WRAM, masked) of `runMesen` / `runRecomp` from `tools/compare`,
 then a search of each recomp hash in MesenCE's hashes nearby.
 
+## On branch `snesrecomp-spc-access-cycles` (2026-10-31)
+All interpreted, cleared SRAM on both sides: `02-newgame-boy-available.evsmv` 🟢 at every key (9,227 of 9,227);
+`01-no-inputs-4m.evsmv` 🟢 from 120 to 5997, then the RNG seed from PPU reads during rendering. With cleared SRAM
+the replays hold fewer NMI keys than the table above (9,406 and 9,346). What it took and why the framework had to
+change: [mesence-parity-lessons.md](mesence-parity-lessons.md).
+
 ## Can it reach 100 %?
 
 Without changing snesrecomp (owner's rule), timing is ours to set in our frame driver and glue

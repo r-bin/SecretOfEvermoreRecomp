@@ -118,3 +118,5 @@ Verify an exclusion took: the address has only `NULL` variants in `dispatch_v2.c
    running it); MesenCE samples 2 clocks into the access cycle (+20 for an absolute `LDA`/`BIT`/`CMP`).
 8. MesenCE SPC callbacks need `emu.cpuType.spc, emu.memType.spcMemory`, and their `masterClock` is frozen (the SPC
    runs in catch-up batches): time them with `spc.cycle / spc.clockRatio`.
+9. A timing hunt against MesenCE: method, probes and traps in `docs/mesence-parity-lessons.md` (MesenCE's `.srm`
+   per ROM name, callbacks per bank mirror, the script engine's own frames, env switches the glue overrides).
