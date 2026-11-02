@@ -23,6 +23,7 @@ into a native, standalone, portable C desktop executable using
 
 | Guide | Contents |
 |---|---|
+| **[progress.md](progress.md)** | **Progress Against MesenCE**<br>One table: how far each replay stays in sync, interpreted and native, and what it took. |
 | **[setup.md](setup.md)** | **Setup & Build Pipeline**<br>Prerequisites, required assets (ROM, CDL, knowledge), environment variables, the build, and how the seeds come from everscript-vscode. |
 | **[game-rtl.md](game-rtl.md)** | **Game Runtime Layer (Game RTL / Glue Code)**<br>Why "Game RTL" is the proper architectural term, how `game_rtl.c` drives frames and interrupts, host configuration hooks (`SoeAfterConfig`), and licensing isolation. |
 | **[debugging.md](debugging.md)** | **Debugging, Emulators & Comparison**<br>Available emulators (snes9x2005-wasm, Mesen2, desktop host), execution modes (native vs interpreter, renderer modes), WRAM lockstep diffing, headless script automation, and seed bisection. |
