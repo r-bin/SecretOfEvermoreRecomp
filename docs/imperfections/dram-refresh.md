@@ -1,6 +1,6 @@
 # DRAM Refresh
 
-**Status:** fixed in our frame driver (`src/soe_frame_driver.c`), 2026-10-30.
+**Status:** fixed in our frame driver (`src/soe_frame_driver.c`), 2026-10-30; the NMI handler too, 2026-11-02.
 
 ## What hardware does
 Every scanline the CPU (and a running DMA) stalls for 40 master clocks at H=538: 40 of the line's 1364
@@ -19,6 +19,17 @@ none and the stall lands after the instruction that reached H=538.
 
 ## Left
 The ±7-clock jitter of MesenCE's refresh position (`538 - (clock & 7)`) is not modelled.
+
+## The NMI handler (2026-11-02)
+The handler ran as one call to its RTI (`interp_bridge_run_interrupt` ignores the master deadline), so inside it only
+the framework's own charge applied: 40 per 1364 clocks of work from the handler's start. In a normal field the
+handler starts ~140 clocks after line 225 and those charges happen to fall before the joypad wait at `$80:8473`
+ends. At NMI 9865 of the attract replay the reset had enabled NMI inside vblank, the handler started 524 clocks in,
+and the line-227 stall fell after the wait: every `$4212` poll came 40 clocks before MesenCE's, one pass more, the
+next NMI 30 clocks late and WRAM (a stack byte, `$1FD6`) different from key 9866. Fix: the driver pushes the frame as
+before and runs the handler as an ordinary slice from its vector (`interp_bridge_run_until_quiescent` with the next
+refresh point as deadline), so it stops there and goes on in the field's refresh-cut slices; its `$4212` reads then
+land on MesenCE's clocks. IRQ handlers still run whole.
 
 ## Correction (2026-10-31, branch `snesrecomp-spc-access-cycles`)
 MesenCE's refresh point is not a fixed H=538: `memoryManager.dramRefreshPosition` is 538 − (the line's start & 7),

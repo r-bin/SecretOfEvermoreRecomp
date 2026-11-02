@@ -29,11 +29,19 @@ Probe: a per-key hash run (`stride: 1`, WRAM, masked) of `runMesen` / `runRecomp
 then a search of each recomp hash in MesenCE's hashes nearby.
 
 ## On branch `snesrecomp-spc-access-cycles` (2026-10-31)
-All interpreted, cleared SRAM on both sides: `02-newgame-boy-available.evsmv` 🟢 at every key (9,227 of 9,227);
-`01-no-inputs-4m.evsmv` 🟢 from 120 to 5997, then the RNG seed from PPU reads during rendering. With cleared SRAM
-the replays hold fewer NMI keys than the table above (9,406 and 9,346).
-With snesrecomp `ppu-render-reads` (pin `3b73e98c`, 2026-11-02): both 🟢 at every key, all interpreted
-(01: 9,287 of 9,287; 02: 9,227 of 9,227). Native still exact only to NMI 1. What it took and why the framework had to
+All interpreted, cleared SRAM on both sides: `02-newgame-boy-available.evsmv` 🟢 through key 9779;
+`01-no-inputs-4m.evsmv` 🟢 from 120 to 5997, then the RNG seed from PPU reads during rendering.
+With snesrecomp `ppu-render-reads` (pin `3b73e98c`) and the NMI handler sliced at refresh points
+(dram-refresh.md), 2026-11-02, all interpreted, both 🟢 at every key to the end of their input, measured with
+everscript-vscode's `node tools/compare/compare.mts rom.smc --backend mesen,recomp --replay <replay> --regions wram --verbose --keep-going` (the recomp's environment from `tools/compare/probes/interp.mts`):
+
+| Replay | Keys compared, all identical |
+|---|---|
+| `01-no-inputs-4m.evsmv` (14,424 frames) | 120–10886 (10,767) |
+| `02-newgame-boy-available.evsmv` (17,948 frames) | 120–10741 (10,622) |
+
+Native still exact only to NMI 1. (Counts of 9,287 / 9,227 written earlier the same day came from a MesenCE hash cache
+that ended at key 9406: the run parted at 9866, past it.) What it took and why the framework had to
 change: [mesence-parity-lessons.md](mesence-parity-lessons.md).
 
 ## Can it reach 100 %?

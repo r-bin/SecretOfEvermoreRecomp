@@ -133,7 +133,8 @@ MesenCE's clock.
 
 Fifth round (2026-11-02, snesrecomp branch `ppu-render-reads` on top): `$2138` and `$213B` during active display
 read what the PPU itself fetches (imperfections/hv-counter-latch.md). Interpreted, both replays identical at every NMI
-key: `01-no-inputs-4m.evsmv` 9,287 of 9,287, `02-newgame-boy-available.evsmv` 9,227 of 9,227.
+key to the end of their input, with our driver's NMI handler sliced at refresh points (imperfections/dram-refresh.md):
+`01-no-inputs-4m.evsmv` 120–10886, `02-newgame-boy-available.evsmv` 120–10741.
 
 Still open, in the order they part the run:
 1. B, compiled code billed at code speed: the native build is exact only to NMI 1 (compiled-cycle-charges.md).

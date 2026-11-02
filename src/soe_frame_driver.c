@@ -238,9 +238,19 @@ static void run_interrupt(uint32_t vector, uint64_t deadline, bool nmi) {
     }
     if (nmi && soe_frame_driver_nmi_hook) soe_frame_driver_nmi_hook();
     const uint64_t before = g_cpu.master_cycles;
+    /* The NMI handler runs as an ordinary slice from its vector (the frame is pushed above), so it stops at the next
+     * refresh point like every other slice and goes on in the field's slices. Run whole to its RTI, which ignores
+     * the deadline, it got the framework's refresh charge (40 per 1364 clocks of work from its start), whose stalls
+     * fall after MesenCE's when the handler starts late in vblank (docs/imperfections/dram-refresh.md). */
+    const uint64_t refresh = next_refresh_after(before) + 1;
     refresh_begin();
-    interp_bridge_set_master_deadline(deadline);
-    (void)interp_bridge_run_interrupt(&g_cpu, vector);
+    if (nmi) {
+        interp_bridge_set_master_deadline(refresh < deadline ? refresh : deadline);
+        (void)interp_bridge_run_until_quiescent(&g_cpu, vector);
+    } else {
+        interp_bridge_set_master_deadline(deadline);
+        (void)interp_bridge_run_interrupt(&g_cpu, vector);
+    }
     interp_bridge_set_master_deadline(0);
     refresh_end(before);
     update_resume_pc();

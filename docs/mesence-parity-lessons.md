@@ -10,8 +10,8 @@ All interpreted, both sides with cleared SRAM:
 
 | Replay | Identical NMI keys | Glue only (develop) |
 |---|---|---|
-| `02-newgame-boy-available.evsmv` | every key, 9,227 of 9,227 | 120–319 |
-| `01-no-inputs-4m.evsmv` | every key, 9,287 of 9,287 (since 2026-11-02; was 120–5997) | 120–319 |
+| `02-newgame-boy-available.evsmv` | every key to the input's end, 120–10741 | 120–319 |
+| `01-no-inputs-4m.evsmv` | every key to the input's end, 120–10886 (since 2026-11-02; was 120–5997) | 120–319 |
 
 The native build is still exact only to NMI 1: compiled code is billed at code speed (part B of the proposal).
 
@@ -97,5 +97,7 @@ latch logs (`SNESRECOMP_DMA_LOG`, `SNESRECOMP_HV_LOG`, `SNESRECOMP_PPU_READ_LOG`
   its CGRAM read address (the last palette lookup of its renderer) stale on skipped frames. Checked on 01 to key
   6100: identical hashes with `--snes.disableFrameSkipping=true`, so the reference stays deterministic here; a game
   with sub screen layers on during such a read could differ between runs.
+- Measure to the end of the replay with `tools/compare/compare.mts` (`--verbose --keep-going`), not against a cached
+  key list: a MesenCE hash cache that ended at key 9406 hid the attract replay's parting at 9866.
 - "99 %" bytes equal and "identical keys" are different measures: one differing byte (an RNG seed) makes every later
   key differ.

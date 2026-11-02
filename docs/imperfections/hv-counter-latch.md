@@ -48,8 +48,8 @@ from `snes.c` `g_ppu_beam_hook`; off: `SNESRECOMP_PPU_RENDER_READS=0`):
   pixel's own palette entry is not modelled.
 - Only with the master-clock APU timeline (exact access clocks); other games keep the CPU's addresses.
 
-Result, all interpreted: the attract replay identical at every key (9,287 of 9,287), the new-game replay still at
-every key. A/B with the switch off: parts at 5998 again. In 01 to key 6000 these are the only two `$2138`/`$213B`
+Result, all interpreted: the attract replay identical through key 9865 (the next difference, at 9866, was a
+refresh stall: dram-refresh.md), and after that fix to its end (10886). A/B with the switch off: parts at 5998 again. In 01 to key 6000 these are the only two `$2138`/`$213B`
 reads with the display on outside vblank.
 
 On line 124 of that field our beam's H stood 8 clocks off MesenCE's at the same master clock (latched dot 317
