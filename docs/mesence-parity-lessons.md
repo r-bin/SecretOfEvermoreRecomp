@@ -11,7 +11,7 @@ All interpreted, both sides with cleared SRAM:
 | Replay | Identical NMI keys | Glue only (develop) |
 |---|---|---|
 | `02-newgame-boy-available.evsmv` | every key, 9,227 of 9,227 | 120–319 |
-| `01-no-inputs-4m.evsmv` | 120–5997 (every NMI through 6358 on MesenCE's clock) | 120–319 |
+| `01-no-inputs-4m.evsmv` | every key, 9,287 of 9,287 (since 2026-11-02; was 120–5997) | 120–319 |
 
 The native build is still exact only to NMI 1: compiled code is billed at code speed (part B of the proposal).
 
@@ -27,6 +27,7 @@ Each snesrecomp change has a switch; one at a time turned off, on `01-no-inputs-
 | `SNESRECOMP_DSP_PER_CLOCK=0` (S-DSP per clock) | 1492 |
 | `SNESRECOMP_SPC_TIMER_PHASE=0` (SPC timers tick at the end of their period) | 1492 |
 | `SNESRECOMP_HBLANK_EXACT=0` (`$4212` H-blank at the read's clock) | 5998: not needed by this replay |
+| `SNESRECOMP_PPU_RENDER_READS=0` (`$2138`/`$213B` during rendering read what the PPU fetches; 2026-11-02) | 5998 |
 
 Key 319/320 is where the glue-only work stopped: there the SPC700's port timing decides, and our files cannot reach
 inside the SPC700, the S-DSP or the DMA charge. The H/V latch fix (no switch) does not move the first WRAM
@@ -92,5 +93,9 @@ latch logs (`SNESRECOMP_DMA_LOG`, `SNESRECOMP_HV_LOG`, `SNESRECOMP_PPU_READ_LOG`
   is not linear in time (NMI is off during loads), so find the frame by its NMI clock first.
 - A probe that keeps every instruction since power-on runs out of memory: filter by clock window on both sides.
 - macOS has no `timeout`: `perl -e 'alarm N; exec @ARGV' …`. Two full-length key runs at once crashed node.
+- MesenCE skips rendering on a wall-clock timer when it runs at maximum speed (the testrunner does), which leaves
+  its CGRAM read address (the last palette lookup of its renderer) stale on skipped frames. Checked on 01 to key
+  6100: identical hashes with `--snes.disableFrameSkipping=true`, so the reference stays deterministic here; a game
+  with sub screen layers on during such a read could differ between runs.
 - "99 %" bytes equal and "identical keys" are different measures: one differing byte (an RNG seed) makes every later
   key differ.

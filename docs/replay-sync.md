@@ -31,7 +31,9 @@ then a search of each recomp hash in MesenCE's hashes nearby.
 ## On branch `snesrecomp-spc-access-cycles` (2026-10-31)
 All interpreted, cleared SRAM on both sides: `02-newgame-boy-available.evsmv` 🟢 at every key (9,227 of 9,227);
 `01-no-inputs-4m.evsmv` 🟢 from 120 to 5997, then the RNG seed from PPU reads during rendering. With cleared SRAM
-the replays hold fewer NMI keys than the table above (9,406 and 9,346). What it took and why the framework had to
+the replays hold fewer NMI keys than the table above (9,406 and 9,346).
+With snesrecomp `ppu-render-reads` (pin `3b73e98c`, 2026-11-02): both 🟢 at every key, all interpreted
+(01: 9,287 of 9,287; 02: 9,227 of 9,227). Native still exact only to NMI 1. What it took and why the framework had to
 change: [mesence-parity-lessons.md](mesence-parity-lessons.md).
 
 ## Can it reach 100 %?

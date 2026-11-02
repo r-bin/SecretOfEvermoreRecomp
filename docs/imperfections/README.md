@@ -26,7 +26,7 @@ Ordered as found, measured on `01-no-inputs-4m.evsmv` (all against MesenCE 2.2.1
 | [port-word-writes.md](port-word-writes.md) | snesrecomp port writes | a 16-bit port write lands both bytes at once, high first | fixed on branch `spc-access-cycles` (per-byte clocks, queue in time order) |
 | [dsp-timing.md](dsp-timing.md) | snesrecomp S-DSP | per-sample DSP: key-on, ENDX and envelope steps off; directory reads not at their clock | fixed on branch `spc-access-cycles` (per-clock S-DSP, timer phase) |
 | [compiled-cycle-charges.md](compiled-cycle-charges.md) | snesrecomp recompiler | compiled code billed at code speed: FastROM WRAM work ~4 % fast | open, not the first difference now |
-| [hv-counter-latch.md](hv-counter-latch.md) | snesrecomp PPU | `$2137` latched always, reset the `$213C/$213D` flip-flops, read 0; `$2138`/`$213B` during rendering read the CPU's address | latch fixed on branch `spc-access-cycles`; **reads during rendering open: the first difference left on the attract replay (key 5998)** |
+| [hv-counter-latch.md](hv-counter-latch.md) | snesrecomp PPU | `$2137` latched always, reset the `$213C/$213D` flip-flops, read 0; `$2138`/`$213B` during rendering read the CPU's address | fixed on branch `spc-access-cycles` (latch) and `ppu-render-reads` (reads during rendering, 2026-11-02): the attract replay is identical at every key |
 | [host-frames-and-fields.md](host-frames-and-fields.md) | snesrecomp frame driver | a long DMA packs several fields into one host frame: replay input lands late | open for replays with input |
 
 ## Branch `snesrecomp-spc-access-cycles` (2026-10-31)

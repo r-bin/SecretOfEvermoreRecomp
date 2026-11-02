@@ -131,11 +131,13 @@ starts late, the H/V latch (WRIO gate, flip-flops, access clock, open bus), and 
 key to its end (9,227 of 9,227); `01-no-inputs-4m.evsmv` at every key from 120 to 5997, every NMI through 6358 on
 MesenCE's clock.
 
+Fifth round (2026-11-02, snesrecomp branch `ppu-render-reads` on top): `$2138` and `$213B` during active display
+read what the PPU itself fetches (imperfections/hv-counter-latch.md). Interpreted, both replays identical at every NMI
+key: `01-no-inputs-4m.evsmv` 9,287 of 9,287, `02-newgame-boy-available.evsmv` 9,227 of 9,227.
+
 Still open, in the order they part the run:
-1. PPU reads during rendering (imperfections/hv-counter-latch.md): `$2138` and `$213B` on a visible line return what
-   the PPU itself reads at that dot on MesenCE. The attract replay's RNG seed at key 5998 depends on them.
-2. B, compiled code billed at code speed: the native build is exact only to NMI 1 (compiled-cycle-charges.md).
-3. Our frame driver takes the short line's 4 clocks at V=225, so the beam is 4 clocks off MesenCE's in lines
+1. B, compiled code billed at code speed: the native build is exact only to NMI 1 (compiled-cycle-charges.md).
+2. Our frame driver takes the short line's 4 clocks at V=225, so the beam is 4 clocks off MesenCE's in lines
    225–240 of every other field; and on line 124 of one field it stood 8 clocks off (hv-counter-latch.md).
 
 How it was measured (probes outside the repo, in the session's scratch space; worth adding to everscript-vscode's
