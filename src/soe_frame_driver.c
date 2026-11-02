@@ -55,6 +55,7 @@ bool soe_frame_driver_wai_halted(void) { return s_wai_halted; }
 void soe_frame_driver_set_resume(uint32_t pc, bool wai_halted) { s_resume_pc = pc; s_wai_halted = wai_halted; }
 
 static void align_field_length(void);
+static void align_beam(void);
 
 static uint32_t read_vector(uint32_t addr) {
     return ((uint32_t)snes_read(g_snes, addr + 1u) << 8) | snes_read(g_snes, addr);
@@ -354,6 +355,7 @@ void soe_frame_driver_run_frame(void) {
             refresh_end(before);
             if (approach) g_interp_bridge_pc_hook = 0;
             update_resume_pc();
+            align_beam();
             if (interp_bridge_lle_took_wai()) s_wai_halted = true;
             if (approach && !s_wai_halted) finish_nmi_approach(frame_end);
             auto_joypad_begin();
@@ -434,6 +436,35 @@ static uint64_t mesen_line0(void) {
     if (s_line0 < FIRST_VBLANK) return s_line0;
     const uint64_t k = (s_line0 - FIRST_VBLANK + MEAN_FIELD / 2) / MEAN_FIELD;
     return field_end(k) == s_line0 + 4 ? s_line0 + 4 : s_line0; /* only once the field grid holds (not in boot) */
+}
+
+/* Where the beam's line 225 of field k starts under this convention: the next V=225 falls on field_end(k + 1). */
+static uint64_t beam_line0(uint64_t k) { return field_end(k + 1) - FIELD_CLOCKS; }
+
+/*
+ * A host frame that a long DMA carries across several fields (the reset code's three 64 KB clears) ends past V=225,
+ * so align_field_length skips those fields and the beam keeps the framework's 357,368 clocks for each: 4 clocks
+ * behind MesenCE's per short field it missed, until the next aligned field end. At NMI 11986 of the attract replay
+ * the reset's RNG seed latched H on line 124 two dots early (docs/imperfections/short-scanline.md). After each slice
+ * the beam is put where this convention has it at its own clock, when the move stays on its line and on one side of
+ * H=1024 and H=0 (no line, HDMA or auto-joypad event is skipped or repeated); otherwise the next slice does it.
+ */
+static void align_beam(void) {
+    const uint64_t t = g_snes->beamMasterLast;
+    if (t < FIRST_VBLANK) return;
+    uint64_t k = (t - FIRST_VBLANK) / MEAN_FIELD;
+    while (k > 0 && beam_line0(k) > t) k--;
+    while (beam_line0(k + 1) <= t) k++;
+    if (beam_line0(k) > t) return;
+    const uint64_t off = t - beam_line0(k);
+    const unsigned v = (unsigned)((VBLANK_LINE + off / LINE_CLOCKS) % 262u), h = (unsigned)(off % LINE_CLOCKS);
+    const unsigned oh = g_snes->hPos;
+    if (v != g_snes->vPos || h == oh || !h || !oh || (h < 1024u) != (oh < 1024u)) return;
+    static int log = -1;
+    if (log < 0) log = getenv("SOE_BEAM_LOG") != NULL;
+    if (log) fprintf(stderr, "[beam] at %llu line %u: H %u -> %u\n", (unsigned long long)t, v, oh, h);
+    s_line0 -= (int64_t)h - (int64_t)oh;
+    g_snes->hPos = (uint16_t)h;
 }
 
 static void align_field_length(void) {

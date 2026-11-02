@@ -13,7 +13,7 @@ Ordered as found, measured on `01-no-inputs-4m.evsmv` (all against MesenCE 2.2.1
 |---|---|---|---|
 | [late-nmi.md](late-nmi.md) | snesrecomp frame driver | NMI enabled inside vblank never delivered: the NMI count one behind from frame 5, again at 6 loads | fixed in our frame driver |
 | [sampling-point.md](sampling-point.md) | the comparison | a frame's end is a different moment on the two sides | solved: both sample at NMI entry |
-| [short-scanline.md](short-scanline.md) | snesrecomp beam | no 1360-clock line 240 every other field (+2 clocks a field); CPU started at clock 0, not 186 | fixed in our frame driver (alignment at any H since 2026-10-30) |
+| [short-scanline.md](short-scanline.md) | snesrecomp beam | no 1360-clock line 240 every other field (+2 clocks a field); CPU started at clock 0, not 186; fields a long DMA crosses kept 357,368 clocks (the attract seed at NMI 11986) | fixed in our frame driver (alignment at any H since 2026-10-30, after each slice since 2026-11-03) |
 | [apu-time-in-long-frames.md](apu-time-in-long-frames.md) | snesrecomp APU timing | SPC700 got no time before the first port write: the boot upload waited 46,700 clocks | fixed in our glue |
 | [interrupt-cost.md](interrupt-cost.md) | snesrecomp frame driver | the 8-cycle interrupt sequence uncharged: handlers 60 clocks early | fixed in our frame driver |
 | [dram-refresh.md](dram-refresh.md) | snesrecomp runtime | refresh 0.09 % short and at no fixed beam position | fixed in our frame driver |
@@ -25,7 +25,7 @@ Ordered as found, measured on `01-no-inputs-4m.evsmv` (all against MesenCE 2.2.1
 | [refresh-before-access.md](refresh-before-access.md) | our frame driver | a refresh stall inside an instruction came after its port access | fixed on branch `snesrecomp-spc-access-cycles` |
 | [port-word-writes.md](port-word-writes.md) | snesrecomp port writes | a 16-bit port write lands both bytes at once, high first | fixed on branch `spc-access-cycles` (per-byte clocks, queue in time order) |
 | [dsp-timing.md](dsp-timing.md) | snesrecomp S-DSP | per-sample DSP: key-on, ENDX and envelope steps off; directory reads not at their clock | fixed on branch `spc-access-cycles` (per-clock S-DSP, timer phase) |
-| [compiled-cycle-charges.md](compiled-cycle-charges.md) | snesrecomp recompiler | compiled code billed at code speed: FastROM WRAM work ~4 % fast | open, not the first difference now |
+| [compiled-cycle-charges.md](compiled-cycle-charges.md) | snesrecomp recompiler | compiled code billed at code speed, charged before its accesses, deadline per block: native exact only to NMI 1 | fixed on branch `aot-bus-exact` (2026-11-03): native identical to MesenCE at every key of both replays |
 | [hv-counter-latch.md](hv-counter-latch.md) | snesrecomp PPU | `$2137` latched always, reset the `$213C/$213D` flip-flops, read 0; `$2138`/`$213B` during rendering read the CPU's address | fixed on branch `spc-access-cycles` (latch) and `ppu-render-reads` (reads during rendering, 2026-11-02): the attract replay is identical at every key |
 | [host-frames-and-fields.md](host-frames-and-fields.md) | snesrecomp frame driver | a long DMA packs several fields into one host frame: replay input lands late | open for replays with input |
 
@@ -53,6 +53,13 @@ on: the S-DSP ([dsp-timing.md](dsp-timing.md)). `02-newgame-boy-available.evsmv`
 S-DSP per clock and the SPC timers' prescaler phase ([dsp-timing.md](dsp-timing.md)), cleared SRAM on both sides.
 All interpreted: `01-no-inputs-4m.evsmv` identical at every NMI key from 120 to 2514 and 2516–3862, 4,773 of
 9,287 keys (51.4 %); `02-newgame-boy-available.evsmv` as before (120–331, 335–396; 274 of 9,227).
+
+### Native (2026-11-03)
+snesrecomp branch `aot-bus-exact` on top: compiled code generated with `SNESRECOMP_EXACT_BUS=1` charges each
+instruction as the interpreter does ([compiled-cycle-charges.md](compiled-cycle-charges.md)), and our driver aligns the
+beam after each slice ([short-scanline.md](short-scanline.md)). Measured to the end of each replay (MesenCE's
+testrunner now runs past its 100 s default): `01-no-inputs-4m.evsmv` and `02-newgame-boy-available.evsmv` identical at
+every NMI key, 120–14424 and 120–17948, native and interpreted alike.
 
 ## Measured (2026-10-30, all fixes above)
 

@@ -12,8 +12,9 @@ next steps for the Secret of Evermore static recompilation.
   attract replay, the rest from known framework limits. One file per known difference, with the
   measurements: [imperfections/README.md](imperfections/README.md).
 - **Branch `snesrecomp-spc-access-cycles` (2026-10-31, 2026-11-02):** both replays (01 attract, 02 new game)
-  identical at every NMI key, all interpreted; glue alone stopped at 319. The native build is still exact only to
-  NMI 1 ([compiled-cycle-charges.md](imperfections/compiled-cycle-charges.md)). Lessons and the A/B per framework switch:
+  identical at every NMI key, all interpreted; glue alone stopped at 319. Since 2026-11-03 native too, to the end of
+  both replays (snesrecomp `aot-bus-exact`, [compiled-cycle-charges.md](imperfections/compiled-cycle-charges.md); the
+  beam after long DMAs, [short-scanline.md](imperfections/short-scanline.md)). Table: [progress.md](progress.md). Lessons and the A/B per framework switch:
   [mesence-parity-lessons.md](mesence-parity-lessons.md).
 - The earlier snes9x drift after counter ~315 (identical in interpreter and native runs) is explained by the
   first of them: the NMI the game raises by enabling NMI inside vblank ([imperfections/late-nmi.md](imperfections/late-nmi.md)).

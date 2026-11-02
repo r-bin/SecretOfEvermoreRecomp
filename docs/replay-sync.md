@@ -44,6 +44,12 @@ Native still exact only to NMI 1. (Counts of 9,287 / 9,227 written earlier the s
 that ended at key 9406: the run parted at 9866, past it.) What it took and why the framework had to
 change: [mesence-parity-lessons.md](mesence-parity-lessons.md).
 
+## Native, full length (2026-11-03)
+With snesrecomp `aot-bus-exact` (bus-exact compiled code) and the beam aligned after each slice, measured with
+MesenCE's testrunner past its 100 s default: both replays 🟢 at every key to their end, native and interpreted:
+`01-no-inputs-4m.evsmv` 120–14424 (14,305 keys), `02-newgame-boy-available.evsmv` 120–17948 (17,829 keys). The
+earlier 01 figure (10886) was where MesenCE stopped; past it, the attract seed at 11987 parted until the beam fix.
+
 ## Can it reach 100 %?
 
 Without changing snesrecomp (owner's rule), timing is ours to set in our frame driver and glue

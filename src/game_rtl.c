@@ -47,6 +47,7 @@ extern uint8_t g_ram[0x20000];
  *   then the NMI's number since power-on. An instruction boundary, the same on MesenCE; a frame's end is not:
  *   the recomp's CPU finishes the instruction that crossed V=225, MesenCE stops inside it.
  *   SOE_COMPARE_NMI_LOG adds "N <nmi> <master clock> <interrupted pc24>" per NMI: where cycles part.
+ *   SOE_COMPARE_NMI_BEAM with it: "[nmibeam] <nmi> <H clock> <line>" on stderr (a probe: it walks the beam there).
  * - SOE_COMPARE_SAVE_ROOT=<dir>: battery RAM from that folder (empty: cleared SRAM), see SoeAfterConfig.
  * Nothing else touches the disk: compare reads fd 3 from a pipe.
  */
@@ -63,6 +64,7 @@ static struct {
     long raw_last, nmis; /* the last $0100 seen (-1 before the reset code's 0) and the key */
     int at_nmi;          /* SOE_COMPARE_AT=nmi */
     int nmi_log;         /* SOE_COMPARE_NMI_LOG */
+    int nmi_beam;        /* SOE_COMPARE_NMI_BEAM */
     long nmis_taken;
     FILE *out;
 } s_cmp;
@@ -91,6 +93,7 @@ static void CmpInit(void) {
     const char *at = getenv("SOE_COMPARE_AT");
     s_cmp.at_nmi = at && !strcmp(at, "nmi");
     s_cmp.nmi_log = getenv("SOE_COMPARE_NMI_LOG") != NULL;
+    s_cmp.nmi_beam = getenv("SOE_COMPARE_NMI_BEAM") != NULL;
     if (s_cmp.at_nmi) soe_frame_driver_nmi_hook = CmpNmi;
     s_cmp.raw_last = -1;
     s_cmp.out = fdopen(3, "wb");
@@ -188,6 +191,10 @@ static void CmpNmi(void) {
         const uint16_t sp = g_cpu.S;
         const uint32_t pc = g_ram[(uint16_t)(sp + 2)] | g_ram[(uint16_t)(sp + 3)] << 8 | (uint32_t)g_ram[(uint16_t)(sp + 4)] << 16;
         fprintf(s_cmp.out, "N %ld %llu %06x\n", s_cmp.nmis_taken, (unsigned long long)g_cpu.master_cycles, pc);
+        if (s_cmp.nmi_beam) { /* SOE_COMPARE_NMI_BEAM: and the beam's H clock and line on stderr (walks the beam here) */
+            snes_sync_master_clock(g_snes, g_cpu.master_cycles);
+            fprintf(stderr, "[nmibeam] %ld %u %u\n", s_cmp.nmis_taken, (unsigned)g_snes->hPos, (unsigned)g_snes->vPos);
+        }
     }
     CmpAt(s_cmp.nmis_taken);
 }

@@ -86,6 +86,11 @@ else
   echo "== Skipping ROM verification (--no-verify) =="
 fi
 
+# Bus-exact compiled code (snesrecomp v2/bus_exact.py, branch aot-bus-exact): every instruction charged as the
+# interpreter charges it, so native runs keep MesenCE's timing. SNESRECOMP_EXACT_BUS=0 generates the old
+# block-folded charges (docs/imperfections/compiled-cycle-charges.md).
+export SNESRECOMP_EXACT_BUS="${SNESRECOMP_EXACT_BUS:-1}"
+
 GEN_ARGS=(--rom "$ROM" --cfg-dir recomp --out-dir src/gen
           --funcs-h recomp/funcs.h --project-root "$ROOT")
 if [ "$CFG_ROOTS" -eq 1 ]; then GEN_ARGS+=(--cfg-roots); fi

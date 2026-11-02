@@ -44,6 +44,7 @@ charges). Compiled code should do the same:
 - Keep folding inside a block, so plain code stays as fast as today.
 - **Flush before I/O:** before an access to `$2100–$21FF` or `$4000–$43FF`, add the charge owed so far plus the
   access's own offset, so the access sees its exact clock. The access itself goes through C.
+- Prototype (sixth round below): one block per instruction instead of folding, at no measurable cost for this game.
 
 ## C. Sync at shared state
 Before a CPU access to a register another chip owns, run that chip to the access clock, then do the access:
@@ -136,8 +137,18 @@ read what the PPU itself fetches (imperfections/hv-counter-latch.md). Interprete
 key to the end of their input, with our driver's NMI handler sliced at refresh points (imperfections/dram-refresh.md):
 `01-no-inputs-4m.evsmv` 120–10886, `02-newgame-boy-available.evsmv` 120–10741.
 
+Sixth round (2026-11-03, snesrecomp branch `aot-bus-exact` on top): part B for compiled code, generated with
+`SNESRECOMP_EXACT_BUS=1` (`recompiler/v2/bus_exact.py`; imperfections/compiled-cycle-charges.md). Each instruction is
+its own block and costs what the interpreter charges; an instruction with a memory operand charges after its effect
+with the clocks to its data access published (`g_aot_access_prefix`), so I/O sees its own clock. Two things B did not
+name were needed: compiled instructions call the host's per-instruction hook (`g_interp_bridge_pc_hook`) like the
+interpreter, and an interpreted routine called from compiled code stops at the deadline (the deadline unwind). Both
+replays, native, identical to MesenCE at every NMI key to their end; no measurable cost in speed.
+
 Still open, in the order they part the run:
-1. B, compiled code billed at code speed: the native build is exact only to NMI 1 (compiled-cycle-charges.md).
+1. None on the two replays measured. Before a PR: the switches become defaults or options of the generator and
+   the runtime, `tests/run_c_tests.sh` links again (snes.c's APU-timeline symbols), and B's I/O lead covers RMW and
+   word accesses that straddle regions (not met in this game).
 2. Our frame driver takes the short line's 4 clocks at V=225, so the beam is 4 clocks off MesenCE's in lines
    225–240 of every other field; and on line 124 of one field it stood 8 clocks off (hv-counter-latch.md).
 

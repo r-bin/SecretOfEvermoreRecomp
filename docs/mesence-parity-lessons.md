@@ -10,10 +10,11 @@ All interpreted, both sides with cleared SRAM:
 
 | Replay | Identical NMI keys | Glue only (develop) |
 |---|---|---|
-| `02-newgame-boy-available.evsmv` | every key to the input's end, 120–10741 | 120–319 |
-| `01-no-inputs-4m.evsmv` | every key to the input's end, 120–10886 (since 2026-11-02; was 120–5997) | 120–319 |
+| `02-newgame-boy-available.evsmv` | every key to the replay's end, 120–17948 | 120–319 |
+| `01-no-inputs-4m.evsmv` | every key to the replay's end, 120–14424 (since 2026-11-03; was 120–5997, then 120–11986) | 120–319 |
 
-The native build is still exact only to NMI 1: compiled code is billed at code speed (part B of the proposal).
+Since 2026-11-03 the native build too (snesrecomp `aot-bus-exact`, imperfections/compiled-cycle-charges.md). Earlier
+"to the input's end" figures (10886, 10741) were where MesenCE's testrunner stopped after its default 100 s.
 
 ## Without the framework changes it does not sync
 Each snesrecomp change has a switch; one at a time turned off, on `01-no-inputs-4m.evsmv` to key 6000:
@@ -84,6 +85,15 @@ latch logs (`SNESRECOMP_DMA_LOG`, `SNESRECOMP_HV_LOG`, `SNESRECOMP_PPU_READ_LOG`
 `SNESRECOMP_PORT_LOG`).
 
 ## Traps
+- MesenCE's testrunner ends every run after 100 s of wall time unless given `--timeout=`: a long comparison just
+  stops, at a key that depends on the machine. Check that the last compared key is the replay's end.
+- Two copies of one recomp executable started at the same moment can fail with "mods: plan rejected: cannot publish
+  mod state": start them a second apart.
+- Equal NMI clocks do not prove an equal beam: an NMI waits for an instruction boundary, which hides a few clocks of
+  beam phase. Compare the beam itself (`SOE_COMPARE_NMI_BEAM`) or a beam read (`$213C`).
+- Native timing needs more than exact charges: the host's per-instruction hook and the deadline must reach compiled
+  code and interpreted routines nested in it, or NMI recognition and slice ends land one instruction or one routine
+  late.
 - MesenCE keeps battery RAM per ROM file name and writes it back: a run on the ROM's own name starts from the owner's
   save. Compare runs use their own name and an empty save folder (`SOE_COMPARE_SAVE_ROOT`).
 - MesenCE's memory callbacks fire for every bank mirror only if registered for each: `$2140` written through bank
