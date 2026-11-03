@@ -243,8 +243,28 @@ void GameRunOneFrame(void) {
 
 void GameDrawPpuFrame(void) { snes_beam_frame_driver_draw_ppu_frame(); }
 
-/* A new session (reset / return to title) must not inherit driver state from the last one. */
+/* A new session (reset / return to title) must not inherit driver state from the last one. snesrecomp calls
+ * session_reset only when the content variant changes; a console reset (the Reset hotkey, a script's `reset`) calls
+ * hardware_reset after resetting the machine. Without it the driver resumed at the old PC on the reset hardware:
+ * a black screen, the NMI counter stuck at 0 (found 2026-11-03, docs/bugs-and-todos.md "Soft reset"). */
 void GameSessionReset(void) { soe_frame_driver_reset(); }
+
+/* The console reset. snesrecomp's RtlReset resets the machine and the legacy core's registers
+ * (SnesEnterNativeMode), not g_cpu, which the bridge and the compiled code run on: the game's M0X0 survived, and the
+ * reset handler's first `lda.b #$8F` read a 16-bit operand and ran off into data. A 65816 reset: emulation mode,
+ * M = X = I = 1, decimal off, D = DB = PB = 0, the stack in page 1 (as cpu_state_init at power-on, clocks and RAM
+ * kept). */
+static void GameHardwareReset(void) {
+    g_cpu.emulation = 1;
+    g_cpu.P = CPU_P_M | CPU_P_X | CPU_P_I;
+    cpu_p_to_mirrors(&g_cpu);
+    g_cpu.S = (uint16_t)(0x0100u | (g_cpu.S & 0xFFu));
+    g_cpu.D = 0;
+    g_cpu.DB = 0;
+    g_cpu.PB = 0;
+    g_cpu.host_return_valid = 0;
+    soe_frame_driver_reset();
+}
 
 /*
  * Called by the desktop host after config.ini is parsed (hooked in src/main.c as the host
@@ -337,4 +357,5 @@ const RtlGameInfo kGameInfo = {
     .state_load_extra = &SoeStateLoadExtra,
     .on_state_loaded = &SoeOnStateLoaded,
     .session_reset = &GameSessionReset,
+    .hardware_reset = &GameHardwareReset,
 };

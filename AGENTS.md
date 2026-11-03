@@ -30,6 +30,7 @@ These rules apply to every AI agent working in this repository.
 | `src/game_rtl.c` | our glue: frame driver, renderer hook, save states, compare hashes |
 | `src/soe_bindings.c` | routines run as everscript-vscode's reconstructed C (`hle` lines in `recomp/seed-exclusions.txt`; proof rules in `docs/game-rtl.md` §4b) |
 | `src/main.c` | the scaffold's host descriptor, plus our `after_config` line |
+| `tests/` | ROM-backed `ctest` tests (`-DSOE_TEST_ROM=...`), each pinning a fixed bug |
 | `recomp/` | seeds (`bank*.cfg`), `seed-exclusions.txt`, `symbols.toml` |
 | `tools/` | `regen.sh` (ROM -> C), `bisect.js`, `verify-intro.js`, `check-obj-tiles.js` |
 | `docs/` | `README.md` (status, map), setup, glue, debugging, headless exploration, bugs and roadmap, research |

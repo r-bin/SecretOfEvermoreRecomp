@@ -63,6 +63,16 @@ else()
     message(STATUS "No reconstructed C (SOE_RECONSTRUCTED_C): bindings run the ROM bytes")
 endif()
 
+# ROM-backed tests (ctest), skipped without a ROM: -DSOE_TEST_ROM=/path/to/rom.sfc. Each pins a fixed bug.
+enable_testing()
+set(SOE_TEST_ROM "" CACHE FILEPATH "Your own ROM, for the ROM-backed ctest tests (empty: none run)")
+if(SOE_TEST_ROM)
+    add_test(NAME reset_equals_boot
+             COMMAND bash ${CMAKE_SOURCE_DIR}/tests/reset_equals_boot.sh
+                     $<TARGET_FILE:SecretOfEvermoreSNESRecomp> ${SOE_TEST_ROM})
+    set_tests_properties(reset_equals_boot PROPERTIES TIMEOUT 120)
+endif()
+
 # ROM identity. rom_identity.txt is the one place the digests live: the build
 # turns it into snesrecomp_rom_identity.h (SNESRECOMP_ROM_EXPECTED_SHA256 and
 # friends) for src/main.c, and tools/regen.sh, scripts/package_release.sh and

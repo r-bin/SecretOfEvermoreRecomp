@@ -193,13 +193,13 @@ people can read and mod at the source level, not just play.
 | # | Step | Closes | Evidence that it is done |
 |---|---|---|---|
 | 1 | Upstream the four snesrecomp changes; pin upstream commits | §2.1 | the sync replays pass on the pins in `framework_pins.txt` |
-| 2 | ROM-free CI build; ROM-backed `ctest` for boot, reset, save state; `check-sync.sh` | §2.4 | green CI; tests that fail on a reverted fix |
+| 2 | ROM-free CI build; ROM-backed `ctest` for boot, reset, save state; `check-sync.sh` | §2.4 | green CI; tests that fail on a reverted fix. **2026-11-03:** `ctest` reset test (found and pinned a real soft-reset bug); CI waits on step 1 (the pinned snesrecomp commit is not on GitHub) |
 | 3 | Event-based milestone checks generated from the WRAM map and scripts; play 03 on the native build | §2.2 | every region, boss and the ending reached, written in [progress.md](progress.md) |
 | 4 | Settle `LICENSE`, merge to `main`, player README, first tagged setup pack | §2.3 | a public release a stranger can install |
 | 5 | Session replay recording and a reporting section | §2.5 | a player's report replays in `compare.mts` |
 | 6 | Mod hook layer with "all off = vanilla" in CI; rewind, save-state browser, widescreen, 5-status fix | §2.6, §2.7 | each mod's own test; sync replays unchanged with mods off |
-| 7 | FPS per build mode | §2.8 | numbers in [progress.md](progress.md) |
-| 8 | First proven `hle_func` binding; names A/B | §2.9 | sync replays unchanged; normalized C identical |
+| 7 | FPS per build mode | §2.8 | numbers in [progress.md](progress.md). **Done 2026-11-03:** native 500 / 390 frames/s; the PPU renderer dominates |
+| 8 | First proven `hle_func` binding; names A/B | §2.9 | sync replays unchanged; normalized C identical. **Done 2026-11-03:** the RNG bound ([progress.md](progress.md), "Bound C"); names A/B by hand ([game-rtl.md](game-rtl.md) §4a) |
 | 9 | Co-op, then netplay | §2.6 | after 3 and 6 |
 
 Steps 1 to 4 decide whether the project can be called a recomp of the whole game. Steps 5 to 9
