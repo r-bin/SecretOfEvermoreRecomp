@@ -36,6 +36,7 @@ into a native, standalone, portable C desktop executable using
 | **[reference-emulators.md](reference-emulators.md)** | **Which Emulator for What**<br>MesenCE is the trusted, scriptable reference for WRAM comparison; ares the precision reference for probing by hand; snes9x a fast probe, never accurate. How to run each. |
 | **[cdl-and-seeds.md](cdl-and-seeds.md)** | **The CDL and the Seeds**<br>How good the recording is (90 % of the ROM), why it is enough for the recomp, and why only the seeds are committed. |
 | **[lessons-from-mmx-and-lufia2.md](lessons-from-mmx-and-lufia2.md)** | **Lessons from Other Ports**<br>What Mega Man X Recompiled (LLE-first contract, tripwires, validation ladder, replays, coverage capture) and Lufia II Recompiled (proven decomp bindings) do for accuracy, and a prioritised list for our recomp. |
+| **[great-recomp-gap-analysis.md](great-recomp-gap-analysis.md)** | **What a Great Recomp Needs**<br>Where we stand against Mega Man X Recompiled beyond accuracy (reproducible pins, whole-game proof, release, tests and CI, replay bug reports, mods, performance), how everscript-vscode's knowledge closes each gap, and the order to do it in. |
 | **[experimental-renderer.md](experimental-renderer.md)** | **Experimental Graphics & Lighting**<br>Dynamic 2D lighting with 2D shadow casting from collision words, HD Mode 7 flight supersampling, sub-frame motion interpolation, and CIE color-science CRT simulation. |
 
 ---
