@@ -120,3 +120,8 @@ Verify an exclusion took: the address has only `NULL` variants in `dispatch_v2.c
    runs in catch-up batches): time them with `spc.cycle / spc.clockRatio`.
 9. A timing hunt against MesenCE: method, probes and traps in `docs/mesence-parity-lessons.md` (MesenCE's `.srm`
    per ROM name, callbacks per bank mirror, the script engine's own frames, env switches the glue overrides).
+10. Exclusions and `force_lle` lines are dated workarounds: after a framework or driver change where the tiers
+    meet, rebuild without each and A/B native vs interpreted (`native-vs-interp.mts`); 8 of 9 were obsolete in 2026-11.
+11. Moving long-interpreted code to compiled code can surface the compiled tier's leftovers from older timing models
+    (the `$4212` polling tick moved the beam 64 clocks per read): bisect with `clock-trace.mts`, then a beam print per
+    instruction from `g_interp_bridge_pc_hook`.

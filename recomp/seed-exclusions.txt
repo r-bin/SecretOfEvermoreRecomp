@@ -4,11 +4,7 @@
 #   dispatch <pc24> <reason>   no `indirect_dispatch` at this jump site
 # An address stands for all its HiROM mirrors ($00/$40/$80/$C0 banks).
 
-# The NMI's dynamic hook: a static target list silently skips unobserved callbacks. Moot while the NMI handler
-# ($80:823E-$80:84E9) is interpreted (symbols.toml I_NMI emit = false); decide it when the handler is compiled.
-dispatch 8084BE  NMI dynamic hook JML [$0125] with 3-byte return frame (PHK; PEA) and dynamic targets
-
-# Lifted 2026-11-03: dispatch 8F9F46 (raycast loop), func 808FEE/809033/809040/80960A/809685/8096BB (sprite
+# Lifted 2026-11-03: dispatch 8084BE (NMI hook; the export now writes its PHK+PEA frame as frame:3), dispatch 8F9F46 (raycast loop), func 808FEE/809033/809040/80960A/809685/8096BB (sprite
 # allocator), func 8CCFFD (script scheduler). With bus-exact code and compiled resume, native and all-interpreted
 # runs are WRAM-identical at every NMI key of both sync replays and a save loads into the right room
 # (docs/bugs-and-todos.md, "Exclusions lifted").

@@ -20,14 +20,16 @@ build have every NMI on the same master clock and WRAM identical at every key fr
 How much of a replay runs as compiled code: instructions per tier over the whole run (snesrecomp
 `SNESRECOMP_TIER_STATS=1`; everscript-vscode `tools/compare/probes/tier-stats.mts`). The goal is 100 %.
 
-| Replay | Compiled | Interpreted | Native | Before lifting the exclusions | Before compiled resume |
-|---|---|---|---|---|---|
-| `01-no-inputs-4m` (to key 14424) | 204,118,573 | 5,972,703 | **97.2 %** | 72.3 % | 16.3 % |
-| `02-newgame-boy-available` (to key 17948) | 252,063,503 | 8,680,393 | **96.7 %** | 62.6 % | 21.7 % |
+| Replay | Compiled | Interpreted | Native | 2026-11-03 steps: resume → exclusions lifted → NMI, traps |
+|---|---|---|---|---|
+| `01-no-inputs-4m` (to key 14424) | 209,107,308 | 921,154 | **99.56 %** | 16.3 → 72.3 → 97.2 → 99.56 % |
+| `02-newgame-boy-available` (to key 17948) | 259,865,614 | 651,824 | **99.75 %** | 21.7 → 62.6 → 96.7 → 99.75 % |
 
-Measured 2026-11-03 (5,823 routine variants: 5,393 compiled, 430 interpreter-only), with eight of the nine seed
-exclusions lifted (`docs/bugs-and-todos.md`, "Exclusions lifted"); native still in sync with MesenCE to the end of
-both replays.
+Measured 2026-11-03 (5,795 routine variants: 5,387 compiled, 408 interpreter-only); native in sync with MesenCE to
+the end of both replays. The last step: the NMI and IRQ handler bodies are seeded (their vectors' `JML` stubs made
+them unreachable as roots), the snesrecomp fixes that compiled interrupt handlers needed (`docs/bugs-and-todos.md`,
+"Compiled NMI handler"), BRK assertion traps declared `authority_data`, and jump-table entries only up to targets
+the CDL saw run.
 
 **Compiled resume** (snesrecomp `aot-resume`, generated with `SNESRECOMP_AOT_RESUME=1`, which our `tools/regen.sh`
 sets). Before it, each CPU slice (it ends at every line's refresh point) left the code it stopped in to the
@@ -48,14 +50,13 @@ operand's last byte on the data bus before an access (open bus, which `$2137` re
 interpreter levers (`SNESRECOMP_LLE_BOUNCE=0`, the target file). Variants with an RTI get no resume entries.
 `SNESRECOMP_AOT_RESUME=0` at run time turns resume off, `=2` keeps only suspended frames.
 
-What still runs interpreted (from the probe's busiest interpreted runs):
-- **The NMI handler** `$80:823E`–`$80:84E9` (with its stub `$00:823A`): `recomp/symbols.toml` keeps `I_NMI`
-  interpreted and the seed export emits no `func` for the body, which is reached by a `JML`. About 1.5 % of each replay.
-- **Interpreter-only variants** (430): the analyzer's reasons are mostly unproven callee exits and truncated call
-  continuations, and `brk_at_<site>`, a `BRK` assertion trap behind a branch that never runs, e.g. `BRK #$A6` at
-  `$8F:9E76` in `companion_breadcrumb_fifo_delete_node` (0.4 %). `entity_anim_frame_advance_step` `$90:80D2`
-  (0.4 %): unproven calls to `$90:8E5E` with M1X0.
-- **Interrupt handlers** after a slice stops in them (no resume entries in RTI variants).
+What still runs interpreted (0.25-0.44 %, no single run above 0.02 %):
+- **Interpreter-only variants** (408). The analyzer's reasons: callees whose exit widths it cannot prove
+  (`unproven_callee_exit`, `unproven_call_at_…`), call continuations it cannot follow (`truncated_call_continuation`),
+  and decodes into data. The busiest: `$8C:D037`/`$8C:D09C` (script scheduler handlers), `$8C:E52A`, `$90:D3CD`–`$90:D400`.
+- **The NMI stub** `$00:823A` (`I_NMI` in `recomp/symbols.toml`, 4 bytes, interpreted by choice) and what the
+  interpreter runs after it until the next call or slice.
+- Code the CDL library never recorded.
 
 ## What it took
 
@@ -70,13 +71,14 @@ without them interpreted parts at 319 and native at NMI 1):
 | H/V latch (`$2137`, `$213C/D`) and OAM/CGRAM reads during rendering | the attract demo's RNG seed reads them with the display on | [hv-counter-latch.md](imperfections/hv-counter-latch.md) |
 | Bus-exact compiled code (`SNESRECOMP_EXACT_BUS=1`, which our `tools/regen.sh` sets) | compiled code was billed at code speed and checked the deadline once per block | [compiled-cycle-charges.md](imperfections/compiled-cycle-charges.md) |
 | Compiled resume (`aot-resume`, `SNESRECOMP_AOT_RESUME=1`) | native share; with it, the beam, word-access and open-bus fixes | above, `docs/bugs-and-todos.md` §2 |
+| Compiled RTI goes on at the popped PC under the scheduler; no `$4212` polling tick for bus-exact code | the NMI handler compiled | `docs/bugs-and-todos.md` §2 |
 
 **In our frame driver** (`src/soe_frame_driver.c`): late NMI, NMI recognition, interrupt cost, DRAM refresh at
 MesenCE's positions (also inside the NMI handler), the auto-joypad busy window, the short scanline and the beam
 alignment after a long DMA ([imperfections/README.md](imperfections/README.md) has one file each).
 
 **Still open:** the snesrecomp changes are not upstream yet ([upstream-access-timing.md](upstream-access-timing.md));
-native share below 100 % (the list above).
+native share below 100 % (the list above: interpreter-only variants).
 
 ## How to measure
 
