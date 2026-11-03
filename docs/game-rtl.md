@@ -175,20 +175,25 @@ A binding must not be told apart from the ROM routine, so the helper runs the C 
   (`soe_frame_driver_deadline()`), or cross only a DRAM refresh stop: the frame driver charges refreshes after
   the slice from the points it crossed, which a WRAM-only routine cannot tell apart. Then it must still end before
   the next stop that is not a refresh (`soe_frame_driver_hard_deadline()`: the field end, a watched step, an
-  interrupt run's end), with no IRQ possible (the driver takes IRQs between slices). Otherwise the helper yields
-  at the routine's entry and the interpreter runs the ROM bytes.
+  interrupt run's end), with no IRQ possible (the driver takes IRQs between slices). Otherwise the ROM bytes run:
+  the helper does the first instruction and yields at the second, a compiled root (`body=` on the `hle` line,
+  since `hle_func` replaces the entry in every mirror). A deadline already reached at the entry stops there, and
+  the interpreter then runs that one first instruction: no compiled code exists at a bound entry.
 - **Same cycles.** It charges what bus-exact code charges on the path taken: 6 master clocks per CPU cycle, each
   code fetch and data access at its speed. The path is worked out before the C runs.
 - **Same state.** Registers, flags, S (the RTL's pop) and the open bus (the RTL's last read) as the asm leaves them;
   only WRAM is touched, so when inside the routine each access happens cannot be seen.
 
-Without the reconstructed C (no sibling checkout) every helper runs the ROM bytes: the build stays exact, the
-routine only runs interpreted. `SOE_HLE_STATS=1` counts both paths; `SOE_HLE_MUTATE=1` corrupts the C path's
-result, the control that shows the sync replays catch a wrong binding.
+Without the reconstructed C (no sibling checkout) every helper runs the ROM bytes: the build stays exact.
+`SOE_HLE_STATS=1` counts both paths; `SOE_HLE_MUTATE=<helper's name>` (`1`: all) corrupts the C path's result, the
+control that shows the sync replays catch a wrong binding. To pick the next routine: `SOE_BANK_STATS=1
+SOE_PC_COUNTS=<file>` writes how often each PC ran.
 
 | Routine | C | Proof |
 |---|---|---|
 | `$80:859B` `random_number_generator` | `reconstructed-c/80/80859B_random_number_generator.c` | [progress.md](progress.md), "Bound C" |
+| `$8F:A914` `update_entity_plane` | `reconstructed-c/8F/8FA914_update_entity_plane.c` | same |
+| `$90:9DE8` `eval_tile_collision` | `reconstructed-c/90/909DE8_eval_tile_collision.c` | same |
 
 ---
 

@@ -49,16 +49,17 @@ operand's last byte on the data bus before an access (open bus, which `$2137` re
 interpreter levers (`SNESRECOMP_LLE_BOUNCE=0`, the target file). Variants with an RTI get no resume entries.
 `SNESRECOMP_AOT_RESUME=0` at run time turns resume off, `=2` keeps only suspended frames.
 
-What still runs interpreted (0.01-0.03 %, no run above 0.001 %):
-- **The RNG's fallbacks** (`$80:859B`, 64,225 instructions on 02): calls whose C would run into a non-refresh stop
-  (Bound C below).
+What still runs interpreted (0.07-0.08 %):
+- **First instructions of bound routines** (about 82,000 on 01, 144,000 on 02): calls that reach a bound entry at a
+  deadline; no compiled code exists there (Bound C below).
 - **Single steps around the NMI** (about 30,000 instructions per replay, scattered over whatever runs at NMI time:
   `$8C:C9DC`-`$8C:CBD3` in `load_a_16_16_map_graphic_through_3_id` during lag frames, `$8F:9821`). Not a missing
   variant: the resume entries exist for the live widths (M1X0) and calls arrive at compiled M0X0 entries. While a
   late NMI is possible the frame driver stops after every instruction: 1,001,871 single-step slices on 01 and
   1,353,505 on 02 (about 70 per frame; glue `SOE_BANK_STATS=1`), nearly all of which run compiled. About 3 % run
   interpreted, most likely where the compiled prologue yields at once to the one-clock deadline and the scheduler
-  makes the step itself (not traced inside snesrecomp). 0.01 % of all instructions; the steps themselves are
+  makes the step itself (not traced inside snesrecomp; on reading the code this looks wrong, since the scheduler stops
+  at the same check, so the cause is open). 0.01 % of all instructions; the steps themselves are
   needed for MesenCE's NMI timing ([imperfections/late-nmi.md](imperfections/late-nmi.md)).
 - **Interpreter-only variants** (74, 11 in the banks the game runs): the menu and alchemy dispatchers
   `$8E:9EBE`-`$8E:AD3D` call handlers through `jsr (abs,x)` that never return normally (the CDL knows: the seeds
@@ -103,15 +104,19 @@ Routines that run as everscript-vscode's reconstructed C instead of compiled ROM
 §4b). A binding counts as proven when both sync replays stay WRAM-identical to MesenCE at every key with it, its C
 path ran often, and a corrupted C path (`SOE_HLE_MUTATE=1`) is caught.
 
-| Routine | 01: C / interpreted | 02: C / interpreted | Sync with MesenCE | Control |
+| Routine | 01: C / ROM bytes | 02: C / ROM bytes | Sync with MesenCE | Control |
 |---|---|---|---|---|
-| `$80:859B` `random_number_generator` | 34,242 (18,091 across a refresh stop) / 1,580 | 65,224 (34,618) / 2,936 | to 14424 and 17948 | caught at key 360 |
+| `$80:859B` `random_number_generator` | 34,242 / 1,580 | 65,224 / 2,936 | to 14424 and 17948 | caught at key 360 |
+| `$8F:A914` `update_entity_plane` | 836,249 / 36,210 | 1,334,680 / 57,748 | to 14424 and 17948 | caught at key 577 |
+| `$90:9DE8` `eval_tile_collision` | 1,043,298 / 45,971 | 1,990,217 / 87,636 | to 14424 and 17948 | caught at key 363 |
 
-Measured 2026-11-03 (`run-stats.mts --stats`, `compare.mts --backend mesen,recomp`). The C path runs only when the
-routine ends before the next stop that is not a DRAM refresh, with no IRQ possible; the rest run the ROM bytes
-interpreted. Native share with it: 99.95 % (01) and 99.96 % (02); the RNG's instructions no longer count as
-compiled, and the interpreted fallbacks leave their callers interpreted until the next resume. A first version
-that never crossed a refresh stop ran the C only 45 % of the time (native share 99.76 % / 99.65 %).
+Measured 2026-11-03 (`run-stats.mts --stats`, `compare.mts --backend mesen,recomp --verbose`). The C path runs only
+when the routine ends before the next stop that is not a DRAM refresh, with no IRQ possible (96 % of calls). The rest
+run the ROM bytes compiled from the second instruction (`body=`, [game-rtl.md](game-rtl.md) §4b), which took the RNG's
+interpreted instructions from 35,139 to 1,525 on 01. Each call that reaches its entry at a deadline, mostly in
+the late-NMI single steps, still interprets that one first instruction. Native share with the three bindings: 99.93 %
+(01) and 99.92 % (02); that one instruction per such call is now the largest interpreted item (about 82,000 on 01,
+144,000 on 02). Instructions run as C count in neither tier: compiled fell from 209.1 M to 190.0 M on 01.
 
 ## What it took
 

@@ -2,8 +2,10 @@
 # reads this file when it writes recomp/bank*.cfg; each entry is a bug in docs/bugs-and-todos.md.
 #   func <pc24> <reason>       no root `func` line, and `force_lle`: kept interpreted for every caller
 #   dispatch <pc24> <reason>   no `indirect_dispatch` at this jump site
-#   hle <pc24> <c_function> <reason>   `hle_func`: the routine at this address runs our glue's C function
-#                                       (src/soe_bindings.c; docs/game-rtl.md 4b); only this address, no mirrors
+#   hle <pc24> <c_function> [body=<pc24>] <reason>   `hle_func`: the routine at this address runs our glue's C
+#                                       function (src/soe_bindings.c; docs/game-rtl.md 4b); only this address, no
+#                                       mirrors. body=: its second instruction, seeded as a compiled root for the
+#                                       calls the C cannot take
 # An address stands for all its HiROM mirrors ($00/$40/$80/$C0 banks).
 
 # Lifted 2026-11-03: dispatch 8084BE (NMI hook; the export now writes its PHK+PEA frame as frame:3), dispatch 8F9F46 (raycast loop), func 808FEE/809033/809040/80960A/809685/8096BB (sprite
@@ -12,4 +14,6 @@
 # (docs/bugs-and-todos.md, "Exclusions lifted").
 
 # C bindings (everscript-vscode reconstructed-c), each proven by both sync replays against MesenCE.
-hle 80859B HleRandomNumberGenerator random_number_generator, reconstructed-c/80/80859B (G1-rated); C only when it ends before the slice deadline
+hle 80859B HleRandomNumberGenerator body=80859E random_number_generator, reconstructed-c/80/80859B (G1-rated); C only when it ends before the slice deadline
+hle 8FA914 HleUpdateEntityPlane body=8FA917 update_entity_plane, reconstructed-c/8F/8FA914 (G1-rated); C only when it ends before the slice deadline
+hle 909DE8 HleEvalTileCollision body=909DEA eval_tile_collision, reconstructed-c/90/909DE8 (G1-rated); C only when it ends before the slice deadline

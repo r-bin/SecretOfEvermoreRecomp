@@ -306,16 +306,24 @@ static uint64_t s_last_dma; /* g_snes_dma_charged as the last instruction starte
  * installed between slices and is treated as "no hook" there, so the run is the same with it on. */
 static uint64_t s_bank_insns[256], s_insns, s_steps, s_step_insns;
 static int s_bank_stats = -1;
+static uint32_t *s_pc_counts; /* SOE_PC_COUNTS=<file>: runs per PC, written at exit as "<pc24> <count>" lines */
 static void count_pc(uint32_t pc24, int m_flag, int x_flag) {
     (void)m_flag; (void)x_flag;
     s_bank_insns[(pc24 >> 16) & 0xFF]++;
     s_insns++;
+    if (s_pc_counts) s_pc_counts[pc24 & 0xFFFFFF]++;
 }
 static void print_bank_stats(void) {
     for (int b = 0; b < 256; b++)
         if (s_bank_insns[b]) fprintf(stderr, "[bank] $%02X: %llu\n", b, (unsigned long long)s_bank_insns[b]);
     fprintf(stderr, "[bank] single-step slices (late-NMI watch, NMI approach): %llu, %llu instructions\n",
             (unsigned long long)s_steps, (unsigned long long)s_step_insns);
+    const char *path = getenv("SOE_PC_COUNTS");
+    FILE *f = s_pc_counts && path ? fopen(path, "w") : NULL;
+    if (!f) return;
+    for (uint32_t pc = 0; pc < 0x1000000u; pc++)
+        if (s_pc_counts[pc]) fprintf(f, "%06X %u\n", pc, s_pc_counts[pc]);
+    fclose(f);
 }
 /* Around a single-step slice: how many there are and what they run (the tier stats count them as interpreted). */
 static uint64_t step_begin(void) { if (s_bank_stats > 0) s_steps++; return s_insns; }
@@ -325,13 +333,13 @@ static void bank_stats_init(void) {
     const char *e = getenv("SOE_BANK_STATS");
     s_bank_stats = e && e[0] == '1';
     if (!s_bank_stats) return;
+    if (getenv("SOE_PC_COUNTS")) s_pc_counts = calloc(0x1000000u, sizeof *s_pc_counts);
     g_interp_bridge_pc_hook = count_pc;
     atexit(print_bank_stats);
 }
 
 static void record_pc(uint32_t pc24, int m_flag, int x_flag) {
-    (void)m_flag; (void)x_flag;
-    if (s_bank_stats > 0) { s_bank_insns[(pc24 >> 16) & 0xFF]++; s_insns++; }
+    if (s_bank_stats > 0) count_pc(pc24, m_flag, x_flag);
     s_last_pc = pc24;
     s_last_dma = g_snes_dma_charged;
 }

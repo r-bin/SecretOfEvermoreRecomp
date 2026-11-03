@@ -51,7 +51,7 @@ add_executable(SecretOfEvermoreSNESRecomp
 # the sibling checkout the helpers run the ROM bytes in the interpreter, so the build stays exact either way.
 set(SOE_RECONSTRUCTED_C "${CMAKE_SOURCE_DIR}/../everscript-vscode/reconstructed-c" CACHE PATH
     "everscript-vscode's reconstructed-c folder (empty: no C bindings)")
-set(SOE_BOUND_C 80/80859B_random_number_generator.c)
+set(SOE_BOUND_C 80/80859B_random_number_generator.c 8F/8FA914_update_entity_plane.c 90/909DE8_eval_tile_collision.c)
 if(SOE_RECONSTRUCTED_C AND EXISTS "${SOE_RECONSTRUCTED_C}/include/soe.h")
     foreach(f ${SOE_BOUND_C})
         target_sources(SecretOfEvermoreSNESRecomp PRIVATE "${SOE_RECONSTRUCTED_C}/${f}")
