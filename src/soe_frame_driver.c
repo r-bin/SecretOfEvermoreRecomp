@@ -304,16 +304,22 @@ static uint64_t s_last_dma; /* g_snes_dma_charged as the last instruction starte
 /* SOE_BANK_STATS=1: instructions run per bank (compiled and interpreted), printed at exit as "[bank] $8C: n". It
  * shows which mirror copies of the code ever run (docs/progress.md, "Banks that run"). The counting hook stays
  * installed between slices and is treated as "no hook" there, so the run is the same with it on. */
-static uint64_t s_bank_insns[256];
+static uint64_t s_bank_insns[256], s_insns, s_steps, s_step_insns;
 static int s_bank_stats = -1;
 static void count_pc(uint32_t pc24, int m_flag, int x_flag) {
     (void)m_flag; (void)x_flag;
     s_bank_insns[(pc24 >> 16) & 0xFF]++;
+    s_insns++;
 }
 static void print_bank_stats(void) {
     for (int b = 0; b < 256; b++)
         if (s_bank_insns[b]) fprintf(stderr, "[bank] $%02X: %llu\n", b, (unsigned long long)s_bank_insns[b]);
+    fprintf(stderr, "[bank] single-step slices (late-NMI watch, NMI approach): %llu, %llu instructions\n",
+            (unsigned long long)s_steps, (unsigned long long)s_step_insns);
 }
+/* Around a single-step slice: how many there are and what they run (the tier stats count them as interpreted). */
+static uint64_t step_begin(void) { if (s_bank_stats > 0) s_steps++; return s_insns; }
+static void step_end(uint64_t from) { if (s_bank_stats > 0) s_step_insns += s_insns - from; }
 static void bank_stats_init(void) {
     if (s_bank_stats >= 0) return;
     const char *e = getenv("SOE_BANK_STATS");
@@ -325,7 +331,7 @@ static void bank_stats_init(void) {
 
 static void record_pc(uint32_t pc24, int m_flag, int x_flag) {
     (void)m_flag; (void)x_flag;
-    if (s_bank_stats > 0) s_bank_insns[(pc24 >> 16) & 0xFF]++;
+    if (s_bank_stats > 0) { s_bank_insns[(pc24 >> 16) & 0xFF]++; s_insns++; }
     s_last_pc = pc24;
     s_last_dma = g_snes_dma_charged;
 }
@@ -339,11 +345,13 @@ static void finish_nmi_approach(uint64_t frame_end) {
     const unsigned last = soe_last_cycle_clocks(s_last_pc, s_resume_pc);
     if (g_cpu.master_cycles - dma - last >= frame_end + NMI_LINE_CLOCKS) return;
     const uint64_t before = g_cpu.master_cycles;
+    const uint64_t counted = step_begin();
     refresh_begin();
     set_deadline(before + 1);
     (void)interp_bridge_run_until_quiescent(&g_cpu, s_resume_pc);
     set_deadline(0);
     refresh_end(before);
+    step_end(counted);
     update_resume_pc();
     if (interp_bridge_lle_took_wai()) s_wai_halted = true;
 }
@@ -394,10 +402,12 @@ void soe_frame_driver_run_frame(void) {
              * long DMA), and its last instruction decides the NMI as the final slice's does. */
             const bool approach = !g_interp_bridge_pc_hook || g_interp_bridge_pc_hook == count_pc;
             if (approach) { s_last_pc = 0; g_interp_bridge_pc_hook = record_pc; }
+            const uint64_t counted = watch ? step_begin() : 0;
             refresh_begin();
             /* A refresh stop before the field end: only the field end (or the watched step) is hard. */
             set_slice_deadline(deadline, watch || deadline >= frame_end ? deadline : frame_end);
             (void)interp_bridge_run_until_quiescent(&g_cpu, s_resume_pc);
+            if (watch) step_end(counted);
             set_deadline(0);
             refresh_end(before);
             if (approach) g_interp_bridge_pc_hook = s_bank_stats > 0 ? count_pc : 0;
@@ -414,11 +424,12 @@ void soe_frame_driver_run_frame(void) {
                 if (g_snes->nmiEnabled && g_snes->rdnmiPending) {
                     /* MesenCE (InternalRegisters $4200, SnesCpu::DetectNmiSignalEdge): the write sets a counter of 2,
                      * counted down at each following cycle start, so the NMI comes after the next instruction. */
-                    const uint64_t at = g_cpu.master_cycles;
+                    const uint64_t at = g_cpu.master_cycles, counted = step_begin();
                     refresh_begin();
                     set_deadline(at + 1);
                     (void)interp_bridge_run_until_quiescent(&g_cpu, s_resume_pc);
                     set_deadline(0);
+                    step_end(counted);
                     refresh_end(at);
                     update_resume_pc();
                     snes_sync_master_clock(g_snes, g_cpu.master_cycles);

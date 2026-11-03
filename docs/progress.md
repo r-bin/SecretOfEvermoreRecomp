@@ -50,8 +50,16 @@ interpreter levers (`SNESRECOMP_LLE_BOUNCE=0`, the target file). Variants with a
 `SNESRECOMP_AOT_RESUME=0` at run time turns resume off, `=2` keeps only suspended frames.
 
 What still runs interpreted (0.01-0.03 %, no run above 0.001 %):
-- **Resume points that are not taken**: `$8C:C9DC`-`$8C:CBCA` (`load_a_16_16_map_graphic_through_3_id`) and
-  `$8F:9821` have resume entries but run interpreted after a slice; not yet looked into.
+- **The RNG's fallbacks** (`$80:859B`, 64,225 instructions on 02): calls whose C would run into a non-refresh stop
+  (Bound C below).
+- **Single steps around the NMI** (about 30,000 instructions per replay, scattered over whatever runs at NMI time:
+  `$8C:C9DC`-`$8C:CBD3` in `load_a_16_16_map_graphic_through_3_id` during lag frames, `$8F:9821`). Not a missing
+  variant: the resume entries exist for the live widths (M1X0) and calls arrive at compiled M0X0 entries. While a
+  late NMI is possible the frame driver stops after every instruction: 1,001,871 single-step slices on 01 and
+  1,353,505 on 02 (about 70 per frame; glue `SOE_BANK_STATS=1`), nearly all of which run compiled. About 3 % run
+  interpreted, most likely where the compiled prologue yields at once to the one-clock deadline and the scheduler
+  makes the step itself (not traced inside snesrecomp). 0.01 % of all instructions; the steps themselves are
+  needed for MesenCE's NMI timing ([imperfections/late-nmi.md](imperfections/late-nmi.md)).
 - **Interpreter-only variants** (74, 11 in the banks the game runs): the menu and alchemy dispatchers
   `$8E:9EBE`-`$8E:AD3D` call handlers through `jsr (abs,x)` that never return normally (the CDL knows: the seeds
   carry "never returned normally" comments), and snesrecomp's `noreturn_jsr` / `terminal_jsr` only take a direct
