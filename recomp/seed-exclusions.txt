@@ -4,18 +4,11 @@
 #   dispatch <pc24> <reason>   no `indirect_dispatch` at this jump site
 # An address stands for all its HiROM mirrors ($00/$40/$80/$C0 banks).
 
-# "Press START" screen corrupted in cycle 2: the loop keeps its counter on the 65816 stack.
-dispatch 8F9F46  stack-resident loop dispatcher in func_CF9F05; native RecompStackPop desynchronizes C stack across loop
-# The NMI's dynamic hook: a static target list silently skips unobserved callbacks.
+# The NMI's dynamic hook: a static target list silently skips unobserved callbacks. Moot while the NMI handler
+# ($80:823E-$80:84E9) is interpreted (symbols.toml I_NMI emit = false); decide it when the handler is compiled.
 dispatch 8084BE  NMI dynamic hook JML [$0125] with 3-byte return frame (PHK; PEA) and dynamic targets
 
-# Sprite corruption in the attract demo, then the HUD portrait in combat.
-func 80960A  dynamic sprite allocator cluster; stack/register desync in snesrecomp mega-function corrupts OAM allocations
-func 809685  dynamic sprite allocator cluster; stack/register desync in snesrecomp mega-function corrupts OAM allocations
-func 8096BB  dynamic sprite allocator cluster; stack/register desync in snesrecomp mega-function corrupts OAM allocations
-func 809033  dynamic sprite allocator cluster; direct_sprite_draw_oam; leaves stack frame intact for interpreter
-func 809040  dynamic sprite allocator cluster; internal entry called from 96bb; leaves stack frame intact for interpreter
-func 808FEE  dynamic sprite allocator cluster; sprite queue setup; leaves stack frame intact for interpreter
-
-# A save loads into the wrong room with the game logic frozen.
-func 8CCFFD  script scheduler pass; its jsr ($D029,x) handlers return into its own loop by a pushed address; compiled, a save loads into the wrong room with frozen logic
+# Lifted 2026-11-03: dispatch 8F9F46 (raycast loop), func 808FEE/809033/809040/80960A/809685/8096BB (sprite
+# allocator), func 8CCFFD (script scheduler). With bus-exact code and compiled resume, native and all-interpreted
+# runs are WRAM-identical at every NMI key of both sync replays and a save loads into the right room
+# (docs/bugs-and-todos.md, "Exclusions lifted").
