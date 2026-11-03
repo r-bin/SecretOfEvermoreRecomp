@@ -90,6 +90,10 @@ fi
 # interpreter charges it, so native runs keep MesenCE's timing. SNESRECOMP_EXACT_BUS=0 generates the old
 # block-folded charges (docs/imperfections/compiled-cycle-charges.md).
 export SNESRECOMP_EXACT_BUS="${SNESRECOMP_EXACT_BUS:-1}"
+# Compiled resume (snesrecomp v2, branch aot-resume): every instruction of a compiled variant is also an entry, so
+# code a CPU slice stopped in goes on compiled instead of interpreted (docs/progress.md, native share).
+# SNESRECOMP_AOT_RESUME=0 at regen leaves it out; =0 at run time turns it off, =2 keeps only suspended frames.
+export SNESRECOMP_AOT_RESUME="${SNESRECOMP_AOT_RESUME:-1}"
 
 GEN_ARGS=(--rom "$ROM" --cfg-dir recomp --out-dir src/gen
           --funcs-h recomp/funcs.h --project-root "$ROOT")
