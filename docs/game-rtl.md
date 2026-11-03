@@ -142,6 +142,29 @@ Investigation revealed:
 
 ---
 
+## 4a. Names in the Generated C
+
+snesrecomp names the files (`bank8c_part05_v2.c`: bank, a 4 KB slice of entry PCs, the generator's version);
+that is fixed in the framework (`recompiler/v2/translation_units.py`), so we do not rename them. What a reader
+needs is inside them, and both come from everscript-vscode's ROM and WRAM maps:
+
+- **Function names.** Every `func` seed carries its ROM-map name. The entries snesrecomp finds itself (mirror-bank
+  copies, entries into the middle of a routine) get `symbol` lines from the same export: the known name, a bank
+  suffix for a copy (`wait_for_nmi_00`), or `<routine>_<pc16>` inside a routine (`lz_copy_loop_9a76`).
+  `symbol` adds no roots. The export reads the entries from the last generation's `src/gen/program_manifest.json`,
+  so one `npm run recomp` after a generation names them. 2026-11-03: address-only names (`bank_8C_9A76`) went from
+  4,532 of 5,510 to 15; with names mapped back, all 315 bank files are identical (one exception:
+  [bugs-and-todos.md](bugs-and-todos.md) §3.6).
+- **Comments.** `tools/regen.sh` runs everscript-vscode's `tools/recomp/annotate.mts`: before each function the
+  routine and its note, before each instruction the instruction as the Asar export writes it, with the WRAM
+  addresses it touched and their names:
+  `/* evs: $80:883F  dec.w $0343  ; [$7E0343 joypad_repeat_timer, $7E0344] */`. Only comment lines are added.
+  The table (`out/recomp/asar/recomp/annotations.tsv`) is made from the user's ROM and stays in everscript-vscode's
+  `out/`. A name missing here is a gap in the maps: fix it in everscript-vscode's knowledge entries, then rerun
+  `npm run recomp`.
+
+---
+
 ## 5. Licensing and Structural Separation
 
 | Component | License | Where |

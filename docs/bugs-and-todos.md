@@ -65,6 +65,14 @@ These issues should be submitted to the [RetroPortingToolKit/snesrecomp](https:/
    - **Issue:** When an indirect jump index exceeds the directive count inside a function that has
      allocated stack-frame variables (e.g. via `PEA` or `PHA`), transitioning to the interpreter
      fallback can misalign the stack frame, causing corrupt return addresses or register loads.
+6. **Function names choose resume entries:** `emit_aot_resume_table` (`recompiler/v2/program_emit.py`, branch
+   `aot-resume`) gives an instruction several variants hold to the one with the most instructions, and on a tie
+   to the first by **name**. Renaming is therefore not cosmetic. Found 2026-11-03 with the `symbol` names from
+   everscript-vscode: after normalising names back to `bank_XX_XXXX`, all 315 bank files were identical, but
+   312 resume entries in the mirror banks `$0C`/`$4C`/`$CC` moved between two equal-sized variants (e.g.
+   `$0C:D224`: `$0C:D20F` before, `$0C:D217` after). The game runs those routines from `$8C`, whose names did
+   not change. Fix upstream: break the tie by entry PC. Lesson: an A/B of names must compare
+   `dispatch_v2.c` too, not only the bank files.
 
 ---
 
