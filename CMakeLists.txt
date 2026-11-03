@@ -71,6 +71,10 @@ if(SOE_TEST_ROM)
              COMMAND bash ${CMAKE_SOURCE_DIR}/tests/reset_equals_boot.sh
                      $<TARGET_FILE:SecretOfEvermoreSNESRecomp> ${SOE_TEST_ROM})
     set_tests_properties(reset_equals_boot PROPERTIES TIMEOUT 120)
+    add_test(NAME save_state_resume
+             COMMAND bash ${CMAKE_SOURCE_DIR}/tests/save_state_resume.sh
+                     $<TARGET_FILE:SecretOfEvermoreSNESRecomp> ${SOE_TEST_ROM})
+    set_tests_properties(save_state_resume PROPERTIES TIMEOUT 240)
 endif()
 
 # ROM identity. rom_identity.txt is the one place the digests live: the build

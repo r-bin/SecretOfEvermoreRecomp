@@ -235,10 +235,19 @@ static void AnchorApuAtPowerOn(void) {
     apu_schedulePortWrite(g_snes->apu, 0, 0, 0);
 }
 
+/* SOE_SAVE_STATE_AT=<n>: save slot 0 after host frame n, as the F1 hotkey would (tests/save_state_resume.sh: a
+ * script can load a slot but not save one). */
+static void SaveStateForTest(void) {
+    static long at = -2, frame;
+    if (at == -2) { const char *e = getenv("SOE_SAVE_STATE_AT"); at = e ? atol(e) : -1; }
+    if (at >= 0 && ++frame == at) RtlSaveLoad(kSaveLoad_Save, 0);
+}
+
 void GameRunOneFrame(void) {
     AnchorApuAtPowerOn();
     soe_frame_driver_run_frame();
     CmpFrame();
+    SaveStateForTest();
 }
 
 void GameDrawPpuFrame(void) { snes_beam_frame_driver_draw_ppu_frame(); }
@@ -313,6 +322,8 @@ typedef struct SoeExecChunk {
     uint8_t wai_halted, pad[3];
 } SoeExecChunk;
 
+#define SOE_LOAD_MIN_CLOCK (2u * 357368u) /* two fields of master clocks */
+
 static SoeExecChunk s_loaded_exec;
 static uint8_t s_loaded_regs[SOE_CPU_REGS_SIZE];
 static bool s_loaded_exec_valid;
@@ -333,6 +344,15 @@ static void SoeStateLoadExtra(SaveLoadInfo *sli, uint32_t version) {
         s_loaded_exec.regs_size != SOE_CPU_REGS_SIZE || !s_loaded_exec.resume_pc) return;
     sli->func(sli, s_loaded_regs, SOE_CPU_REGS_SIZE);
     s_loaded_exec_valid = true;
+    /* A state loaded before the first frames: the clocks are not part of the state, and snesrecomp next sets the
+     * beam's clock to the CPU's, still near 0, under the saved V/H. The frame driver's line and refresh arithmetic
+     * then went below clock 0 and wrapped (a hang in refresh_points_upto). Start such a session two fields in, with
+     * the APU's sync point alongside so it does not catch up on time that never passed. Found 2026-11-03
+     * (tests/save_state_resume.sh). */
+    if (g_cpu.master_cycles < SOE_LOAD_MIN_CLOCK) {
+        g_cpu.master_cycles = SOE_LOAD_MIN_CLOCK;
+        g_apu_last_sync_master = SOE_LOAD_MIN_CLOCK;
+    }
 }
 
 static void SoeOnStateLoaded(uint32_t version) {

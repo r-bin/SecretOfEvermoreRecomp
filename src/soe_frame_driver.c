@@ -381,9 +381,15 @@ void soe_frame_driver_run_frame(void) {
     ppu_rasterBegin(g_ppu);
     /* Line 225's start: a host frame can begin lines past it (the last one ran on, as a late NMI's watch or a long
      * DMA does); the auto-joypad window and the refresh points count from line 225 itself. */
-    s_line0 = g_snes->beamMasterLast - g_snes->hPos;
-    if (g_snes->vPos > VBLANK_LINE && g_snes->vPos < 262u)
-        s_line0 -= (uint64_t)(g_snes->vPos - VBLANK_LINE) * LINE_CLOCKS;
+    {
+        uint64_t back = g_snes->hPos;
+        if (g_snes->vPos > VBLANK_LINE && g_snes->vPos < 262u) back += (uint64_t)(g_snes->vPos - VBLANK_LINE) * LINE_CLOCKS;
+        /* A state loaded before the first frame: snesrecomp sets the beam's clock to the CPU's, still near 0, under the
+         * saved V/H, so line 225 would have started before clock 0 and every refresh point below wrapped around (a
+         * hang in refresh_points_upto). Pinned to 0 the first field's refresh points sit up to a line off; from the
+         * next field they are exact again. Found 2026-11-03 (tests/save_state_resume.sh, docs/bugs-and-todos.md). */
+        s_line0 = g_snes->beamMasterLast > back ? g_snes->beamMasterLast - back : 0;
+    }
     s_auto_joy_due = !booting;
     RtlSetCpuAccessClockHook(access_clock);
 
