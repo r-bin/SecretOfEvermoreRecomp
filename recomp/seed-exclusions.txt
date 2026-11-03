@@ -2,9 +2,14 @@
 # reads this file when it writes recomp/bank*.cfg; each entry is a bug in docs/bugs-and-todos.md.
 #   func <pc24> <reason>       no root `func` line, and `force_lle`: kept interpreted for every caller
 #   dispatch <pc24> <reason>   no `indirect_dispatch` at this jump site
+#   hle <pc24> <c_function> <reason>   `hle_func`: the routine at this address runs our glue's C function
+#                                       (src/soe_bindings.c; docs/game-rtl.md 4b); only this address, no mirrors
 # An address stands for all its HiROM mirrors ($00/$40/$80/$C0 banks).
 
 # Lifted 2026-11-03: dispatch 8084BE (NMI hook; the export now writes its PHK+PEA frame as frame:3), dispatch 8F9F46 (raycast loop), func 808FEE/809033/809040/80960A/809685/8096BB (sprite
 # allocator), func 8CCFFD (script scheduler). With bus-exact code and compiled resume, native and all-interpreted
 # runs are WRAM-identical at every NMI key of both sync replays and a save loads into the right room
 # (docs/bugs-and-todos.md, "Exclusions lifted").
+
+# C bindings (everscript-vscode reconstructed-c), each proven by both sync replays against MesenCE.
+hle 80859B HleRandomNumberGenerator random_number_generator, reconstructed-c/80/80859B (G1-rated); C only when it ends before the slice deadline

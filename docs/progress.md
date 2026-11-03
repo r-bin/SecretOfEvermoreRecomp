@@ -59,6 +59,52 @@ What still runs interpreted (0.01-0.03 %, no run above 0.001 %):
   `idx:X` form cannot describe. Neither runs in the two replays.
 - Code the CDL library never recorded.
 
+## Speed
+
+Emulated frames per second, uncapped (the scripted run does not wait for vsync), headless, Apple Silicon, to the
+end of each replay (everscript-vscode `tools/compare/probes/run-stats.mts --mode <mode>`; 60.1 frames/s is real
+time). Measured 2026-11-03 on the build above.
+
+| Replay | Native | Native, no compiled resume | All interpreted |
+|---|---|---|---|
+| `01-no-inputs-4m` | **500** (8.3x) | 304 (5.1x) | 280 (4.7x) |
+| `02-newgame-boy-available` | **390** (6.5x) | 259 (4.3x) | 234 (3.9x) |
+
+Where the time goes (macOS `sample`, 10 s of the native run on 01, the main thread): about half in the PPU's
+per-pixel renderer (`ppu_resolve_pixel`, `ppu_draw_whole_line_legacy`; our glue keeps the legacy renderer for BG
+mode 4, bugs-and-todos.md §3.1), the per-clock S-DSP 5-8 % (`SNESRECOMP_DSP_PER_CLOCK=0`, not MesenCE-exact, runs 524 instead of
+500), the compiled code and the interpreter a few percent each. One `getenv` on every interpreter entry
+(`_interp_run_core`, `SNESRECOMP_WLOG_STATE`) costs about 1 %. Compiled code is therefore not what limits speed:
+the renderer is. Every mode is several times faster than real time.
+
+## Banks that run
+
+Instructions per bank over both replays (glue `SOE_BANK_STATS=1`, `run-stats.mts --stats`): all in `$80` and
+`$8C`-`$91`, except one per NMI in `$00` (the native NMI vector's `JML` stub) and the reset's first five. The
+copies snesrecomp compiles for the other mirrors (`$0x`, `$1x`, `$4x`, `$5x`, `$Cx`, `$Dx`: 233 of the 317 files in
+`src/gen`) never ran (bugs-and-todos.md §3.7).
+
+| Replay | `$80` | `$8C` | `$8D` | `$8E` | `$8F` | `$90` | `$91` |
+|---|---|---|---|---|---|---|---|
+| 01 | 20.6 % | 10.1 % | 0.04 % | 0.40 % | 53.1 % | 14.8 % | 1.03 % |
+| 02 | 15.8 % | 7.1 % | 0.01 % | 0.36 % | 57.2 % | 18.5 % | 1.13 % |
+
+## Bound C
+
+Routines that run as everscript-vscode's reconstructed C instead of compiled ROM code ([game-rtl.md](game-rtl.md)
+§4b). A binding counts as proven when both sync replays stay WRAM-identical to MesenCE at every key with it, its C
+path ran often, and a corrupted C path (`SOE_HLE_MUTATE=1`) is caught.
+
+| Routine | 01: C / interpreted | 02: C / interpreted | Sync with MesenCE | Control |
+|---|---|---|---|---|
+| `$80:859B` `random_number_generator` | 34,242 (18,091 across a refresh stop) / 1,580 | 65,224 (34,618) / 2,936 | to 14424 and 17948 | caught at key 360 |
+
+Measured 2026-11-03 (`run-stats.mts --stats`, `compare.mts --backend mesen,recomp`). The C path runs only when the
+routine ends before the next stop that is not a DRAM refresh, with no IRQ possible; the rest run the ROM bytes
+interpreted. Native share with it: 99.95 % (01) and 99.96 % (02); the RNG's instructions no longer count as
+compiled, and the interpreted fallbacks leave their callers interpreted until the next resume. A first version
+that never crossed a refresh stop ran the C only 45 % of the time (native share 99.76 % / 99.65 %).
+
 ## What it took
 
 **In snesrecomp** (branches `spc-access-cycles`, `ppu-render-reads`, `aot-bus-exact` and `aot-resume`, each on the one before;

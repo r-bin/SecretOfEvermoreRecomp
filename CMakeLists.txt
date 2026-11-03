@@ -43,8 +43,25 @@ add_executable(SecretOfEvermoreSNESRecomp
     src/game_rtl.c
     src/soe_frame_driver.c
     src/soe_last_cycle.c
+    src/soe_bindings.c
     src/gen_stubs.c
 )
+
+# Routines replaced with everscript-vscode's reconstructed C (src/soe_bindings.c, docs/game-rtl.md 4b). Without
+# the sibling checkout the helpers run the ROM bytes in the interpreter, so the build stays exact either way.
+set(SOE_RECONSTRUCTED_C "${CMAKE_SOURCE_DIR}/../everscript-vscode/reconstructed-c" CACHE PATH
+    "everscript-vscode's reconstructed-c folder (empty: no C bindings)")
+set(SOE_BOUND_C 80/80859B_random_number_generator.c)
+if(SOE_RECONSTRUCTED_C AND EXISTS "${SOE_RECONSTRUCTED_C}/include/soe.h")
+    foreach(f ${SOE_BOUND_C})
+        target_sources(SecretOfEvermoreSNESRecomp PRIVATE "${SOE_RECONSTRUCTED_C}/${f}")
+    endforeach()
+    target_include_directories(SecretOfEvermoreSNESRecomp PRIVATE "${SOE_RECONSTRUCTED_C}/include")
+    target_compile_definitions(SecretOfEvermoreSNESRecomp PRIVATE SOE_RECONSTRUCTED_C)
+    message(STATUS "C bindings from ${SOE_RECONSTRUCTED_C}: ${SOE_BOUND_C}")
+else()
+    message(STATUS "No reconstructed C (SOE_RECONSTRUCTED_C): bindings run the ROM bytes")
+endif()
 
 # ROM identity. rom_identity.txt is the one place the digests live: the build
 # turns it into snesrecomp_rom_identity.h (SNESRECOMP_ROM_EXPECTED_SHA256 and

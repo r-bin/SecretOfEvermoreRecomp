@@ -73,6 +73,18 @@ These issues should be submitted to the [RetroPortingToolKit/snesrecomp](https:/
    `$0C:D224`: `$0C:D20F` before, `$0C:D217` after). The game runs those routines from `$8C`, whose names did
    not change. Fix upstream: break the tie by entry PC. Lesson: an A/B of names must compare
    `dispatch_v2.c` too, not only the bank files.
+7. **Every HiROM mirror of the code is compiled.** snesrecomp emits each routine in all four banks that map its
+   bytes (`$0C`/`$4C`/`$8C`/`$CC`, ...): 233 of the 317 files in `src/gen` hold the `$0x`/`$1x`/`$4x`/`$5x`/
+   `$Cx`/`$Dx` copies. Counted per bank on both sync replays (glue `SOE_BANK_STATS=1`, everscript-vscode
+   `tools/compare/probes/run-stats.mts --stats`, 2026-11-03): every instruction ran in `$80` and `$8C`-`$91`,
+   except one per NMI in `$00` (the native NMI vector's `JML` stub) and the reset's first five. No instruction
+   ran in any other mirror. Proposal upstream: a cfg directive naming the banks code runs in (or "the banks with
+   a cfg"), so the other mirrors are left to the interpreter as code outside the seeds already is. It would cut
+   the generated C and its compile time by roughly 70 %. Until then nothing changes here: an unseeded mirror
+   that did run would still be correct, only interpreted.
+8. **`getenv` on every interpreter entry:** `_interp_run_core` (`runner/src/snes/interp_bridge.c`) reads
+   `SNESRECOMP_WLOG_STATE` each call without caching it: about 1 % of the main thread in a native run (macOS
+   `sample`, 2026-11-03; docs/progress.md, "Speed"). Cache it in a static as the neighbouring switches do.
 
 ---
 

@@ -23,6 +23,8 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 #include "common_cpu_infra.h"
 #include "common_rtl.h"
@@ -35,6 +37,9 @@
 #include "snes/sa1.h"
 #include "snes/snes.h"
 #include "snes/superfx.h"
+
+static void set_deadline(uint64_t clock);
+static void set_slice_deadline(uint64_t clock, uint64_t hard);
 
 extern CpuState g_cpu;
 extern Ppu *g_ppu;
@@ -246,13 +251,13 @@ static void run_interrupt(uint32_t vector, uint64_t deadline, bool nmi) {
     const uint64_t refresh = next_refresh_after(before) + 1;
     refresh_begin();
     if (nmi) {
-        interp_bridge_set_master_deadline(refresh < deadline ? refresh : deadline);
+        set_deadline(refresh < deadline ? refresh : deadline);
         (void)interp_bridge_run_until_quiescent(&g_cpu, vector);
     } else {
-        interp_bridge_set_master_deadline(deadline);
+        set_deadline(deadline);
         (void)interp_bridge_run_interrupt(&g_cpu, vector);
     }
-    interp_bridge_set_master_deadline(0);
+    set_deadline(0);
     refresh_end(before);
     update_resume_pc();
 }
@@ -277,10 +282,50 @@ static void run_nmi(uint64_t deadline) {
 #define NMI_LINE_CLOCKS 6u
 #define NMI_SEEN_CLOCKS 12u
 
+/* Every deadline goes through here, so a C binding can tell whether it would run past one. `hard` is the first
+ * stop that is not a DRAM refresh: a refresh is charged after the slice from the points it crossed (refresh_end),
+ * so code that only touches WRAM may run past one; past `hard` (the field end, a single step, an interrupt run's
+ * end) nothing may. */
+static uint64_t s_deadline, s_hard_deadline;
+static void set_slice_deadline(uint64_t clock, uint64_t hard) {
+    s_deadline = clock;
+    s_hard_deadline = hard;
+    interp_bridge_set_master_deadline(clock);
+}
+static void set_deadline(uint64_t clock) { set_slice_deadline(clock, clock); }
+uint64_t soe_frame_driver_deadline(void) { return s_deadline; }
+uint64_t soe_frame_driver_hard_deadline(void) { return s_hard_deadline; }
+bool soe_frame_driver_irq_possible(void) {
+    return !g_cpu._flag_I && (g_snes->hIrqEnabled || g_snes->vIrqEnabled || irq_line_asserted());
+}
+
 static uint32_t s_last_pc;
 static uint64_t s_last_dma; /* g_snes_dma_charged as the last instruction started */
+/* SOE_BANK_STATS=1: instructions run per bank (compiled and interpreted), printed at exit as "[bank] $8C: n". It
+ * shows which mirror copies of the code ever run (docs/progress.md, "Banks that run"). The counting hook stays
+ * installed between slices and is treated as "no hook" there, so the run is the same with it on. */
+static uint64_t s_bank_insns[256];
+static int s_bank_stats = -1;
+static void count_pc(uint32_t pc24, int m_flag, int x_flag) {
+    (void)m_flag; (void)x_flag;
+    s_bank_insns[(pc24 >> 16) & 0xFF]++;
+}
+static void print_bank_stats(void) {
+    for (int b = 0; b < 256; b++)
+        if (s_bank_insns[b]) fprintf(stderr, "[bank] $%02X: %llu\n", b, (unsigned long long)s_bank_insns[b]);
+}
+static void bank_stats_init(void) {
+    if (s_bank_stats >= 0) return;
+    const char *e = getenv("SOE_BANK_STATS");
+    s_bank_stats = e && e[0] == '1';
+    if (!s_bank_stats) return;
+    g_interp_bridge_pc_hook = count_pc;
+    atexit(print_bank_stats);
+}
+
 static void record_pc(uint32_t pc24, int m_flag, int x_flag) {
     (void)m_flag; (void)x_flag;
+    if (s_bank_stats > 0) s_bank_insns[(pc24 >> 16) & 0xFF]++;
     s_last_pc = pc24;
     s_last_dma = g_snes_dma_charged;
 }
@@ -295,9 +340,9 @@ static void finish_nmi_approach(uint64_t frame_end) {
     if (g_cpu.master_cycles - dma - last >= frame_end + NMI_LINE_CLOCKS) return;
     const uint64_t before = g_cpu.master_cycles;
     refresh_begin();
-    interp_bridge_set_master_deadline(before + 1);
+    set_deadline(before + 1);
     (void)interp_bridge_run_until_quiescent(&g_cpu, s_resume_pc);
-    interp_bridge_set_master_deadline(0);
+    set_deadline(0);
     refresh_end(before);
     update_resume_pc();
     if (interp_bridge_lle_took_wai()) s_wai_halted = true;
@@ -307,6 +352,7 @@ static void finish_nmi_approach(uint64_t frame_end) {
 static bool late_nmi_possible(void) { return !g_snes->nmiEnabled && g_snes->rdnmiPending; }
 
 void soe_frame_driver_run_frame(void) {
+    bank_stats_init();
     const bool booting = s_resume_pc == 0;
     int slices = 0, late_steps = 0;
     uint64_t frame_end;
@@ -346,14 +392,15 @@ void soe_frame_driver_run_frame(void) {
             if (deadline > cpu_end) deadline = cpu_end;
             /* Every slice records its instructions: a slice that stops for a refresh can still end past V=225 (a
              * long DMA), and its last instruction decides the NMI as the final slice's does. */
-            const bool approach = !g_interp_bridge_pc_hook;
+            const bool approach = !g_interp_bridge_pc_hook || g_interp_bridge_pc_hook == count_pc;
             if (approach) { s_last_pc = 0; g_interp_bridge_pc_hook = record_pc; }
             refresh_begin();
-            interp_bridge_set_master_deadline(deadline);
+            /* A refresh stop before the field end: only the field end (or the watched step) is hard. */
+            set_slice_deadline(deadline, watch || deadline >= frame_end ? deadline : frame_end);
             (void)interp_bridge_run_until_quiescent(&g_cpu, s_resume_pc);
-            interp_bridge_set_master_deadline(0);
+            set_deadline(0);
             refresh_end(before);
-            if (approach) g_interp_bridge_pc_hook = 0;
+            if (approach) g_interp_bridge_pc_hook = s_bank_stats > 0 ? count_pc : 0;
             update_resume_pc();
             align_beam();
             if (interp_bridge_lle_took_wai()) s_wai_halted = true;
@@ -369,9 +416,9 @@ void soe_frame_driver_run_frame(void) {
                      * counted down at each following cycle start, so the NMI comes after the next instruction. */
                     const uint64_t at = g_cpu.master_cycles;
                     refresh_begin();
-                    interp_bridge_set_master_deadline(at + 1);
+                    set_deadline(at + 1);
                     (void)interp_bridge_run_until_quiescent(&g_cpu, s_resume_pc);
-                    interp_bridge_set_master_deadline(0);
+                    set_deadline(0);
                     refresh_end(at);
                     update_resume_pc();
                     snes_sync_master_clock(g_snes, g_cpu.master_cycles);

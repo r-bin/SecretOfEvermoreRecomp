@@ -16,4 +16,11 @@ uint32_t soe_frame_driver_resume_pc(void);
 bool soe_frame_driver_wai_halted(void);
 void soe_frame_driver_set_resume(uint32_t pc, bool wai_halted);
 
+/* The master clock the CPU runs to in the current slice (0: none), for C bindings that must not run past it
+ * (src/soe_bindings.c). */
+uint64_t soe_frame_driver_deadline(void);
+/* The first stop of the slice that is not a DRAM refresh (0: none), and whether an IRQ could be taken in it. */
+uint64_t soe_frame_driver_hard_deadline(void);
+bool soe_frame_driver_irq_possible(void);
+
 #endif
