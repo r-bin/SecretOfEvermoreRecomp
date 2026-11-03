@@ -20,16 +20,15 @@ build have every NMI on the same master clock and WRAM identical at every key fr
 How much of a replay runs as compiled code: instructions per tier over the whole run (snesrecomp
 `SNESRECOMP_TIER_STATS=1`; everscript-vscode `tools/compare/probes/tier-stats.mts`). The goal is 100 %.
 
-| Replay | Compiled | Interpreted | Native | 2026-11-03 steps: resume → exclusions lifted → NMI, traps |
+| Replay | Compiled | Interpreted | Native | 2026-11-03 steps: resume → exclusions → NMI, traps → seed widths, tables |
 |---|---|---|---|---|
-| `01-no-inputs-4m` (to key 14424) | 209,107,308 | 921,154 | **99.56 %** | 16.3 → 72.3 → 97.2 → 99.56 % |
-| `02-newgame-boy-available` (to key 17948) | 259,865,614 | 651,824 | **99.75 %** | 21.7 → 62.6 → 96.7 → 99.75 % |
+| `01-no-inputs-4m` (to key 14424) | 209,970,461 | 58,001 | **99.97 %** | 16.3 → 72.3 → 97.2 → 99.56 → 99.97 % |
+| `02-newgame-boy-available` (to key 17948) | 260,487,114 | 30,324 | **99.99 %** | 21.7 → 62.6 → 96.7 → 99.75 → 99.99 % |
 
-Measured 2026-11-03 (5,795 routine variants: 5,387 compiled, 408 interpreter-only); native in sync with MesenCE to
-the end of both replays. The last step: the NMI and IRQ handler bodies are seeded (their vectors' `JML` stubs made
-them unreachable as roots), the snesrecomp fixes that compiled interrupt handlers needed (`docs/bugs-and-todos.md`,
-"Compiled NMI handler"), BRK assertion traps declared `authority_data`, and jump-table entries only up to targets
-the CDL saw run.
+Measured 2026-11-03 (5,642 routine variants: 5,568 compiled, 74 interpreter-only); native in sync with MesenCE to
+the end of both replays, WRAM identical to the all-interpreted run at every key. The last step needed no framework
+change: the seeds had given `$8C:EA43` an exit width the CDL never saw at a call site, and one jump table 98
+garbage entries (`docs/bugs-and-todos.md`, "408 interpreter-only variants"); `I_NMI` is compiled.
 
 **Compiled resume** (snesrecomp `aot-resume`, generated with `SNESRECOMP_AOT_RESUME=1`, which our `tools/regen.sh`
 sets). Before it, each CPU slice (it ends at every line's refresh point) left the code it stopped in to the
@@ -50,12 +49,14 @@ operand's last byte on the data bus before an access (open bus, which `$2137` re
 interpreter levers (`SNESRECOMP_LLE_BOUNCE=0`, the target file). Variants with an RTI get no resume entries.
 `SNESRECOMP_AOT_RESUME=0` at run time turns resume off, `=2` keeps only suspended frames.
 
-What still runs interpreted (0.25-0.44 %, no single run above 0.02 %):
-- **Interpreter-only variants** (408). The analyzer's reasons: callees whose exit widths it cannot prove
-  (`unproven_callee_exit`, `unproven_call_at_…`), call continuations it cannot follow (`truncated_call_continuation`),
-  and decodes into data. The busiest: `$8C:D037`/`$8C:D09C` (script scheduler handlers), `$8C:E52A`, `$90:D3CD`–`$90:D400`.
-- **The NMI stub** `$00:823A` (`I_NMI` in `recomp/symbols.toml`, 4 bytes, interpreted by choice) and what the
-  interpreter runs after it until the next call or slice.
+What still runs interpreted (0.01-0.03 %, no run above 0.001 %):
+- **Resume points that are not taken**: `$8C:C9DC`-`$8C:CBCA` (`load_a_16_16_map_graphic_through_3_id`) and
+  `$8F:9821` have resume entries but run interpreted after a slice; not yet looked into.
+- **Interpreter-only variants** (74, 11 in the banks the game runs): the menu and alchemy dispatchers
+  `$8E:9EBE`-`$8E:AD3D` call handlers through `jsr (abs,x)` that never return normally (the CDL knows: the seeds
+  carry "never returned normally" comments), and snesrecomp's `noreturn_jsr` / `terminal_jsr` only take a direct
+  `JSR`; `$91:B7FA` / `$91:BB72` dispatch through an array of 16-byte records (`jsr ($AE33,x)`), which the
+  `idx:X` form cannot describe. Neither runs in the two replays.
 - Code the CDL library never recorded.
 
 ## What it took

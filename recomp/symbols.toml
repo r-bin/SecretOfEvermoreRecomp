@@ -17,5 +17,5 @@ note = "Emulation RESET vector ($FFFC)"
 name = "I_NMI"
 addr = "823a"
 bank = 0
-emit = false
+emit = true
 note = "Native NMI vector ($FFEA)"
