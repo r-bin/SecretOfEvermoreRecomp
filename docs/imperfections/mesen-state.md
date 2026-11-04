@@ -22,9 +22,10 @@ internal registers, the SPC700, its timers and the per-clock S-DSP, whose state 
 - The beam starts at H=2, past where snesrecomp runs the automatic joypad read: the handler's `$4016` read took the other
   branch at `$80:848D`. The load runs that read.
 - MesenCE's SPC700 steps through an opcode, ours runs it at the first clock: the opcode in progress runs at load
-  and its remaining cycles count down. `spc.opStep` counts from 0: on the one state so far (step 3 of `$F7`), every value but
-  step + 1 parted by key 108. An opcode that had already written when the state was taken would write twice; none has
-  been met. Between opcodes (step 0, 04's state) the next one starts a cycle later.
+  and its remaining cycles count down. `spc.opStep` is a phase, not a count: in addressing (`$E4`, replay 06) the fetch and
+  `spc.opSubStep` cycles have run, the operation is taken as the last cycle (`$F7`, replay 05), and the next opcode starts
+  `used - ran + 1` cycles on. An operation of several cycles has not been met, and an opcode that had already written when
+  the state was taken would write twice.
 
 ## Open
 - Replay 05, keys 2992-3065: CGRAM differs ([cgram-writes-during-rendering.md](cgram-writes-during-rendering.md)).

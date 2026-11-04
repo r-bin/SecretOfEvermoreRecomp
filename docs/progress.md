@@ -10,6 +10,7 @@ of each replay. The native column is the build with compiled resume (snesrecomp 
 | `02-newgame-boy-available` (New Game to free play, 17,948 frames) | **all**: 120–17948 | **all**: 120–17948 | Inputs arrive on MesenCE's fields ([host-frames-and-fields.md](imperfections/host-frames-and-fields.md)). |
 | `04-newgame-flowers.mmo` (played by hand in MesenCE, 25,923 frames) | **all**: 120–25923 | **all**: 120–25923 | Below. |
 | `05-flowers-from-state.mmo` (04 without the intro, 8,433 frames, from a mid-game state) | **all**: 1–8433 | **all**: 1–8433 | VRAM and OAM too; CGRAM to 2991. Below. |
+| `06-flowers-raptors.mmo` (flowers and raptors, 4,682 frames, from a mid-game state) | **all**: 1–4682 | **all**: 1–4682 | WRAM, VRAM, CGRAM and OAM. |
 
 `03-complete-run-7h` is not a sync replay: it does not stay in sync with MesenCE, so it is not measured here.
 
@@ -44,6 +45,7 @@ How much of a replay runs as compiled code: instructions per tier over the whole
 | `02-newgame-boy-available` (to key 17948) | 260,487,114 | 30,324 | **99.99 %** | 21.7 → 62.6 → 96.7 → 99.75 → 99.99 % |
 | `04-newgame-flowers.mmo` (to key 25923) | 329,681,519 | 236,870 | **99.93 %** | with the three C bindings only |
 | `05-flowers-from-state.mmo` (to key 8433) | 119,080,554 | 40,200 | **99.97 %** | with the three C bindings only |
+| `06-flowers-raptors.mmo` (to key 4682) | 66,086,093 | 12,874 | **99.98 %** | with the three C bindings only |
 
 Rows 01 and 02 are from before the C bindings; with them 01 is at 99.93 % and 02 at 99.92 % (Bound C below).
 Measured 2026-11-03 (5,642 routine variants: 5,568 compiled, 74 interpreter-only); native in sync with MesenCE to
@@ -101,6 +103,7 @@ time). Measured 2026-11-03 on the build above; 04 and 05 on 2026-11-04.
 | `02-newgame-boy-available` | **390** (6.5x) | 259 (4.3x) | 234 (3.9x) |
 | `04-newgame-flowers.mmo` | **382** (6.4x), with the C bindings | not measured | not measured |
 | `05-flowers-from-state.mmo` | **368** (6.1x), with the C bindings | not measured | not measured |
+| `06-flowers-raptors.mmo` | **409** (6.8x), with the C bindings | not measured | not measured |
 
 Where the time goes (macOS `sample`, 10 s of the native run on 01, the main thread): about half in the PPU's
 per-pixel renderer (`ppu_resolve_pixel`, `ppu_draw_whole_line_legacy`; our glue keeps the legacy renderer for BG

@@ -306,9 +306,10 @@ static void finish_spc_opcode(Apu *apu) {
     while (length <= 3 && apu->ram[(uint16_t)(apu->spc->pc - length)] != opcode) length++;
     if (length > 3) { fprintf(stderr, "soe_mesen_state: SPC opcode %02X not found before PC\n", opcode); return; }
     apu->spc->pc = (uint16_t)(apu->spc->pc - length);
-    /* spc.opStep counts from 0: measured on the one state so far (step 3 of $F7), each other value parts by key 108. */
-    const int used = spc_runOpcode(apu->spc), ran = (int)step + 1;
-    apu->cpuCyclesLeft = (uint8_t)(used > ran ? used - ran : 0);
+    /* spc.opStep is a phase, not a count: addressing has run the opcode's fetch and opSubStep cycles, the operation is
+     * taken as the last cycle (measured on $F7 at step 3 and $E4 at step 1; an operation of several cycles is not met yet). */
+    const int used = spc_runOpcode(apu->spc), ran = step == 1 ? 1 + (int)num("spc.opSubStep") : used - 1;
+    apu->cpuCyclesLeft = (uint8_t)(used - ran + 1);
 }
 
 static void load_apu(void) {
