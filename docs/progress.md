@@ -35,6 +35,32 @@ Frames before 120 are not compared: the RNG is copied in from MesenCE at 115. Na
 build have every NMI on the same master clock and WRAM identical at every key from 1 on, both replays to their end
 (everscript-vscode `tools/compare/probes/native-vs-interp.mts`).
 
+## Picture and sound
+
+Every RAM, the picture and the S-DSP at every key, MesenCE against the native build (everscript-vscode `npm run compare:full`,
+measured 2026-11-04). The number is the keys that differ.
+
+| Replay | Keys | WRAM, VRAM, CGRAM, OAM, SRAM | ARAM | S-DSP registers | S-DSP state | Picture | Picture, fades by MesenCE's rule |
+|---|---|---|---|---|---|---|---|
+| `01-no-inputs-4m` | 14,305 | **0** | **0** | **0** | 211 | 638 | **0** |
+| `02-newgame-boy-available` | 17,829 | **0** | 1 | **0** | 236 | 501 | **0** |
+| `04-newgame-flowers.mmo` | 25,804 | **0** | **0** | 1 | 2 | 1,708 | **0** |
+| `05-flowers-from-state.mmo` | 8,434 | **0** | **0** | **0** | **0** | 1,446 | 1 |
+| `06-flowers-raptors.mmo` | 4,683 | **0** | **0** | **0** | **0** | 112 | **0** |
+
+What the differences are:
+- **Picture:** rounding below full brightness, up to 8 of 255 ([fade-rounding.md](imperfections/fade-rounding.md)). The one key
+  left is a brightness write during a frame (same file).
+- **S-DSP state, keys 120-320 of 01 and 02 (201 keys each):** a voice's BRR offset before its first key-on, harmless
+  ([dsp-brr-offset-reset.md](imperfections/dsp-brr-offset-reset.md)).
+- **The other 48 keys of S-DSP state, the ARAM key and the S-DSP register key:** single keys around a voice's start or end, the
+  next key matching again ([dsp-endx-read.md](imperfections/dsp-endx-read.md)). Open.
+
+The S-DSP state holds the output samples, voices, envelopes, BRR buffers and echo, once per key: MesenCE's Lua gives no sample
+stream, so the audio itself is not compared, and how the open keys sound is not measured. The checks were tested by
+breaking them: no sprites fails the picture alone, the per-sample S-DSP fails ARAM, the S-DSP and then WRAM
+(everscript-vscode `tools/compare/README.md`).
+
 ## Native share
 
 How much of a replay runs as compiled code: instructions per tier over the whole run (snesrecomp

@@ -40,7 +40,9 @@ extern uint8_t g_ram[0x20000];
  * frame counter $7E0100, from the 0 the reset code writes. The game zeroes $0100 again when the attract demo loops,
  * so the raw counter is not a key; a drop counts as a restart from 0.
  * - SOE_COMPARE_STRIDE: hash memory each time the key reaches a new multiple of the stride and write
- *   "H <key> <crc> ..." to fd 3, one CRC-32 per region of SOE_COMPARE_REGIONS (wram, vram, cgram, oam).
+ *   "H <key> <crc> ..." to fd 3, one CRC-32 per region of SOE_COMPARE_REGIONS (wram, vram, cgram, oam, sram, aram,
+ *   dsp, sound, picture; everscript-vscode tools/compare/README.md). aram, dsp and sound need SOE_COMPARE_AT=nmi: they
+ *   are read at the SPC700's next instruction on a copy of the APU (CmpSpcEnter). picture is a word hash, not a CRC.
  * - SOE_COMPARE_MASK: WRAM offsets zeroed before hashing (hex, "a-b" ranges, comma separated).
  * - SOE_COMPARE_DUMP=<key>: write "D <key>\n" and the raw regions once.
  * - SOE_COMPARE_PEEK: WRAM offsets (the mask's syntax) written as "P <frame> <key> <master clock> <hex bytes>"
@@ -58,12 +60,12 @@ extern uint8_t g_ram[0x20000];
  *   of a running console (a MesenCE movie's), loaded before the first instruction (soe_compare_start_memory).
  * Nothing else touches the disk: compare reads fd 3 from a pipe.
  */
-enum { CMP_WRAM, CMP_VRAM, CMP_CGRAM, CMP_OAM };
+enum { CMP_WRAM, CMP_VRAM, CMP_CGRAM, CMP_OAM, CMP_SRAM, CMP_ARAM, CMP_DSP, CMP_SOUND, CMP_PICTURE, CMP_REGIONS };
 static struct {
     int state; /* 0 unread, 1 off, 2 on */
     unsigned stride;
     long dump_at;
-    int regions[4], nregions;
+    int regions[CMP_REGIONS], nregions;
     uint8_t mask[0x20000 / 8];
     uint32_t peek[256];
     int npeek;
@@ -169,9 +171,9 @@ static void CmpInit(void) {
     s_cmp.last = -1;
     const char *r = getenv("SOE_COMPARE_REGIONS");
     if (!r) r = "wram,vram";
-    static const char *const names[] = { "wram", "vram", "cgram", "oam" };
-    for (const char *p = r; *p && s_cmp.nregions < 4;) {
-        for (int i = 0; i < 4; i++)
+    static const char *const names[] = { "wram", "vram", "cgram", "oam", "sram", "aram", "dsp", "sound", "picture" };
+    for (const char *p = r; *p && s_cmp.nregions < CMP_REGIONS;) {
+        for (int i = 0; i < CMP_REGIONS; i++)
             if (!strncmp(p, names[i], strlen(names[i]))) s_cmp.regions[s_cmp.nregions++] = i;
         p = strchr(p, ',');
         if (!p) break;
@@ -199,6 +201,106 @@ static void CmpInit(void) {
     s_cmp.state = 2;
 }
 
+/*
+ * The sound side at a key. Each side's SPC700 stops at its own place when an NMI is taken: MesenCE's runs in catch-up
+ * batches, the last at the start of line 225, and can stop inside an instruction; ours has run an instruction at its
+ * first clock and been synced up to the NMI's clock. So both read at the first instruction boundary at least
+ * CMP_SPC_AHEAD cycles after the NMI's clock, past anything either has run. Here that is a run ahead on the APU as it
+ * stands, undone afterwards, so a compare run plays as any other. An opcode here is done at its first clock, so
+ * the last clock of the one before is that boundary with the S-DSP where MesenCE's stands (portClock reads 1 above its
+ * cycle / 2 at the next opcode).
+ */
+#define CMP_SPC_RATIO ((double)(32040 * 64) / 21477270.0) /* Spc::UpdateClockRatio */
+#define CMP_SPC_AHEAD 16
+static struct { Apu apu; Spc spc; Dsp dsp; } s_spc_saved;
+
+static void CmpSpcEnter(void) {
+    Apu *apu = g_snes->apu;
+    RtlApuLock();
+    s_spc_saved.apu = *apu;
+    s_spc_saved.spc = *apu->spc;
+    s_spc_saved.dsp = *apu->dsp;
+    apu->dsp->suppressOutput = true;
+    const uint64_t half = (uint64_t)((double)g_cpu.master_cycles * CMP_SPC_RATIO);
+    const uint64_t stop = (half + 1) / 2 + CMP_SPC_AHEAD;
+    while (apu->portClock < stop || apu->cpuCyclesLeft != 1) apu_runCycles(apu, 1);
+}
+
+static void CmpSpcLeave(void) {
+    Apu *apu = g_snes->apu;
+    *apu->dsp = s_spc_saved.dsp;
+    *apu->spc = s_spc_saved.spc;
+    *apu = s_spc_saved.apu;
+    RtlApuUnlock();
+}
+
+/* The S-DSP's state in MesenCE's terms, 32 bits a value; the order is SOUND_FIELDS in tools/compare/mesen.mts. */
+enum { CMP_SOUND_WORDS = 30 + 8 * 20 };
+static size_t CmpSound(uint8_t *out) {
+    const DspClock *c = &g_snes->apu->dsp->clk;
+    int32_t w[CMP_SOUND_WORDS], n = 0;
+    w[n++] = c->step; w[n++] = c->counter; w[n++] = c->noise;
+    w[n++] = c->out[0]; w[n++] = c->out[1]; w[n++] = c->voiceOut;
+    for (int i = 0; i < 8; i++) { w[n++] = c->echoHist[i][0]; w[n++] = c->echoHist[i][1]; }
+    w[n++] = c->echoHistPos; w[n++] = c->echoPtr; w[n++] = c->echoOff; w[n++] = c->echoLen;
+    w[n++] = c->echoIn[0]; w[n++] = c->echoIn[1]; w[n++] = c->echoOut[0]; w[n++] = c->echoOut[1];
+    for (int i = 0; i < 8; i++) {
+        const DspClockVoice *v = &c->v[i];
+        w[n++] = v->env; w[n++] = v->envPrev; w[n++] = v->pos; w[n++] = v->brrAdr;
+        w[n++] = v->brrOff; w[n++] = v->konDelay; w[n++] = v->envx; w[n++] = v->bufPos;
+        for (int k = 0; k < 12; k++) w[n++] = v->buf[k];
+    }
+    memcpy(out, w, sizeof(w));
+    return sizeof(w);
+}
+
+/* The 224 lines drawn before this NMI as 0x00RRGGBB, as MesenCE's getScreenBuffer has them. */
+enum { CMP_PICTURE_BYTES = 256 * 224 * 4 };
+static size_t CmpPicture(uint8_t *out) {
+    Ppu *ppu = g_snes->ppu;
+    const size_t left = (size_t)ppu->extraLeftRight * 4;
+    /* SOE_COMPARE_FADE: our renderer scales the 8-bit colour by the brightness, MesenCE the 5-bit one; this rewrites a
+     * pixel by MesenCE's rule, so a run can tell that rounding from any other difference
+     * (docs/imperfections/fade-rounding.md). */
+    static uint8_t table[256];
+    const uint8_t *fade = NULL;
+    const unsigned bright = PPU_brightness(ppu);
+    if (getenv("SOE_COMPARE_FADE") && bright > 0 && bright < 15) {
+        for (int c = 31; c >= 0; c--) {
+            const unsigned c8 = (unsigned)(c << 3 | c >> 2), m5 = (unsigned)c * bright / 15;
+            table[c8 * bright / 15] = (uint8_t)(m5 << 3 | m5 >> 2);
+        }
+        fade = table;
+    }
+    for (int y = 0; y < 224; y++) {
+        const uint8_t *row = ppu->renderBuffer ? ppu->renderBuffer + (size_t)y * ppu->renderPitch + left : NULL;
+        for (int x = 0; x < 256; x++) {
+            uint8_t *o = out + ((size_t)y * 256 + (size_t)x) * 4;
+            if (row) memcpy(o, row + (size_t)x * 4, 3); else memset(o, 0, 3);
+            o[3] = 0;
+            if (fade) for (int c = 0; c < 3; c++) o[c] = fade[o[c]];
+        }
+    }
+    return CMP_PICTURE_BYTES;
+}
+
+/* A picture's hash: one multiply a pixel, which MesenCE's Lua can afford every frame. */
+static uint32_t CmpWordHash(const uint8_t *p, size_t n) {
+    uint32_t h = 2166136261u;
+    for (size_t i = 0; i + 4 <= n; i += 4) {
+        uint32_t w;
+        memcpy(&w, p + i, 4);
+        h = (h ^ w) * 16777619u;
+    }
+    return h;
+}
+
+static int CmpSpcSide(void) {
+    for (int i = 0; i < s_cmp.nregions; i++)
+        if (s_cmp.regions[i] == CMP_ARAM || s_cmp.regions[i] == CMP_DSP || s_cmp.regions[i] == CMP_SOUND) return s_cmp.at_nmi;
+    return 0;
+}
+
 /* One region as bytes: the PPU keeps VRAM/CGRAM/OAM as little-endian words, the same bytes snes9x holds. */
 static const uint8_t *CmpRegion(int r, size_t *n, uint8_t *scratch) {
     Ppu *ppu = g_snes->ppu;
@@ -211,6 +313,11 @@ static const uint8_t *CmpRegion(int r, size_t *n, uint8_t *scratch) {
         return scratch;
     case CMP_VRAM: *n = sizeof(ppu->vram); return (const uint8_t *)ppu->vram;
     case CMP_CGRAM: *n = sizeof(ppu->cgram); return (const uint8_t *)ppu->cgram;
+    case CMP_SRAM: *n = (size_t)g_sram_size; return g_sram;
+    case CMP_ARAM: *n = sizeof(g_snes->apu->ram); return g_snes->apu->ram;
+    case CMP_DSP: *n = sizeof(g_snes->apu->dsp->ram); return g_snes->apu->dsp->ram;
+    case CMP_SOUND: *n = CmpSound(scratch); return scratch;
+    case CMP_PICTURE: *n = CmpPicture(scratch); return scratch;
     default:
         memcpy(scratch, ppu->oam, sizeof(ppu->oam));
         memcpy(scratch + sizeof(ppu->oam), ppu->highOam, sizeof(ppu->highOam));
@@ -221,17 +328,20 @@ static const uint8_t *CmpRegion(int r, size_t *n, uint8_t *scratch) {
 
 /* Hash, dump or quit at `key`, once per key. */
 static void CmpAt(long key) {
-    static uint8_t scratch[0x20000];
+    static uint8_t scratch[CMP_PICTURE_BYTES];
     if (key < 0 || key <= s_cmp.last) return;
     s_cmp.last = key;
     if (s_cmp.dump_at >= 0) {
         if (key < s_cmp.dump_at) return;
         fprintf(s_cmp.out, "D %ld\n", key);
+        const int spc = CmpSpcSide();
+        if (spc) CmpSpcEnter();
         for (int i = 0; i < s_cmp.nregions; i++) {
             size_t n;
             const uint8_t *p = CmpRegion(s_cmp.regions[i], &n, scratch);
             fwrite(p, 1, n, s_cmp.out);
         }
+        if (spc) CmpSpcLeave();
         fflush(s_cmp.out);
         s_cmp.dump_at = -1;
         if (s_cmp.quit_at >= 0) exit(0);
@@ -240,11 +350,14 @@ static void CmpAt(long key) {
     const int quit_now = s_cmp.quit_at >= 0 && key >= s_cmp.quit_at;
     if (s_cmp.stride && (key % s_cmp.stride == 0 || quit_now)) {
         fprintf(s_cmp.out, "H %ld", key);
+        const int spc = CmpSpcSide();
+        if (spc) CmpSpcEnter();
         for (int i = 0; i < s_cmp.nregions; i++) {
             size_t n;
             const uint8_t *p = CmpRegion(s_cmp.regions[i], &n, scratch);
-            fprintf(s_cmp.out, " %08x", CmpCrc(0, p, n));
+            fprintf(s_cmp.out, " %08x", s_cmp.regions[i] == CMP_PICTURE ? CmpWordHash(p, n) : CmpCrc(0, p, n));
         }
+        if (spc) CmpSpcLeave();
         fputc('\n', s_cmp.out);
         fflush(s_cmp.out);
     }
