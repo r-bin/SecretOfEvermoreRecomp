@@ -41,11 +41,14 @@ uint8_t *soe_bus(uint32_t addr) {
 void random_number_generator_bind(soe_regs r);
 void update_entity_plane_bind(soe_regs r);
 void eval_tile_collision_bind(soe_regs r);
+void init_entity_pool_bind(soe_regs r);
+void entity_sprite_depth_bind(soe_regs r);
 #endif
 
-enum { RNG, PLANE, TILE, BINDINGS };
+enum { RNG, PLANE, TILE, POOL, DEPTH, BINDINGS };
 static struct { const char *name; unsigned long long c, across, compiled; bool mutate; } s_bind[BINDINGS] = {
     { "random_number_generator" }, { "update_entity_plane" }, { "eval_tile_collision" },
+    { "init_entity_pool" }, { "entity_sprite_depth" },
 };
 static int s_stats = -1;
 static void print_stats(void) {
@@ -72,6 +75,9 @@ static void imm16(Cost *c) { insn(c, 3, 3); }                                /* 
 static void implied(Cost *c) { insn(c, 2, 1); }
 static void branch(Cost *c, bool taken) { insn(c, taken ? 3 : 2, 2); }
 static void word_at(Cost *c, uint32_t addr24) { c->data += extra(addr24) + extra(addr24 + 1u); }
+/* LDA/STA/... abs,X or abs,Y with 16-bit A and index: the index always costs its cycle. */
+static void abs_i16(Cost *c, uint32_t addr24) { insn(c, 6, 3); word_at(c, addr24); }
+static void abs16(Cost *c, uint32_t addr24) { insn(c, 5, 3); word_at(c, addr24); }
 /* A 16-bit direct page read or write: DL != 0 costs a cycle. */
 static void dp16(Cost *c, const CpuState *cpu, uint8_t offset) {
     insn(c, (cpu->D & 0xFF) ? 5 : 4, 2);
@@ -139,6 +145,7 @@ static void run_c(CpuState *cpu, int which, void (*bind)(soe_regs), const Cost *
     bind(&r);
     cpu->A = s_bind[which].mutate ? (uint16_t)(r.a ^ 1) : r.a;
     cpu->X = r.x;
+    cpu->Y = r.y;
     cpu->P = r.p;
     cpu_p_to_mirrors(cpu);
     leave_rtl(cpu);
@@ -356,4 +363,169 @@ RecompReturn HleEvalTileCollision(CpuState *cpu) {
     }
 #endif
     return run_rom_bytes(cpu, TILE, 0x9DE8, 0x9DEA, wide_a(cpu) && dp_in_wram(cpu, 0x51) ? tile_first : NULL);
+}
+
+/* $80:9685, first instruction: PHB. */
+static void pool_first(CpuState *cpu) {
+    Cost c = { 0 };
+    insn(&c, 3, 1); c.data += extra(cpu->S);
+    g_ram[cpu->S] = cpu->DB;
+    cpu->S = (uint16_t)(cpu->S - 1);
+    cpu->open_bus = cpu->DB;
+    charge(cpu, &c);
+}
+
+/*
+ * $80:9685 init_entity_pool (RTL; knowledge/routines/init_entity_pool.md). One path: 16 passes of a fixed loop. The stack
+ * bytes PHB and PEA leave below S are the asm's, not the C's: WRAM must hold them as the ROM leaves them.
+ */
+RecompReturn HleInitEntityPool(CpuState *cpu) {
+    stats_init();
+#ifdef SOE_RECONSTRUCTED_C
+    cpu_mirrors_to_p(cpu);
+    if (wide_a(cpu) && !cpu->x_flag && !(cpu->P & CPU_P_D) && cpu->S < 0x2000 && cpu->S > 2) {
+        const uint32_t pool = 0x7E0000u | 0x50A7;
+        const uint16_t s = cpu->S;
+        Cost c = { 0 };
+        insn(&c, 3, 1); c.data += extra(s);                                              /* PHB */
+        insn(&c, 5, 3); c.data += extra((uint16_t)(s - 1)) + extra((uint16_t)(s - 2));   /* PEA #$7E7E */
+        insn(&c, 4, 1); c.data += extra((uint16_t)(s - 2));                              /* PLB */
+        insn(&c, 4, 1); c.data += extra((uint16_t)(s - 1));                              /* PLB */
+        imm16(&c); imm16(&c); abs_i16(&c, pool);                                         /* LDX, LDA, STA $0004,x */
+        implied(&c); imm16(&c);                                                          /* CLC, LDA */
+        for (int pass = 0; pass < 16; pass++) {
+            implied(&c); abs_i16(&c, pool);                                              /* TAY, STA $0002,x */
+            implied(&c); abs_i16(&c, pool); abs_i16(&c, pool);                           /* TXA, STA $0006,x, STA $0000,y */
+            imm16(&c); abs_i16(&c, pool);                                                /* LDA, STA $0004,y */
+            implied(&c); implied(&c); imm16(&c); imm16(&c);                              /* TYX, TYA, ADC, CMP */
+            branch(&c, pass < 15);                                                       /* BNE */
+        }
+        imm16(&c); abs16(&c, pool);                                                      /* LDA, STA $1276 */
+        insn(&c, 4, 1); c.data += extra(s);                                              /* PLB */
+        rtl(&c, cpu);
+        if (fits(cpu, master_of(&c, cpu), POOL)) {
+            g_ram[s] = cpu->DB; g_ram[(uint16_t)(s - 1)] = 0x7E; g_ram[(uint16_t)(s - 2)] = 0x7E;
+            run_c(cpu, POOL, init_entity_pool_bind, &c);
+            if (s_bind[POOL].mutate) g_ram[0x50AF + 2] ^= 8;                             /* A is dead here: corrupt a link */
+            return RECOMP_RETURN_NORMAL;
+        }
+    }
+#endif
+    return run_rom_bytes(cpu, POOL, 0x9685, 0x9686, cpu->S < 0x2000 ? pool_first : NULL);
+}
+
+/* $8F:C773, first instruction: LDA $0010,y. */
+static void depth_first(CpuState *cpu) {
+    const uint16_t a = (uint16_t)(cpu->Y + 0x0010);
+    Cost c = { 0 };
+    abs_i16(&c, 0x7E0000u | a);
+    cpu->A = (uint16_t)(g_ram[a] | g_ram[a + 1] << 8);
+    set_nz16(cpu, cpu->A);
+    cpu->open_bus = (uint8_t)(cpu->A >> 8);
+    charge(cpu, &c);
+}
+
+#ifdef SOE_RECONSTRUCTED_C
+/* The path of $8F:C773: every branch follows from the record, DP and two words of WRAM, read before the C runs. */
+static void depth_path(Cost *c, const CpuState *cpu) {
+    const uint16_t y = cpu->Y, d = cpu->D;
+    const uint32_t bank = 0x7E0000u;
+    #define REC(o) ((uint16_t)(g_ram[(uint16_t)(y + (o))] | g_ram[(uint16_t)(y + (o)) + 1] << 8))
+    #define REC_AT(o) (bank | (uint16_t)(y + (o)))
+    enum { CC30, ATTR };
+    int to = -1;
+    abs_i16(c, REC_AT(0x10)); imm16(c);                                                  /* LDA, BIT #$0400 */
+    branch(c, !(REC(0x10) & 0x0400));
+    if (REC(0x10) & 0x0400) {
+        const uint16_t v = (uint16_t)(g_ram[0x23C1] | g_ram[0x23C2] << 8);
+        abs16(c, bank | 0x23C1);
+        branch(c, v);
+        if (v) to = CC30;
+    }
+    if (to < 0) {
+        const uint16_t x = REC(0x3C), a = (uint16_t)(x ^ 0x0800);
+        abs_i16(c, REC_AT(0x3C)); implied(c); imm16(c); imm16(c);                        /* LDA, TAX, EOR, BIT */
+        branch(c, a & 0x0F00);
+        if (!(a & 0x0F00)) {                                                             /* TDC, STA $08, STA $0084,y */
+            implied(c); dp16(c, cpu, 0x08); abs_i16(c, REC_AT(0x84));
+            return;
+        }
+        const uint16_t mine = a & 0x0030, plane = REC(0x18) & 0x0030;
+        imm16(c); dp16(c, cpu, 0x12);                                                    /* AND, STA $12 */
+        abs_i16(c, REC_AT(0x18)); imm16(c); dp16(c, cpu, 0x12);                          /* LDA, AND, CMP $12 */
+        branch(c, plane == mine);
+        if (plane == mine) {
+            implied(c); imm16(c);                                                        /* TXA, BIT #$1000 */
+            branch(c, x & 0x1000);
+            if (x & 0x1000) to = CC30;
+            else {
+                const bool fc20 = ((x ^ 0x0400) & 0x0F00) == 0;
+                imm16(c); imm16(c);                                                      /* EOR, BIT */
+                branch(c, fc20);
+                imm16(c); branch(c, true);                                               /* LDA, BRA */
+                to = ATTR;
+            }
+        } else {
+            const bool negative = ((uint16_t)(plane - mine) & 0x8000) != 0;
+            branch(c, negative);
+            if (negative) to = CC30;
+            else { imm16(c); branch(c, true); to = ATTR; }                               /* LDA, BRA */
+        }
+    }
+    if (to == CC30) imm16(c);                                                            /* $C7C1 LDA #$CC30 */
+    dp16(c, cpu, 0x06);                                                                  /* STA $06 */
+    abs_i16(c, REC_AT(0x0C));
+    branch(c, REC(0x0C));
+    if (!REC(0x0C)) imm16(c);                                                            /* ORA #$0200 */
+    dp16(c, cpu, 0x06); word_at(c, (uint16_t)(d + 0x06)); insn(c, 3, 0);                 /* TSB $06: read, write */
+    abs_i16(c, REC_AT(0x1A)); implied(c); dp16(c, cpu, 0x59); dp16(c, cpu, 0x02);        /* LDA, SEC, SBC $59, STA $02 */
+    abs_i16(c, REC_AT(0x1C)); implied(c); dp16(c, cpu, 0x5B); dp16(c, cpu, 0x04);        /* LDA, SEC, SBC $5B, STA $04 */
+    uint16_t y_on_screen = (uint16_t)(REC(0x1C) - dp_word(cpu, 0x5B));
+    abs_i16(c, REC_AT(0x18)); imm16(c);                                                  /* LDA, AND */
+    uint16_t a = REC(0x18) & 0x0030;
+    branch(c, a);
+    if (!a) {
+        const uint16_t mode = (uint16_t)(g_ram[0x241F] | g_ram[0x2420] << 8);
+        insn(c, 6, 4); word_at(c, bank | 0x241F); imm16(c);                              /* LDA $7E241F, CMP #2 */
+        branch(c, mode != 2);
+        if (mode == 2) {
+            abs_i16(c, REC_AT(0x1A)); implied(c); abs16(c, bank | 0x010E); dp16(c, cpu, 0x02);
+            abs_i16(c, REC_AT(0x1C)); implied(c); abs16(c, bank | 0x0110); implied(c); dp16(c, cpu, 0x04);
+            y_on_screen = (uint16_t)(REC(0x1C) - (uint16_t)(g_ram[0x0110] | g_ram[0x0111] << 8) + 1);
+        }
+        implied(c);                                                                      /* TDC */
+        a = d;
+    }
+    a ^= 0x0030;
+    const unsigned shifted = (unsigned)a << 1;                                           /* ASL: the carry goes into ADC */
+    const unsigned sum = (shifted & 0xFFFF) + 0x0040 + (shifted >> 16);
+    const uint16_t total = (uint16_t)((sum & 0xFFFF) + y_on_screen + (sum >> 16));
+    imm16(c); implied(c); imm16(c); dp16(c, cpu, 0x04); imm16(c);                        /* EOR, ASL, ADC, ADC $04, BIT */
+    branch(c, total & 0xFE00);
+    if (total & 0xFE00) implied(c);                                                      /* TDC */
+    else { implied(c); imm16(c); }                                                       /* CLC, ADC #$0080 */
+    dp16(c, cpu, 0x08); abs_i16(c, REC_AT(0x84));                                        /* STA $08, STA $0084,y */
+    #undef REC
+    #undef REC_AT
+}
+#endif
+
+/* $8F:C773 entity_sprite_depth (RTL; knowledge/routines/entity_sprite_depth.md). Records live in bank $7E. */
+RecompReturn HleEntitySpriteDepth(CpuState *cpu) {
+    stats_init();
+    const bool in_bank = cpu->DB == 0x7E && (uint32_t)cpu->Y + 0x90 < 0x10000u;
+#ifdef SOE_RECONSTRUCTED_C
+    cpu_mirrors_to_p(cpu);
+    if (wide_a(cpu) && !cpu->x_flag && !(cpu->P & CPU_P_D) && in_bank && dp_in_wram(cpu, 0x5C)) {
+        Cost c = { 0 };
+        depth_path(&c, cpu);
+        rtl(&c, cpu);
+        if (fits(cpu, master_of(&c, cpu), DEPTH)) {
+            run_c(cpu, DEPTH, entity_sprite_depth_bind, &c);
+            if (s_bind[DEPTH].mutate) g_ram[(uint16_t)(cpu->Y + 0x84)] ^= 1;             /* A is dead here: corrupt the depth */
+            return RECOMP_RETURN_NORMAL;
+        }
+    }
+#endif
+    return run_rom_bytes(cpu, DEPTH, 0xC773, 0xC776, wide_a(cpu) && !cpu->x_flag && in_bank ? depth_first : NULL);
 }

@@ -62,15 +62,15 @@ How much of a replay runs without the interpreter: instructions per tier over th
 2026-11-04 on the current build, without the RNG copy). The goal is 100 %.
 
 Instructions run as C count in no tier, so the total is an all-interpreted run's (`--mode interp`, the same path); C is what
-the native build's tiers leave of it. Calls is the share of calls to the three bound routines that took the C path.
+the native build's tiers leave of it. Calls is the share of calls to the bound routines that took the C path.
 
 | Replay | Total | Compiled | Interpreted | As C | Native (compiled + C) | C | Calls in C |
 |---|---|---|---|---|---|---|---|
-| `01-no-inputs-4m` | 210,107,833 | 190,034,824 | 140,604 | 19,932,405 | **99.93 %** | 9.49 % | 95.8 % |
-| `02-newgame-boy-available` | 260,809,086 | 224,803,918 | 176,329 | 35,828,839 | **99.93 %** | 13.74 % | 95.8 % |
-| `04-newgame-flowers.mmo` | 376,947,079 | 330,401,176 | 235,935 | 46,309,968 | **99.94 %** | 12.29 % | 95.8 % |
-| `05-flowers-from-state.mmo` | 126,651,642 | 119,094,452 | 40,200 | 7,516,990 | **99.97 %** | 5.94 % | 95.7 % |
-| `06-flowers-raptors.mmo` | 68,341,150 | 66,100,256 | 12,874 | 2,228,020 | **99.98 %** | 3.26 % | 95.8 % |
+| `01-no-inputs-4m` | 210,107,833 | 185,622,048 | 143,070 | 24,342,715 | **99.93 %** | 11.59 % | 95.8 % |
+| `02-newgame-boy-available` | 260,809,086 | 219,116,201 | 179,756 | 41,513,129 | **99.93 %** | 15.92 % | 95.8 % |
+| `04-newgame-flowers.mmo` | 376,947,079 | 321,913,065 | 240,993 | 54,793,021 | **99.94 %** | 14.54 % | 95.8 % |
+| `05-flowers-from-state.mmo` | 126,651,642 | 116,546,894 | 41,531 | 10,063,217 | **99.97 %** | 7.95 % | 95.7 % |
+| `06-flowers-raptors.mmo` | 68,341,150 | 63,832,194 | 14,305 | 4,494,651 | **99.98 %** | 6.58 % | 95.8 % |
 
 History, 2026-11-03, before the C bindings, on 01 and 02: resume 16.3 and 21.7 %, exclusions 72.3 and 62.6 %, NMI compiled 97.2
 and 96.7 %, traps 99.56 and 99.75 %, seed widths and tables 99.97 and 99.99 %.
@@ -154,7 +154,7 @@ copies snesrecomp compiles for the other mirrors (`$0x`, `$1x`, `$4x`, `$5x`, `$
 ## Bound C
 
 Routines that run as everscript-vscode's reconstructed C instead of compiled ROM code ([game-rtl.md](game-rtl.md)
-§4b). A binding counts as proven when both sync replays stay WRAM-identical to MesenCE at every key with it, its C
+§4b). A binding counts as proven when replay 01 stays WRAM-identical to MesenCE at every key with it, its C
 path ran often, and a corrupted C path (`SOE_HLE_MUTATE=1`) is caught.
 
 | Routine | 01: C / ROM bytes | 02: C / ROM bytes | Sync with MesenCE | Control |
@@ -162,8 +162,10 @@ path ran often, and a corrupted C path (`SOE_HLE_MUTATE=1`) is caught.
 | `$80:859B` `random_number_generator` | 34,242 / 1,580 | 65,224 / 2,936 | to 14424 and 17948 | caught at key 360 |
 | `$8F:A914` `update_entity_plane` | 836,249 / 36,210 | 1,334,680 / 57,748 | to 14424 and 17948 | caught at key 577 |
 | `$90:9DE8` `eval_tile_collision` | 1,043,298 / 45,971 | 1,990,217 / 87,636 | to 14424 and 17948 | caught at key 363 |
+| `$80:9685` `init_entity_pool` | 11,790 / 504 | 16,428 / 720 | to 14424 and 17948 | caught at key 322 |
+| `$8F:C773` `entity_sprite_depth` | 44,812 / 1,978 | 62,870 / 2,715 | to 14424 and 17948 | caught at key 363 |
 
-Measured 2026-11-03 (`run-stats.mts --stats`, `compare.mts --backend mesen,recomp --verbose`). The C path runs only
+Measured 2026-11-03 and, for the last two rows, 2026-11-04 (`run-stats.mts --stats`, `compare.mts --backend mesen,recomp --verbose`). `A` is dead after those two, so their control corrupts a WRAM result instead; `init_entity_pool` also leaves the bytes its `PHB` and `PEA` wrote below S, which G1 does not check and the replays do. The C path runs only
 when the routine ends before the next stop that is not a DRAM refresh, with no IRQ possible (96 % of calls). The rest
 run the ROM bytes compiled from the second instruction (`body=`, [game-rtl.md](game-rtl.md) §4b), which took the RNG's
 interpreted instructions from 35,139 to 1,525 on 01. Each call that reaches its entry at a deadline, mostly in

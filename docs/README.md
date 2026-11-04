@@ -12,7 +12,7 @@ into a native, standalone, portable C desktop executable using
   [progress.md](progress.md), everything behind it in [progress-details.md](progress-details.md). Save states (F1) and
   reset work. The whole game is not proven; open work: everscript-vscode `docs/todo/static-recompilation.md`.
 - **Seeds:** a CDL covering 90.3 % of the ROM (a full playthrough), written into `recomp/` by
-  everscript-vscode's export: 5,642 routine variants, 5,568 compiled, 74 interpreter-only, 3 routines bound to C.
+  everscript-vscode's export: 5,642 routine variants, 5,568 compiled, 74 interpreter-only, 5 routines bound to C.
 - **Framework:** the results need four snesrecomp branches that are not upstream, pinned locally
   ([upstream-access-timing.md](upstream-access-timing.md)).
 

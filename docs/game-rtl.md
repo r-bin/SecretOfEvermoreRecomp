@@ -194,6 +194,8 @@ SOE_PC_COUNTS=<file>` writes how often each PC ran.
 | `$80:859B` `random_number_generator` | `reconstructed-c/80/80859B_random_number_generator.c` | [progress-details.md](progress-details.md), "Bound C" |
 | `$8F:A914` `update_entity_plane` | `reconstructed-c/8F/8FA914_update_entity_plane.c` | same |
 | `$90:9DE8` `eval_tile_collision` | `reconstructed-c/90/909DE8_eval_tile_collision.c` | same |
+| `$80:9685` `init_entity_pool` | `reconstructed-c/80/809685_init_entity_pool.c` | same |
+| `$8F:C773` `entity_sprite_depth` | `reconstructed-c/8F/8FC773_entity_sprite_depth.c` | same |
 
 ---
 
