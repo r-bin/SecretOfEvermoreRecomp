@@ -25,8 +25,13 @@
 
 #include "cpu_state.h"
 #include "soe_frame_driver.h"
+#include "soe_cost.h"
+#include "common_rtl.h"
+#include "common_cpu_infra.h"
+#include "snes/snes.h"
 
 #ifdef SOE_RECONSTRUCTED_C
+#define SOE_COST
 #include "soe.h"
 
 /* soe.h's host bus: WRAM through any bank that maps it. Bindings run only where their accesses are WRAM. */
@@ -43,12 +48,20 @@ void update_entity_plane_bind(soe_regs r);
 void eval_tile_collision_bind(soe_regs r);
 void init_entity_pool_bind(soe_regs r);
 void entity_sprite_depth_bind(soe_regs r);
+#include "raycast.h"
+
+/* The raycast's STA $004202 and LDA $004216, in the registers the game can read back. */
+uint16_t soe_multiply(uint16_t factors) {
+    g_snes->multiplyA = (uint8_t)factors;
+    g_snes->multiplyResult = (uint16_t)((factors & 0xFF) * (factors >> 8));
+    return g_snes->multiplyResult;
+}
 #endif
 
-enum { RNG, PLANE, TILE, POOL, DEPTH, BINDINGS };
+enum { RNG, PLANE, TILE, POOL, DEPTH, RAY, BINDINGS };
 static struct { const char *name; unsigned long long c, across, compiled; bool mutate; } s_bind[BINDINGS] = {
     { "random_number_generator" }, { "update_entity_plane" }, { "eval_tile_collision" },
-    { "init_entity_pool" }, { "entity_sprite_depth" },
+    { "init_entity_pool" }, { "entity_sprite_depth" }, { "companion_metatile_raycast_line_stepper" },
 };
 static int s_stats = -1;
 static void print_stats(void) {
@@ -122,6 +135,12 @@ static bool fits(const CpuState *cpu, uint64_t master, int which) {
     return false;
 }
 
+/* The next step of a long routine: past refresh stops as `fits`, whose first check it has passed once already. */
+static bool fits_more(uint64_t master) {
+    const uint64_t end = g_cpu.master_cycles + master;
+    return soe_frame_driver_deadline() == 0 || (end < soe_frame_driver_hard_deadline() && !soe_frame_driver_irq_possible());
+}
+
 /* The ROM bytes, compiled: `first` runs the routine's first instruction, then the scheduler goes on at `body`, the
  * compiled root behind it, between the same two instructions as any compiled code. A deadline already reached at
  * the entry stops there first. `first` is NULL when the widths or the operand's place are not the ones it handles:
@@ -151,6 +170,19 @@ static void run_c(CpuState *cpu, int which, void (*bind)(soe_regs), const Cost *
     leave_rtl(cpu);
     charge(cpu, c);
     s_bind[which].c++;
+}
+/* run_c with the marks' cost held against the one worked out by hand: they must agree on every call. */
+static void run_checked(CpuState *cpu, int which, void (*bind)(soe_regs), const Cost *c, uint32_t entry) {
+    SoeCostTrace t;
+    soe_cost_begin(entry, cpu->D, cpu->DB, true, !cpu->x_flag, cpu->S);
+    run_c(cpu, which, bind, c);
+    soe_cost_end(&t);
+    if (t.cycles != c->cycles || t.fetches != c->fetches || t.data != c->data) {
+        fprintf(stderr, "soe_cost: %s %llu/%llu/%llu, by hand %llu/%llu/%llu\n", s_bind[which].name, (unsigned long long)t.cycles,
+                (unsigned long long)t.fetches, (unsigned long long)t.data, (unsigned long long)c->cycles,
+                (unsigned long long)c->fetches, (unsigned long long)c->data);
+        abort();
+    }
 }
 static uint16_t dp_word(const CpuState *cpu, uint8_t offset) {
     const uint16_t a = (uint16_t)(cpu->D + offset);
@@ -244,7 +276,7 @@ RecompReturn HleUpdateEntityPlane(CpuState *cpu) {
         }
         rtl(&c, cpu);
         if (fits(cpu, master_of(&c, cpu), PLANE)) {
-            run_c(cpu, PLANE, update_entity_plane_bind, &c);
+            run_checked(cpu, PLANE, update_entity_plane_bind, &c, 0x8FA914);
             return RECOMP_RETURN_NORMAL;
         }
     }
@@ -357,7 +389,7 @@ RecompReturn HleEvalTileCollision(CpuState *cpu) {
         tile_path(&c, cpu);
         rtl(&c, cpu);
         if (fits(cpu, master_of(&c, cpu), TILE)) {
-            run_c(cpu, TILE, eval_tile_collision_bind, &c);
+            run_checked(cpu, TILE, eval_tile_collision_bind, &c, 0x909DE8);
             return RECOMP_RETURN_NORMAL;
         }
     }
@@ -521,11 +553,92 @@ RecompReturn HleEntitySpriteDepth(CpuState *cpu) {
         depth_path(&c, cpu);
         rtl(&c, cpu);
         if (fits(cpu, master_of(&c, cpu), DEPTH)) {
-            run_c(cpu, DEPTH, entity_sprite_depth_bind, &c);
+            run_checked(cpu, DEPTH, entity_sprite_depth_bind, &c, 0x8FC773);
             if (s_bind[DEPTH].mutate) g_ram[(uint16_t)(cpu->Y + 0x84)] ^= 1;             /* A is dead here: corrupt the depth */
             return RECOMP_RETURN_NORMAL;
         }
     }
 #endif
     return run_rom_bytes(cpu, DEPTH, 0xC773, 0xC776, wide_a(cpu) && !cpu->x_flag && in_bank ? depth_first : NULL);
+}
+
+/* $8F:9F05, first instruction: SEP #$30. */
+static void ray_first(CpuState *cpu) {
+    Cost c = { 0 };
+    insn(&c, 3, 2);
+    cpu->P |= CPU_P_M | CPU_P_X;
+    cpu->X &= 0xFF;
+    cpu->Y &= 0xFF;
+    cpu->open_bus = 0x30;
+    charge(cpu, &c);
+}
+
+#ifdef SOE_RECONSTRUCTED_C
+/* Far more than any one step's clocks: a step fits when this does. */
+#define RAY_STEP_BOUND 6000u
+
+static void charge_trace(CpuState *cpu) {
+    SoeCostTrace t;
+    soe_cost_take(&t);
+    const Cost c = { t.cycles, t.fetches, t.data };
+    charge(cpu, &c);
+    soe_frame_driver_settle_refresh();
+}
+static void take_regs(CpuState *cpu, const soe_regs_t *r) {
+    cpu->A = r->a; cpu->X = r->x; cpu->Y = r->y; cpu->P = r->p;
+    cpu_p_to_mirrors(cpu);
+}
+#endif
+
+/*
+ * $8F:9F05 companion_metatile_raycast_line_stepper (RTS; knowledge/routines). A walk can outlast a slice, so its C runs a step
+ * at a time and each step is charged by its marks. Everything a step carries over is in WRAM or on the stack, kept here as
+ * the asm keeps it, so at $9F43 the compiled ROM code can take over between two instructions when the next step might not fit.
+ */
+RecompReturn HleRaycast(CpuState *cpu) {
+    stats_init();
+#ifdef SOE_RECONSTRUCTED_C
+    cpu_mirrors_to_p(cpu);
+    const uint16_t s0 = cpu->S;
+    if (interp_bridge_in_lle_scheduler() && !(cpu->P & CPU_P_D) && dp_in_wram(cpu, 0x6B) && db_in_wram(cpu)
+        && (g_ram[(uint16_t)(cpu->D + 0x58)] & 0xFE) == 0x7E && s0 > 16 && s0 < 0x1FF0
+        && fits(cpu, RAY_STEP_BOUND, RAY)) {
+        soe_regs_t r = { cpu->A, cpu->X, cpu->Y, cpu->D, cpu->DB, cpu->P };
+        RaycastLoop l;
+        SoeCostTrace t;
+        const bool m16 = wide_a(cpu), x16 = !cpu->x_flag;
+        soe_cost_begin(0x8F9F05, cpu->D, cpu->DB, m16, x16, s0);
+        bool go = raycast_start(&r, &l);
+        if (go) {
+            g_ram[s0] = (uint8_t)(l.direction >> 8); g_ram[(uint16_t)(s0 - 1)] = (uint8_t)l.direction;   /* PHX, PHY */
+            g_ram[(uint16_t)(s0 - 2)] = (uint8_t)(l.steps >> 8); g_ram[(uint16_t)(s0 - 3)] = (uint8_t)l.steps;
+            soe_at(0x9F43);
+            charge_trace(cpu);
+            cpu->S = (uint16_t)(s0 - 4);
+            while (go) {
+                if (!fits_more(RAY_STEP_BOUND) || (l.direction & 1) || l.direction > 0xE) {
+                    take_regs(cpu, &r);
+                    s_bind[RAY].compiled++;
+                    return interp_bridge_lle_yield_unwind(cpu, 0x8F9F43);
+                }
+                go = raycast_step(&r, &l);
+                if (go) {
+                    g_ram[(uint16_t)(s0 - 3)] = (uint8_t)l.steps; g_ram[(uint16_t)(s0 - 2)] = (uint8_t)(l.steps >> 8);   /* PHA */
+                    charge_trace(cpu);
+                }
+            }
+        }
+        soe_cost_end(&t);
+        const Cost c = { t.cycles, t.fetches, t.data };
+        take_regs(cpu, &r);
+        cpu->S = s0;
+        cpu->open_bus = g_ram[(uint16_t)(s0 + 2)];
+        cpu->S = (uint16_t)(s0 + 2);
+        charge(cpu, &c);
+        if (s_bind[RAY].mutate) g_ram[(uint16_t)(cpu->D + 0x66)] ^= 1;
+        s_bind[RAY].c++;
+        return RECOMP_RETURN_NORMAL;
+    }
+#endif
+    return run_rom_bytes(cpu, RAY, 0x9F05, 0x9F07, ray_first);
 }

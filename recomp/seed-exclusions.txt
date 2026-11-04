@@ -19,3 +19,4 @@ hle 8FA914 HleUpdateEntityPlane body=8FA917 update_entity_plane, reconstructed-c
 hle 909DE8 HleEvalTileCollision body=909DEA eval_tile_collision, reconstructed-c/90/909DE8 (G1-rated); C only when it ends before the slice deadline
 hle 809685 HleInitEntityPool body=809686 init_entity_pool, reconstructed-c/80/809685 (G1-rated); C only when it ends before the slice deadline
 hle 8FC773 HleEntitySpriteDepth body=8FC776 entity_sprite_depth, reconstructed-c/8F/8FC773 (G1-rated); C only when it ends before the slice deadline
+hle 8F9F05 HleRaycast body=8F9F07 companion_metatile_raycast_line_stepper, reconstructed-c/8F/8F9F05; a step at a time, the ROM code takes over at $9F43 when a step might not fit

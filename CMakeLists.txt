@@ -44,6 +44,7 @@ add_executable(SecretOfEvermoreSNESRecomp
     src/soe_frame_driver.c
     src/soe_last_cycle.c
     src/soe_bindings.c
+    src/soe_cost.c
     src/soe_mesen_state.c
     src/gen_stubs.c
 )
@@ -53,10 +54,11 @@ add_executable(SecretOfEvermoreSNESRecomp
 set(SOE_RECONSTRUCTED_C "${CMAKE_SOURCE_DIR}/../everscript-vscode/reconstructed-c" CACHE PATH
     "everscript-vscode's reconstructed-c folder (empty: no C bindings)")
 set(SOE_BOUND_C 80/80859B_random_number_generator.c 8F/8FA914_update_entity_plane.c 90/909DE8_eval_tile_collision.c
-    80/809685_init_entity_pool.c 8F/8FC773_entity_sprite_depth.c)
+    80/809685_init_entity_pool.c 8F/8FC773_entity_sprite_depth.c 8F/8F9F05_companion_metatile_raycast_line_stepper.c)
 if(SOE_RECONSTRUCTED_C AND EXISTS "${SOE_RECONSTRUCTED_C}/include/soe.h")
     foreach(f ${SOE_BOUND_C})
         target_sources(SecretOfEvermoreSNESRecomp PRIVATE "${SOE_RECONSTRUCTED_C}/${f}")
+        set_source_files_properties("${SOE_RECONSTRUCTED_C}/${f}" PROPERTIES COMPILE_DEFINITIONS SOE_COST)
     endforeach()
     target_include_directories(SecretOfEvermoreSNESRecomp PRIVATE "${SOE_RECONSTRUCTED_C}/include")
     target_compile_definitions(SecretOfEvermoreSNESRecomp PRIVATE SOE_RECONSTRUCTED_C)

@@ -16,7 +16,7 @@ docs and the debugging tools live here.
 ## Status
 
 Five replays, about 17.5 minutes of distinct play from power-on into Prehistoria, run identically to MesenCE at every
-frame: all memory, and the picture but for fade rounding. 99.9 % of what they execute runs natively, and five routines
+frame: all memory, and the picture but for fade rounding. 99.9 % of what they execute runs natively, and six routines
 run as reconstructed C. The whole game has not been proven, and no release exists yet. Per replay:
 [docs/progress.md](docs/progress.md); the bug history: [docs/bugs-and-todos.md](docs/bugs-and-todos.md).
 

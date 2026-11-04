@@ -171,14 +171,17 @@ static uint64_t access_clock(uint64_t start, uint32_t lead) {
     return refresh_points_upto(a) > refresh_points_upto(start - 1) ? a + REFRESH_CLOCKS : a;
 }
 
-static void refresh_begin(void) { snes_refresh_state_set(0, g_cpu.master_cycles); }
+static uint64_t s_refresh_from; /* where the refresh count of this slice stands */
+static void refresh_begin(void) { s_refresh_from = g_cpu.master_cycles; snes_refresh_state_set(0, g_cpu.master_cycles); }
 
-static void refresh_end(uint64_t before) {
+static void refresh_end(void) {
+    const uint64_t before = s_refresh_from;
     uint64_t phase = 0, upto = 0;
     snes_refresh_state_get(&phase, &upto);
     const uint64_t after = g_cpu.master_cycles;
-    /* From phase 0 at `before`: after = before + work + 40 * charged, phase = work - 1364 * charged. */
-    const uint64_t charged = after > before + phase ? (after - before - phase) / (LINE_CLOCKS + REFRESH_CLOCKS) : 0;
+    /* From phase 0 at `before`: upto = before + work + 40 * charged, phase = work - 1364 * charged. By `upto`, not the
+     * clock now: the framework has not seen what a C binding charged since its last count. */
+    const uint64_t charged = upto > before + phase ? (upto - before - phase) / (LINE_CLOCKS + REFRESH_CLOCKS) : 0;
     uint64_t crossed = refresh_points_upto(after) - refresh_points_upto(before);
     while (crossed > charged) {
         const uint64_t was = g_cpu.master_cycles;
@@ -186,6 +189,7 @@ static void refresh_end(uint64_t before) {
         crossed += refresh_points_upto(g_cpu.master_cycles) - refresh_points_upto(was);
         crossed--;
     }
+    s_refresh_from = g_cpu.master_cycles;
     snes_refresh_state_set(0, g_cpu.master_cycles);
     slow_apu_to_reference();
 }
@@ -267,7 +271,7 @@ static void run_interrupt(uint32_t vector, uint64_t deadline, bool nmi) {
         (void)interp_bridge_run_interrupt(&g_cpu, vector);
     }
     set_deadline(0);
-    refresh_end(before);
+    refresh_end();
     update_resume_pc();
 }
 
@@ -343,6 +347,8 @@ static void set_slice_deadline(uint64_t clock, uint64_t hard) {
 }
 static void set_deadline(uint64_t clock) { set_slice_deadline(clock, clock); }
 uint64_t soe_frame_driver_deadline(void) { return s_deadline; }
+/* For a C binding that runs on past refresh stops: what it crossed is charged now, so the clock it checks is true. */
+void soe_frame_driver_settle_refresh(void) { refresh_end(); }
 uint64_t soe_frame_driver_hard_deadline(void) { return s_hard_deadline; }
 bool soe_frame_driver_irq_possible(void) {
     return !g_cpu._flag_I && (g_snes->hIrqEnabled || g_snes->vIrqEnabled || irq_line_asserted());
@@ -423,7 +429,7 @@ static void finish_nmi_approach(uint64_t frame_end) {
     set_deadline(before + 1);
     (void)interp_bridge_run_until_quiescent(&g_cpu, s_resume_pc);
     set_deadline(0);
-    refresh_end(before);
+    refresh_end();
     step_end(counted);
     update_resume_pc();
     if (interp_bridge_lle_took_wai()) s_wai_halted = true;
@@ -608,7 +614,7 @@ void soe_frame_driver_run_frame(void) {
             (void)interp_bridge_run_until_quiescent(&g_cpu, s_resume_pc);
             if (watch) step_end(counted);
             set_deadline(0);
-            refresh_end(before);
+            refresh_end();
             if (approach) g_interp_bridge_pc_hook = s_bank_stats > 0 ? count_pc : 0;
             update_resume_pc();
             align_beam();
@@ -631,7 +637,7 @@ void soe_frame_driver_run_frame(void) {
                     (void)interp_bridge_run_until_quiescent(&g_cpu, s_resume_pc);
                     set_deadline(0);
                     step_end(counted);
-                    refresh_end(at);
+                    refresh_end();
                     update_resume_pc();
                     snes_sync_master_clock(g_snes, g_cpu.master_cycles);
                     run_nmi(frame_end);

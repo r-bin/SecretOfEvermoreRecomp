@@ -22,6 +22,7 @@ uint64_t soe_frame_driver_deadline(void);
 /* The first stop of the slice that is not a DRAM refresh (0: none), and whether an IRQ could be taken in it. */
 uint64_t soe_frame_driver_hard_deadline(void);
 bool soe_frame_driver_irq_possible(void);
+void soe_frame_driver_settle_refresh(void);
 
 /* game_rtl.c: the WRAM and SRAM a compare run starts with (SOE_COMPARE_WRAM, _SRAM), before the first instruction. */
 void soe_compare_start_memory(void);

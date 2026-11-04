@@ -184,6 +184,20 @@ A binding must not be told apart from the ROM routine, so the helper runs the C 
 - **Same state.** Registers, flags, S (the RTL's pop) and the open bus (the RTL's last read) as the asm leaves them;
   only WRAM is touched, so when inside the routine each access happens cannot be seen.
 
+**Costs from marks.** New bindings need no cost code. The C marks its basic blocks with `SOE_AT(pc)`, a no-op in the ROM build, and
+`src/soe_cost.c` walks the ROM's bytes between two marks, adding up what bus-exact code charges. A branch counts as taken when its
+target is the next mark, so a mark stands at each target the C takes, and on the fall-through of a branch when a later branch has
+the same target. `run_checked` holds the marks' cost against the hand-written cost of the older bindings on every call (it agreed on
+all 1,923,901 calls of replay 01). The walk also writes the return addresses a `JSL` leaves below S, which the replays hash.
+`SOE_COST_TRACE=1` prints the marks and each walked instruction with its cost.
+
+**Routines longer than a slice.** The raycast's C runs a step at a time (`raycast_start`, `raycast_step`). Everything a step carries
+over lives in WRAM and on the stack as the asm keeps it, so when the next step might not fit the compiled ROM code takes over at
+`$9F43`, between two instructions. Each step is charged at once, and `soe_frame_driver_settle_refresh` pays the refreshes crossed so
+far: a walk can run on past many refresh stops, and refreshes left to the end of the slice would hide up to 5,000 clocks from the
+deadline check. The driver's refresh count works from the framework's own high-water mark, since the framework has not seen what C
+charged. `RAY_STEP_BOUND` is an upper limit on a step, not its cost.
+
 Without the reconstructed C (no sibling checkout) every helper runs the ROM bytes: the build stays exact.
 `SOE_HLE_STATS=1` counts both paths; `SOE_HLE_MUTATE=<helper's name>` (`1`: all) corrupts the C path's result, the
 control that shows the sync replays catch a wrong binding. To pick the next routine: `SOE_BANK_STATS=1
@@ -196,6 +210,7 @@ SOE_PC_COUNTS=<file>` writes how often each PC ran.
 | `$90:9DE8` `eval_tile_collision` | `reconstructed-c/90/909DE8_eval_tile_collision.c` | same |
 | `$80:9685` `init_entity_pool` | `reconstructed-c/80/809685_init_entity_pool.c` | same |
 | `$8F:C773` `entity_sprite_depth` | `reconstructed-c/8F/8FC773_entity_sprite_depth.c` | same |
+| `$8F:9F05` `companion_metatile_raycast_line_stepper` | `reconstructed-c/8F/8F9F05_companion_metatile_raycast_line_stepper.c` | same |
 
 ---
 
