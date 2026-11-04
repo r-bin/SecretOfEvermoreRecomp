@@ -1,6 +1,6 @@
 # Starting From a MesenCE Save State
 
-**Status:** works. Replay 05 is identical to MesenCE for 3,065 fields from a state taken mid-game.
+**Status:** works. Replay 05 is identical to MesenCE to its end from a state taken mid-game (CGRAM: below).
 
 ## What it is
 `SOE_COMPARE_MESEN_STATE=<file>` starts the game from a MesenCE state's field stream (everscript-vscode
@@ -24,8 +24,8 @@ internal registers, the SPC700, its timers and the per-clock S-DSP, whose state 
 - MesenCE's SPC700 steps through an opcode, ours runs it at the first clock: the opcode in progress runs at load
   and its remaining cycles count down. `spc.opStep` counts from 0: on the one state so far (step 3 of `$F7`), every value but
   step + 1 parted by key 108. An opcode that had already written when the state was taken would write twice; none has
-  been met.
+  been met. Between opcodes (step 0, 04's state) the next one starts a cycle later.
 
 ## Open
-- Replay 05, keys 2992-3065: CGRAM differs, then clocks at 3066 (progress.md).
+- Replay 05, keys 2992-3065: CGRAM differs ([cgram-writes-during-rendering.md](cgram-writes-during-rendering.md)).
 - MesenCE's PPU1/PPU2 open bus and mid-line PPU state are not taken over: nothing has needed them at line 225.

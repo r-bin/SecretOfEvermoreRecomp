@@ -40,3 +40,8 @@ The old rule (multiple of 256, ≥ 130 clocks, 4224) ended the window at the sam
 offset went one way, and 256 clocks early when it went the other: frame 108, where the NMI handler's wait at
 `$80:8473` left one pass early. With the corrected rule every NMI from 2 to 319 has MesenCE's clock and interrupted
 address (all interpreted).
+
+## A frame that starts past line 0 (2026-11-04)
+A DMA that runs through all of vblank starts the next host frame on line 29 (NMI 3065 of replay 05). The driver counted back to
+line 225 only from lines above it, took line 29 for line 225 and held the bit about 90,000 clocks too long. It now counts across the wrap.
+

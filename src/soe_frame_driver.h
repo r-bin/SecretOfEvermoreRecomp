@@ -31,5 +31,6 @@ void soe_compare_pad_first(uint64_t clock);
 void soe_compare_ready(void);
 /* soe_mesen_state.c: the machine from a MesenCE state (SOE_COMPARE_MESEN_STATE); its PC, or 0. */
 uint32_t soe_mesen_state_load(void);
+void soe_mesen_state_load_apu(void);
 
 #endif

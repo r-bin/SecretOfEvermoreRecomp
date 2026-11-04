@@ -28,9 +28,12 @@ Ordered as found, measured on `01-no-inputs-4m.evsmv` (all against MesenCE 2.2.1
 | [compiled-cycle-charges.md](compiled-cycle-charges.md) | snesrecomp recompiler | compiled code billed at code speed, charged before its accesses, deadline per block: native exact only to NMI 1 | fixed on branch `aot-bus-exact` (2026-11-03): native identical to MesenCE at every key of both replays |
 | [hv-counter-latch.md](hv-counter-latch.md) | snesrecomp PPU | `$2137` latched always, reset the `$213C/$213D` flip-flops, read 0; `$2138`/`$213B` during rendering read the CPU's address | fixed on branch `spc-access-cycles` (latch) and `ppu-render-reads` (reads during rendering, 2026-11-02): the attract replay is identical at every key |
 | [host-frames-and-fields.md](host-frames-and-fields.md) | snesrecomp frame driver | a long DMA packs several fields into one host frame: replay input lands late | open for replays with input |
-| [mesen-state.md](mesen-state.md) | the comparison | a MesenCE save state as the start of a run, taken over whole | works: 3,065 fields identical |
-| [mmo-reset-start.md](mmo-reset-start.md) | the comparison | a MesenCE movie's start is a reset of a running console, only partly copied: NMIs a few clocks apart | open |
-| [cgram-read-open-bus.md](cgram-read-open-bus.md) | snesrecomp PPU | `$213B` high byte's bit 7 is 0, not the PPU2 open bus | open, needs snesrecomp |
+| [mesen-state.md](mesen-state.md) | the comparison | a MesenCE save state as the start of a run, taken over whole | works: replay 05 identical to its end |
+| [mmo-reset-start.md](mmo-reset-start.md) | the comparison | a MesenCE movie's start is a reset of a running console | solved: replay 04 identical to its end |
+| [cgram-read-open-bus.md](cgram-read-open-bus.md) | snesrecomp PPU | `$213B` high byte's bit 7 is 0, not the PPU2 open bus | fixed for DMA reads in our frame driver |
+| [vblank-flag-at-access.md](vblank-flag-at-access.md) | snesrecomp registers | `$4212` bit 7 read at the instruction's start, bits 1-5 read 0 | fixed in our frame driver |
+| [mesen-rom-mirror.md](mesen-rom-mirror.md) | MesenCE | its 4th MB is one file page over and over | copied in compare runs only |
+| [cgram-writes-during-rendering.md](cgram-writes-during-rendering.md) | snesrecomp PPU | CGRAM writes during rendering go to the CGRAM address, not the colour being read | open: replay 05's CGRAM, keys 2992-3065 |
 
 ## Branch `snesrecomp-spc-access-cycles` (2026-10-31)
 snesrecomp changed on its own branch `spc-access-cycles` (the owner's experiment for an upstream PR;

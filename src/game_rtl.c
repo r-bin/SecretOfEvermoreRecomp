@@ -22,6 +22,7 @@
 #include "cpu_state.h"
 #include "desktop/config.h"
 #include "snes/apu.h"
+#include "snes/cart.h"
 #include "snes/dsp.h"
 #include "snes/interp_bridge.h"
 #include "snes/joypad.h"
@@ -139,26 +140,14 @@ void soe_compare_ready(void) { if (!s_cmp.state) CmpInit(); }
 void soe_compare_start_memory(void) {
     load_start("SOE_COMPARE_WRAM", g_ram, 0x20000);
     load_start("SOE_COMPARE_SRAM", g_sram, (size_t)g_sram_size);
-    load_start("SOE_COMPARE_ARAM", g_snes->apu->ram, 0x10000);
-    /* A recording with random power-on state has random S-DSP registers, and they decide how long the sound driver's
-     * start takes. */
-    uint8_t dsp[0x80];
-    memset(dsp, 0xFF, sizeof dsp);
-    load_start("SOE_COMPARE_DSP", dsp, sizeof dsp);
-    if (getenv("SOE_COMPARE_DSP"))
-        for (int i = 0; i < 0x80; i++)
-            if (i != 0x4C && i != 0x5C) dsp_write(g_snes->apu->dsp, (uint8_t)i, dsp[i]);   /* not KON, KOFF: no voice runs */
-    /* FastROM on, per SPC timer the cycles to its next tick, divider, target, counter and enable, the S-DSP's clock. */
-    uint8_t hw[17];
+    soe_mesen_state_load_apu();
+    /* FastROM on. */
+    uint8_t hw;
     if (!getenv("SOE_COMPARE_HW")) return;
-    load_start("SOE_COMPARE_HW", hw, sizeof hw);
-    g_memsel = hw[0];
-    for (int i = 0; i < 3; i++) {
-        const uint8_t *t = &hw[1 + i * 5];
-        Timer *timer = &g_snes->apu->timer[i];
-        timer->cycles = t[0]; timer->divider = t[1]; timer->target = t[2]; timer->counter = t[3]; timer->enabled = t[4];
-    }
-    g_snes->apu->dsp->clk.step = (uint8_t)((g_snes->apu->dsp->clk.step + hw[16]) & 31);
+    load_start("SOE_COMPARE_HW", &hw, 1);
+    g_memsel = hw;
+    /* The running console's automatic reads have shifted its controller out: $4016 reads 1 at $80:848D, not a fresh 0. */
+    joypad_auto_read(g_snes);
 }
 
 static void CmpInit(void) {
@@ -202,6 +191,11 @@ static void CmpInit(void) {
         for (unsigned long o = a; o <= b && o < 0x20000 && s_cmp.npeek < 256; o++) s_cmp.peek[s_cmp.npeek++] = (uint32_t)o;
         p = *end == ',' ? end + 1 : NULL;
     }
+    /* Against MesenCE: its 4th MB is file page $200000 over and over (a loop in BaseCartridge counts pages in bytes);
+     * a cartridge's is the 3rd MB, as ours. $80:D113 reads there (docs/imperfections/mesen-rom-mirror.md). */
+    Cart *cart = g_snes->cart;
+    if (getenv("SOE_COMPARE_MESEN_ROM_MIRROR") && cart->romSize == 0x400000)
+        for (uint32_t o = 0x300000; o < 0x400000; o += 0x1000) memcpy(cart->rom + o, cart->rom + 0x200000, 0x1000);
     s_cmp.state = 2;
 }
 

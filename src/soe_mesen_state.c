@@ -300,7 +300,7 @@ static void load_dsp(Dsp *dsp) {
 /* The opcode MesenCE is inside of: it starts `length` bytes before PC, the length found from the opcode byte. */
 static void finish_spc_opcode(Apu *apu) {
     const uint64_t step = num("spc.opStep");
-    if (!step) return;
+    if (!step) { apu->cpuCyclesLeft = 1; return; }   /* between opcodes: ours starts on the cycle after MesenCE's position */
     const uint8_t opcode = (uint8_t)num("spc.opCode");
     int length = 1;
     while (length <= 3 && apu->ram[(uint16_t)(apu->spc->pc - length)] != opcode) length++;
@@ -355,13 +355,9 @@ static void load_apu(void) {
     finish_spc_opcode(apu);
 }
 
-/* The state's PC, 0 without SOE_COMPARE_MESEN_STATE. */
-uint32_t soe_mesen_state_load(void) {
-    static bool done;
-    const char *path = getenv("SOE_COMPARE_MESEN_STATE");
-    FILE *f = !done && path ? fopen(path, "rb") : NULL;
-    done = true;
-    if (!f) return 0;
+static bool read_fields(const char *path) {
+    FILE *f = path ? fopen(path, "rb") : NULL;
+    if (!f) return false;
     fseek(f, 0, SEEK_END);
     s_size = (size_t)ftell(f);
     rewind(f);
@@ -369,7 +365,20 @@ uint32_t soe_mesen_state_load(void) {
     if (fread(data, 1, s_size, f) != s_size) s_size = 0;
     fclose(f);
     s_data = data;
+    return true;
+}
 
+static void free_fields(void) {
+    free((void *)s_data);
+    s_data = NULL;
+}
+
+/* The state's PC, 0 without SOE_COMPARE_MESEN_STATE. */
+uint32_t soe_mesen_state_load(void) {
+    static bool done;
+    const char *path = done ? NULL : getenv("SOE_COMPARE_MESEN_STATE");
+    done = true;
+    if (!read_fields(path)) return 0;
     load_cpu();
     copy("memoryManager.workRam", g_ram, 0x20000);
     copy("cart.saveRam", g_sram, (size_t)g_sram_size);
@@ -379,7 +388,14 @@ uint32_t soe_mesen_state_load(void) {
     load_joypad();
     load_apu();
     const uint32_t pc = (uint32_t)g_cpu.PB << 16 | (uint32_t)num("cpu.pc");
-    free(data);
-    s_data = NULL;
+    free_fields();
     return pc;
+}
+
+/* A movie's state at the reset vector: its SPC700 and S-DSP, which a reset leaves part way between power-on and running
+ * (SOE_COMPARE_MESEN_APU, the same field stream; docs/imperfections/mmo-reset-start.md). */
+void soe_mesen_state_load_apu(void) {
+    if (!read_fields(getenv("SOE_COMPARE_MESEN_APU"))) return;
+    load_apu();
+    free_fields();
 }

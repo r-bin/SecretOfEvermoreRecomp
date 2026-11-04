@@ -61,6 +61,7 @@ void soe_frame_driver_set_resume(uint32_t pc, bool wai_halted) { s_resume_pc = p
 
 static void align_field_length(void);
 static void align_beam(void);
+static void finish_4212_read(void);
 
 static uint32_t read_vector(uint32_t addr) {
     return ((uint32_t)snes_read(g_snes, addr + 1u) << 8) | snes_read(g_snes, addr);
@@ -231,7 +232,12 @@ static void auto_joypad_begin(void) {
 #define INTERRUPT_CLOCKS (2u * 6u + 4u * 8u + 2u * 8u)
 
 static void run_interrupt(uint32_t vector, uint64_t deadline, bool nmi) {
+    if (nmi) finish_4212_read();
     cpu_push_interrupt_frame_at(&g_cpu, s_resume_pc);
+    /* The 65816 clears D as it takes an interrupt, cpu_push_interrupt_frame_at does not: an NMI inside the BCD routine at
+     * $80:B283 ran its handler in decimal mode and its DMA queue walked off (NMI 6844 of replay 05). */
+    g_cpu._flag_D = 0;
+    g_cpu.P &= (uint8_t)~CPU_P_D;
     g_cpu.cycles += INTERRUPT_CYCLES;
     /* A refresh point inside the sequence stalls it (MesenCE: the handler starts 40 clocks later); the handler's
      * own refresh accounting below only starts after it. */
@@ -281,6 +287,46 @@ static void run_nmi(uint64_t deadline) {
  */
 #define NMI_LINE_CLOCKS 6u
 #define NMI_SEEN_CLOCKS 12u
+
+/*
+ * Vblank's two edges as $4212 bit 7 shows them. snesrecomp reads the bit from the beam at the instruction's start,
+ * MesenCE at the access, 20 clocks in for LDA absolute: the waits at $80:C286 and $80:C2D7 (LDA $4212 / BPL, BMI) of the
+ * flight scene ran a pass longer, and an NMI pushed other flags. So a slice stops 20 clocks before each edge, and the
+ * beam waits on the edge's line for the CPU (docs/imperfections/vblank-flag-at-access.md).
+ */
+#define VBLANK_EDGE_LEAD 20u
+static uint64_t s_edge_held; /* the edge the beam waits at, 0 when it runs */
+
+static uint64_t vblank_end(void) { return s_line0 + (262u - VBLANK_LINE) * LINE_CLOCKS; }
+
+static uint64_t edge_stop(uint64_t now, uint64_t deadline, uint64_t frame_end) {
+    const uint64_t stops[] = { s_edge_held, vblank_end() - VBLANK_EDGE_LEAD, frame_end - VBLANK_EDGE_LEAD };
+    for (int i = s_edge_held ? 0 : 1; i < (s_edge_held ? 1 : 3); i++)
+        if (now < stops[i] && stops[i] < deadline) deadline = stops[i];
+    return deadline;
+}
+
+static void edge_release(void) {
+    if (!s_edge_held) return;
+    snes_beam_hold(0);
+    s_edge_held = 0;
+}
+
+static void edge_step(uint64_t frame_end) {
+    const uint64_t now = g_cpu.master_cycles;
+    if (s_edge_held && now < s_edge_held) return;
+    edge_release();
+    const uint64_t edge = g_snes->vPos == 261u ? vblank_end() : g_snes->vPos == VBLANK_LINE - 1u ? frame_end : 0;
+    if (now >= edge || now + VBLANK_EDGE_LEAD < edge) return;
+    snes_sync_master_clock(g_snes, edge);
+    if (edge == frame_end) {
+        /* The beam's next step at V=225 H=0 starts the automatic read: its pads now, its busy bit later on MesenCE. */
+        snes_sync_master_clock(g_snes, edge + 2);
+        g_snes->autoJoyTimer = 0;
+    }
+    snes_beam_hold(1);
+    s_edge_held = edge;
+}
 
 /* Every deadline goes through here, so a C binding can tell whether it would run past one. `hard` is the first
  * stop that is not a DRAM refresh: a refresh is charged after the slice from the points it crossed (refresh_end),
@@ -344,6 +390,22 @@ static void record_pc(uint32_t pc24, int m_flag, int x_flag) {
     s_last_dma = g_snes_dma_charged;
 }
 
+/*
+ * $4212 bits 1-5 are open bus on MesenCE, $42 from the address after LDA $4212: bit 1 reads 1. snesrecomp reads 0 there
+ * and the read goes past our files, but the game only tests bits 6, 7 and 0 of it, so only an NMI sees the rest: the
+ * handler pushes A, the frame P, while the value still sits in A (docs/imperfections/vblank-flag-at-access.md).
+ */
+static void finish_4212_read(void) {
+    uint32_t pc = s_last_pc;
+    if (!pc || !g_cpu.m_flag) return;
+    const uint8_t op = snes_read(g_snes, pc);
+    if (op == 0x10 || op == 0x30) pc -= 3; /* the wait's BPL / BMI */
+    if (snes_read(g_snes, pc) != 0xAD || snes_read(g_snes, pc + 1) != 0x12 || snes_read(g_snes, pc + 2) != 0x42) return;
+    g_cpu.A |= 0x02;
+    g_cpu._flag_Z = 0;
+    g_cpu.P &= (uint8_t)~CPU_P_Z;
+}
+
 /* After the slice that reached V=225+12: run one more instruction if MesenCE would. */
 static void finish_nmi_approach(uint64_t frame_end) {
     if (!s_last_pc || g_cpu.master_cycles < frame_end + NMI_SEEN_CLOCKS) return;
@@ -382,8 +444,24 @@ static void start_from_mesen_state(void) {
     snes_sync_master_clock(g_snes, g_cpu.master_cycles);
 }
 
+/*
+ * A CGRAM word has 15 bits: MesenCE's $213B returns bit 7 of the high byte from the PPU2 open bus, which the low byte's
+ * read just set; snesrecomp returns 0 and has no such bus. The game reads CGRAM back by DMA, whose stores into WRAM pass
+ * this hook after they landed (docs/imperfections/cgram-read-open-bus.md).
+ */
+static void cgram_dma_open_bus(uint32_t wram, uint8_t value, const char *via) {
+    static uint8_t low;
+    wlog_addr_note_direct(wram, value, via);
+    int i = 0;
+    while (i < 8 && !g_snes->dma->channel[i].dmaActive) i++;
+    if (i == 8 || !g_snes->dma->channel[i].fromB || g_snes->dma->channel[i].bAdr != 0x3B) return;
+    if (g_ppu->cgramSecondWrite) low = value; /* the read has already moved the latch on */
+    else g_snes->ram[wram] = (uint8_t)(value | (low & 0x80));
+}
+
 void soe_frame_driver_run_frame(void) {
     bank_stats_init();
+    snes_set_wram_write_log_hook(cgram_dma_open_bus);
     if (s_resume_pc == 0) start_from_mesen_state();
     const bool booting = s_resume_pc == 0;
     int slices = 0, late_steps = 0;
@@ -410,6 +488,8 @@ void soe_frame_driver_run_frame(void) {
     {
         uint64_t back = g_snes->hPos;
         if (g_snes->vPos > VBLANK_LINE && g_snes->vPos < 262u) back += (uint64_t)(g_snes->vPos - VBLANK_LINE) * LINE_CLOCKS;
+        /* Past the wrap: a DMA ran through the whole vblank (NMI 3065 of replay 05 comes on line 29), the window long over. */
+        else if (!booting && g_snes->vPos < VBLANK_LINE) back += (uint64_t)(g_snes->vPos + 262u - VBLANK_LINE) * LINE_CLOCKS;
         /* A state loaded before the first frame: snesrecomp sets the beam's clock to the CPU's, still near 0, under the
          * saved V/H, so line 225 would have started before clock 0 and every refresh point below wrapped around (a
          * hang in refresh_points_upto). Pinned to 0 the first field's refresh points sit up to a line off; from the
@@ -428,7 +508,7 @@ void soe_frame_driver_run_frame(void) {
             /* While a late NMI is possible, stop after every instruction to see whether it enabled NMI. */
             const bool watch = !booting && late_nmi_possible() && late_steps < MAX_LATE_NMI_STEPS;
             const uint64_t before = g_cpu.master_cycles;
-            uint64_t deadline = watch ? before + 1 : next_refresh_after(before) + 1;
+            uint64_t deadline = watch ? before + 1 : edge_stop(before, next_refresh_after(before) + 1, frame_end);
             if (deadline > cpu_end) deadline = cpu_end;
             /* Every slice records its instructions: a slice that stops for a refresh can still end past V=225 (a
              * long DMA), and its last instruction decides the NMI as the final slice's does. */
@@ -445,6 +525,7 @@ void soe_frame_driver_run_frame(void) {
             if (approach) g_interp_bridge_pc_hook = s_bank_stats > 0 ? count_pc : 0;
             update_resume_pc();
             align_beam();
+            edge_step(frame_end);
             if (interp_bridge_lle_took_wai()) s_wai_halted = true;
             if (approach && !s_wai_halted) finish_nmi_approach(frame_end);
             auto_joypad_begin();
@@ -493,6 +574,7 @@ void soe_frame_driver_run_frame(void) {
         advance_parked(next);
     }
 
+    edge_release();
     {
         int walk = 0;
         if (g_cpu.master_cycles < frame_end) advance_parked(frame_end);
