@@ -15,10 +15,13 @@ docs and the debugging tools live here.
 
 ## Status
 
-Playable in the field: intro, title, continue from a save, Prehistoria village and jungle with
-combat, save states (F1). Seeds from a CDL covering 90 % of the ROM; on the pinned framework
-3916 roots, 4871 native variants, 759 interpreted. Details and the bug history:
-[docs/README.md](docs/README.md), [docs/bugs-and-todos.md](docs/bugs-and-todos.md).
+Five replays, about 17.5 minutes of distinct play from power-on into Prehistoria, run identically to MesenCE at every
+frame: all memory, and the picture but for fade rounding. 99.9 % of what they execute runs natively, and three routines
+run as reconstructed C. The whole game has not been proven, and no release exists yet. Per replay:
+[docs/progress.md](docs/progress.md); the bug history: [docs/bugs-and-todos.md](docs/bugs-and-todos.md).
+
+These results need four snesrecomp branches that are not upstream yet
+([docs/upstream-access-timing.md](docs/upstream-access-timing.md)), and the pinned commit is local for now.
 
 ## ROM identity
 
@@ -54,7 +57,7 @@ both from ever being committed.
 
 `tools/regen.sh` verifies the ROM, generates `src/gen/*.c`, and re-syncs
 `recomp/funcs.h`. Re-run it whenever you change anything under `recomp/`.
-The framework submodule is never patched; our frame driver (`src/soe_frame_driver.c`) and the
+Our frame driver (`src/soe_frame_driver.c`) and the
 glue (`src/game_rtl.c`) hold everything this game needs ([docs/game-rtl.md](docs/game-rtl.md)).
 
 New seeds (a bigger CDL, a new exclusion in `recomp/seed-exclusions.txt`) come from

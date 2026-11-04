@@ -8,9 +8,9 @@ next steps for the Secret of Evermore static recompilation.
 ## 1. Open Bugs & Active Investigations
 
 ### 1.1 Timing Against MesenCE (the reference)
-- **Status:** ~99 % (2026-10-30): WRAM equal through NMI key 300, 98.3–99.95 % equal up to key 5800 on the
-  attract replay, the rest from known framework limits. One file per known difference, with the
-  measurements: [imperfections/README.md](imperfections/README.md).
+- **Status (2026-11-04):** all memory identical to MesenCE at every key of the five sync replays but for the open
+  differences in [imperfections/README.md](imperfections/README.md): fade rounding, ENDX a clock early, the BRR offset at
+  power-on. Table: [progress.md](progress.md). Open work: everscript-vscode `docs/todo/static-recompilation.md`.
 - **Branch `snesrecomp-spc-access-cycles` (2026-10-31, 2026-11-02):** both replays (01 attract, 02 new game)
   identical at every NMI key, all interpreted; glue alone stopped at 319. Since 2026-11-03 native too, to the end of
   both replays (snesrecomp `aot-bus-exact`, [compiled-cycle-charges.md](imperfections/compiled-cycle-charges.md); the
@@ -87,7 +87,7 @@ These issues should be submitted to the [RetroPortingToolKit/snesrecomp](https:/
    that did run would still be correct, only interpreted.
 8. **`getenv` on every interpreter entry:** `_interp_run_core` (`runner/src/snes/interp_bridge.c`) reads
    `SNESRECOMP_WLOG_STATE` each call without caching it: about 1 % of the main thread in a native run (macOS
-   `sample`, 2026-11-03; docs/progress.md, "Speed"). Cache it in a static as the neighbouring switches do.
+   `sample`, 2026-11-03; docs/progress-details.md, "Speed"). Cache it in a static as the neighbouring switches do.
 9. **`RtlReset` does not reset `g_cpu`:** `runner/src/common_rtl.c` resets the legacy core's registers
    (`SnesEnterNativeMode`) but not the `CpuState` the bridge and compiled code run on, and `session_reset` is not
    called on a console reset. Every game on the beam/generic drivers keeps its widths and resume PC through a
@@ -101,60 +101,8 @@ These issues should be submitted to the [RetroPortingToolKit/snesrecomp](https:/
 
 ---
 
-## 4. Prioritized Recomp Roadmap
+## 4. Roadmap
 
-```text
- ┌────────────────────────────────────────────────────────────────────────┐
- │ [COMPLETED] Milestone 1: Headless Intro & Attract Loop Across Cycles   │
- └───────────────────────────────────┬────────────────────────────────────┘
-                                     ▼
- ┌────────────────────────────────────────────────────────────────────────┐
- │ 2. Title Screen & Room 0 Input Automation (press start, name boy/dog)  │
- └───────────────────────────────────┬────────────────────────────────────┘
-                                     ▼
- ┌────────────────────────────────────────────────────────────────────────┐
- │ 3. Deep In-Game Lockstep Verification (Podunk village physics & scripts)│
- └───────────────────────────────────┬────────────────────────────────────┘
-                                     ▼
- ┌────────────────────────────────────────────────────────────────────────┐
- │ 4. First HLE C Function Replacements (hle_func for LZ decompressor)    │
- └───────────────────────────────────┬────────────────────────────────────┘
-                                     ▼
- ┌────────────────────────────────────────────────────────────────────────┐
- │ 5. Upstream PRs (BG Mode 4 in NewRenderer, interpreter stack fallback) │
- └────────────────────────────────────────────────────────────────────────┘
-```
-
-### Milestone 1: Headless Intro & Attract Mode Across Cycles (COMPLETED)
-- Verified over 12,300 frames (~3.4 minutes emulated) via `tools/verify-intro.js`.
-- Boot -> Squaresoft logo -> Intro story cutscene -> Title screen ("Press START") -> Attract demo (Thraxx fight).
-- Loops cleanly from Cycle 1 to Cycle 2 (~frame 6164), runs Cycle 2 with identical 100% clean sprites/OAM, and loops into Cycle 3 (~frame 12250).
-- Excluded stack-resident loop dispatcher `$8F:9F46` and dynamic hook `$80:84BE` in `recomp/seed-exclusions.txt`.
-
-### Milestone 2: Automated In-Game Playthrough
-- Write a headless script that presses Start at the title screen, accepts default names, and loads
-  the opening cutscene and first playable room (`room_00`, Podunk).
-- Extend `tools/compare` (recomp `press` input from a replay) to verify WRAM integrity across player movement and weapon swings.
-
-### Milestone 3: High-Level Emulation (HLE) Replacements (`hle_func`)
-- snesrecomp supports replacing any recompiled routine with a clean C implementation using `hle_func <pc16> <c_func_name>`.
-- Replace the leaf routines first:
-  1. LZ decompressors (`src/games/evermore/maps/` already has verified TypeScript decoders).
-  2. Room tilemap loader and collision unpacker.
-- Lockstep WRAM comparison validates that hand-written C behaves identically to the original 65816 assembly.
-
-### Milestone 4: Broaden Static CDL Coverage
-- The CDL covers 90.3 % of the ROM since 2026-10-30, enough for now ([cdl-and-seeds.md](cdl-and-seeds.md)).
-  Ghidra / REA exports (`static.json`) could seed the rest; more native code is speed, not correctness.
-
-### Open tasks (2026-10-30), most important first
-1. **Re-verify on the current framework pin** (`ef0b3ff`): `tools/verify-intro.js`, the 21 fights in
-   room `0x38`, save states. Only the save load and the hut -> village walk were checked on it; the
-   pin moved far and native code grew from 1237 to 4871 variants.
-2. **Publish**: settle `LICENSE` (the scaffold's names its author), then push `main` and `develop`.
-3. **Attribute the rest of the MesenCE difference** (§1.1): what remains in an all-interpreter run after the
-   missed NMIs; the 208 flagged pushed-address returns ([imperfections/README.md](imperfections/README.md)).
-4. **Replays as regression tests**: drive the recomp with everscript-vscode's 86 recorded replays
-   and compare at game events (room entered, fight over), not frame numbers (milestone 2).
-
-
+The open tasks, in working order: everscript-vscode `docs/todo/static-recompilation.md`. Done from the first roadmap:
+intro and attract loop across cycles (replay 01), input into the game (replays 02 to 06), deep lockstep against MesenCE, first
+`hle_func` bindings ([progress-details.md](progress-details.md), "Bound C"), CDL coverage of 90.3 % ([cdl-and-seeds.md](cdl-and-seeds.md)).

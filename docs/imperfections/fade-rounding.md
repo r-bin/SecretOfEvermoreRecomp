@@ -11,7 +11,7 @@ Dark colours are therefore a little brighter here during fades and in dimmed sce
 ## Measured
 `compare --full --picture` on all five replays: the picture differs only below brightness 15. With `--fade`, which rewrites
 the recomp's pixels by MesenCE's rule before hashing (`SOE_COMPARE_FADE`, compare runs only, nothing changes in play), see
-[../progress.md](../progress.md), "Picture and sound".
+[../progress-details.md](../progress-details.md), "Picture and sound".
 
 With `--fade` the picture matches at every key of all five replays but one. That key is a different thing: key 2992 of
 replay 05, the last of a fade to black, differs in rows 0-24 alone, MesenCE 8 where the recomp has 0, and key 2993 matches.

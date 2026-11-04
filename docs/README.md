@@ -8,14 +8,13 @@ into a native, standalone, portable C desktop executable using
 
 ## 1. Status
 
-- **Status (2026-10-30): playable in the field.** Boots, intro, attract demo, title, continue
-  from the SRAM save, Prehistoria village and South jungle with combat, verified headless against
-  snes9x (no sprite or HUD corruption over 21 fights). Save states (F1) work.
+- **Status (2026-11-04):** five replays match MesenCE to their ends, native and interpreted: table in
+  [progress.md](progress.md), everything behind it in [progress-details.md](progress-details.md). Save states (F1) and
+  reset work. The whole game is not proven; open work: everscript-vscode `docs/todo/static-recompilation.md`.
 - **Seeds:** a CDL covering 90.3 % of the ROM (a full playthrough), written into `recomp/` by
-  everscript-vscode's export. On the pinned framework: 3916 roots, 4871 native variants, 759
-  interpreted. Routines that miscompile stay interpreted (`recomp/seed-exclusions.txt`).
-- **Lockstep validation:** WRAM matches snes9x through NMI counter ~300 (timing drift after, see
-  bugs-and-todos.md §1.1). snes9x is not the reference; MesenCE is ([reference-emulators.md](reference-emulators.md)).
+  everscript-vscode's export: 5,642 routine variants, 5,568 compiled, 74 interpreter-only, 3 routines bound to C.
+- **Framework:** the results need four snesrecomp branches that are not upstream, pinned locally
+  ([upstream-access-timing.md](upstream-access-timing.md)).
 
 ---
 
@@ -23,7 +22,8 @@ into a native, standalone, portable C desktop executable using
 
 | Guide | Contents |
 |---|---|
-| **[progress.md](progress.md)** | **Progress Against MesenCE**<br>One table: how far each replay stays in sync, interpreted and native, and what it took. |
+| **[progress.md](progress.md)** | **Progress Against MesenCE**<br>One table: each replay against every memory, the picture, native share and C. |
+| **[progress-details.md](progress-details.md)** | **Progress in Detail**<br>What stands behind that table: how each replay starts, what differs, native share, speed, banks, bound C, what it took, how to measure. |
 | **[setup.md](setup.md)** | **Setup & Build Pipeline**<br>Prerequisites, required assets (ROM, CDL, knowledge), environment variables, the build, and how the seeds come from everscript-vscode. |
 | **[game-rtl.md](game-rtl.md)** | **Game Runtime Layer (Game RTL / Glue Code)**<br>Why "Game RTL" is the proper architectural term, how `game_rtl.c` drives frames and interrupts, host configuration hooks (`SoeAfterConfig`), and licensing isolation. |
 | **[debugging.md](debugging.md)** | **Debugging, Emulators & Comparison**<br>Available emulators (snes9x2005-wasm, Mesen2, desktop host), execution modes (native vs interpreter, renderer modes), WRAM lockstep diffing, headless script automation, and seed bisection. |

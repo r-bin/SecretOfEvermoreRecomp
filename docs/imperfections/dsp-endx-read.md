@@ -20,7 +20,7 @@ for a moment, and the two meet again before the next key.
 ## Effect
 WRAM, VRAM, CGRAM, OAM and SRAM stay identical at every key of all five replays, and the sound state matches again one key
 later. How this sounds has not been measured: at worst a voice starts a few samples apart for one frame. Count per
-replay: [../progress.md](../progress.md), "Picture and sound".
+replay: [../progress-details.md](../progress-details.md), "Picture and sound".
 
 ## What would fix it
 Find which side of the clock an SPC700 read of `$F3` falls on when ENDX is set in the same cycle (`dspAhead` in `apu.c`,

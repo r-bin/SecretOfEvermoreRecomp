@@ -14,29 +14,28 @@ decomp bindings) are already in [lessons-from-mmx-and-lufia2.md](lessons-from-mm
 
 ## 1. Summary
 
-**Accuracy is no longer our gap. Players and proof are.** Our native build plays two replays with
-WRAM identical to MesenCE at every NMI, and 99.97 % / 99.99 % of their instructions run
-compiled ([progress.md](progress.md)). MMX measures itself against its own interpreter, not an
-outside reference, and it interprets its task scheduler on purpose. On correctness we are at
-least level with it.
+**Accuracy on what we have measured is not our gap. Players and proof of the whole game are.** Our native build
+plays five replays with all memory identical to MesenCE at every NMI and 99.9 % of their instructions outside the
+interpreter ([progress.md](progress.md)), but that is about 17.5 minutes of distinct play. MMX measures itself against its
+own interpreter, not an outside reference, and it interprets its task scheduler on purpose.
 
 MMX is a great recomp because it is a **product**: people download it, play it start to finish,
 turn mods on and off, and send in replays when something breaks. We have none of that. We have
 no release, no test suite, no CI build, and no proof that the game can be finished. We have no
 player features beyond save states.
 
-| Criterion | MMX | Us (2026-11-03) | Gap |
+| Criterion | MMX | Us (2026-11-04) | Gap |
 |---|---|---|---|
-| Matches a reference | own interpreter (A vs A, bounced vs interpreted, LLE vs HLE) | MesenCE, WRAM identical on 01 + 02, native and interpreted | none |
-| Native share | interprets its scheduler by design (~11 M interpreted instructions per 12,000-frame route) | 58 k / 30 k interpreted per replay | none |
-| Reproducible from the public repo | framework pinned, upstream is its author's | sync needs four snesrecomp branches that are not upstream yet | **large** |
-| Whole game proven | owner playtests plus 12,000-frame routes; issues get replays | free play in Prehistoria; `03-complete-run-7h` does not sync | **large** |
+| Matches a reference | own interpreter (A vs A, bounced vs interpreted, LLE vs HLE) | MesenCE on five replays: all memory, picture but for fade rounding, S-DSP state per frame | none on what is measured |
+| Native share | interprets its scheduler by design (~11 M interpreted instructions per 12,000-frame route) | 13 k to 236 k interpreted per replay | none |
+| Reproducible from the public repo | framework pinned, upstream is its author's | GitHub lists no branches yet, and sync needs four snesrecomp branches that are not upstream | **large** |
+| Whole game proven | owner playtests plus 12,000-frame routes; issues get replays | replays reach Prehistoria; `03-complete-run-7h` does not sync | **large** |
 | Released | Windows ZIP, Linux AppImage, Steam Deck folder, launcher | `release.yml` and setup pack written; no tag, `main` is the scaffold | **large** |
-| Tests and CI | 63 test files, `ctest`, ROM-free CI on every push, ROM tests opt-in | none in this repo; checks run by hand from everscript-vscode | **large** |
+| Tests and CI | 63 test files, `ctest`, ROM-free CI on every push, ROM tests opt-in | 2 ROM-backed `ctest` tests, no CI; replays run by hand (`npm run compare:full` in everscript-vscode) | **large** |
 | Bug reports | always-on replay recording, session logs, crash reports | none | medium |
 | Player features | widescreen, co-op, netplay with rollback, MSU-1, rewind, run-ahead, save-state browser, boss rush, character and weapon mods | save states (F1) | **large** |
 | Mods | 15 packages, hook layers, all off = vanilla | `mods/preloaded/` empty; [snesmod-addons.md](snesmod-addons.md), [enhancements.md](enhancements.md) are plans | **large** |
-| Performance | measured FPS per route, accuracy-preserving burndown, LLE reference build kept | never measured | medium |
+| Performance | measured FPS per route, accuracy-preserving burndown, LLE reference build kept | 368-500 frames/s measured on Apple Silicon, one machine | small |
 | ROM handling | refuses wrong revisions with a message naming the dump and the right one | refuses wrong ROMs; US only | small |
 | Contributor path | `CONTRIBUTING.md`, `bootstrap.sh`, pins checked | `setup.md`, pins checked by `release.yml` | small |
 
@@ -169,7 +168,7 @@ every speed-up can be checked against it. We have never measured. Bus-exact comp
 (`SNESRECOMP_EXACT_BUS=1`) and per-access timing cost speed, and we chose them deliberately.
 
 **How:** measure FPS uncapped on 01 and 02 with `SDL_VIDEO_DRIVER=dummy`, per build mode, and
-record the numbers in [progress.md](progress.md). Only if a target machine falls short, add a
+record the numbers in [progress-details.md](progress-details.md). Only if a target machine falls short, add a
 faster mode that stays optional, the way MMX does. The accurate build stays the default
 reference (the same rule as "preserve, not improve" for reconstructed C).
 
@@ -198,7 +197,7 @@ people can read and mod at the source level, not just play.
 | 4 | Settle `LICENSE`, merge to `main`, player README, first tagged setup pack | §2.3 | a public release a stranger can install |
 | 5 | Session replay recording and a reporting section | §2.5 | a player's report replays in `compare.mts` |
 | 6 | Mod hook layer with "all off = vanilla" in CI; rewind, save-state browser, widescreen, 5-status fix | §2.6, §2.7 | each mod's own test; sync replays unchanged with mods off |
-| 7 | FPS per build mode | §2.8 | numbers in [progress.md](progress.md). **Done 2026-11-03:** native 500 / 390 frames/s; the PPU renderer dominates |
+| 7 | FPS per build mode | §2.8 | numbers in [progress-details.md](progress-details.md). **Done 2026-11-03:** native 500 / 390 frames/s; the PPU renderer dominates |
 | 8 | First proven `hle_func` binding; names A/B | §2.9 | sync replays unchanged; normalized C identical. **Done 2026-11-03:** the RNG bound ([progress.md](progress.md), "Bound C"); names A/B by hand ([game-rtl.md](game-rtl.md) §4a) |
 | 9 | Co-op, then netplay | §2.6 | after 3 and 6 |
 
