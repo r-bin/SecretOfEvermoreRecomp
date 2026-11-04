@@ -86,14 +86,18 @@ static void load_cpu(void) {
     g_cpu.open_bus = (uint8_t)num("memoryManager.openBus");
 }
 
-static void load_ppu(void) {
-    Ppu *ppu = g_ppu;
+static void load_ppu_memory(Ppu *ppu) {
     copy("ppu.vram", ppu->vram, sizeof ppu->vram);
     copy("ppu.cgram", ppu->cgram, sizeof ppu->cgram);
     uint32_t n;
     const uint8_t *oam = field("ppu.oamRam", &n);
     memcpy(ppu->oam, oam, 0x200);
     memcpy(ppu->highOam, oam + 0x200, 0x20);
+}
+
+static void load_ppu(void) {
+    Ppu *ppu = g_ppu;
+    load_ppu_memory(ppu);
 
     ppu_write(ppu, 0x00, (uint8_t)(num("ppu.forcedBlank") << 7 | num("ppu.screenBrightness")));
     const uint64_t offset = (num("ppu.oamAddressOffset") >> 12) - 1;
@@ -308,6 +312,8 @@ static void finish_spc_opcode(Apu *apu) {
     apu->spc->pc = (uint16_t)(apu->spc->pc - length);
     /* spc.opStep is a phase, not a count: addressing has run the opcode's fetch and opSubStep cycles, the operation is
      * taken as the last cycle (measured on $F7 at step 3 and $E4 at step 1; an operation of several cycles is not met yet). */
+    if (step != 1 && num("spc.opSubStep"))
+        fprintf(stderr, "soe_mesen_state: SPC opcode %02X inside an operation of several cycles: not measured, sync may part\n", opcode);
     const int used = spc_runOpcode(apu->spc), ran = step == 1 ? 1 + (int)num("spc.opSubStep") : used - 1;
     apu->cpuCyclesLeft = (uint8_t)(used - ran + 1);
 }
@@ -393,10 +399,11 @@ uint32_t soe_mesen_state_load(void) {
     return pc;
 }
 
-/* A movie's state at the reset vector: its SPC700 and S-DSP, which a reset leaves part way between power-on and running
- * (SOE_COMPARE_MESEN_APU, the same field stream; docs/imperfections/mmo-reset-start.md). */
+/* A movie's state at the reset vector: its SPC700 and S-DSP, which a reset leaves part way between power-on and running,
+ * and the PPU's memories (SOE_COMPARE_MESEN_APU, the same field stream; docs/imperfections/mmo-reset-start.md). */
 void soe_mesen_state_load_apu(void) {
     if (!read_fields(getenv("SOE_COMPARE_MESEN_APU"))) return;
     load_apu();
+    load_ppu_memory(g_ppu);
     free_fields();
 }

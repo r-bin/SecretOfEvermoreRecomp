@@ -8,8 +8,8 @@ With `snes.ramPowerOnState Random` MesenCE stores a save state in the movie. Our
 runs, ARAM and the S-DSP's readable registers are random, and WRAM and SRAM hold data.
 
 ## What the recomp takes over
-WRAM, SRAM and FastROM (`SOE_COMPARE_WRAM`, `_SRAM`, `_HW`), the whole SPC700 and S-DSP through the state loader
-(`SOE_COMPARE_MESEN_APU`, `soe_mesen_state_load_apu`), and the controller's shifted-out state (one automatic read).
+WRAM, SRAM and FastROM (`SOE_COMPARE_WRAM`, `_SRAM`, `_HW`), the whole SPC700 and S-DSP through the state loader,
+and VRAM, CGRAM and OAM (`SOE_COMPARE_MESEN_APU`, `soe_mesen_state_load_apu`), and the controller's shifted-out state (one automatic read).
 
 | Without | Effect |
 |---|---|
@@ -24,4 +24,4 @@ The state sits between two SPC700 opcodes (`spc.opStep` 0): the next one starts 
 
 ## Left
 `SOE_MMO_FRESH=1` still powers both sides on, for a lockstep run that is not the recording. The RNG is still copied at key 115,
-so keys before 120 are not compared. PPU registers and latches of the state are not taken over: nothing has needed them.
+so keys before 120 are not compared. The state's PPU registers and latches are not taken over: nothing has needed them.

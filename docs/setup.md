@@ -37,7 +37,7 @@ there); what reaches this repository is `recomp/bank*.cfg`.
 ### 1.3 Curated Game Knowledge
 - **`src/games/evermore/localizations/functions.ts`:** Hand-curated, verified function names and signatures.
 - **`src/games/evermore/localizations/tables.ts`:** Catalogs jump tables and data lookup tables with entry counts.
-- **`src/games/evermore/localizations/knowledge/ram/*.md`:** Curated WRAM variable and structure documentation.
+- **`src/games/evermore/localizations/data/wram-map.md`, `knowledge/wram/*.md`:** Curated WRAM variable and structure documentation.
 - **Role:** Transformed into clean, valid C identifiers (e.g. `Random number generator` → `random_number_generator`)
   and Mesen2 labels, replacing cryptic hex offsets with meaningful symbols across all generated C files.
 

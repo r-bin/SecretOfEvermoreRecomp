@@ -25,6 +25,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "common_cpu_infra.h"
 #include "common_rtl.h"
@@ -32,6 +33,7 @@
 #include "snes/apu.h"
 #include "snes/cart.h"
 #include "snes/cx4.h"
+#include "snes/dma.h"
 #include "snes/interp_bridge.h"
 #include "snes/ppu.h"
 #include "snes/sa1.h"
@@ -248,6 +250,7 @@ static void run_interrupt(uint32_t vector, uint64_t deadline, bool nmi) {
         snes_sync_master_clock(g_snes, g_cpu.master_cycles); /* the beam crosses V=225 before the handler reads $4212 */
         auto_joypad_begin();
     }
+    if (nmi) for (int i = 0; i < 256; i++) g_ppu->cgram[i] &= 0x7FFF; /* 15 bits; snesrecomp stores the high byte's bit 7 */
     if (nmi && soe_frame_driver_nmi_hook) soe_frame_driver_nmi_hook();
     const uint64_t before = g_cpu.master_cycles;
     /* The NMI handler runs as an ordinary slice from its vector (the frame is pushed above), so it stops at the next
@@ -459,9 +462,93 @@ static void cgram_dma_open_bus(uint32_t wram, uint8_t value, const char *via) {
     else g_snes->ram[wram] = (uint8_t)(value | (low & 0x80));
 }
 
+/*
+ * A DMA to $2122 during rendering. Outside vblank, forced blank and H<88, H>=1096 MesenCE writes a colour to the one the
+ * PPU is reading, not the CGRAM address; snesrecomp to the address. Which colour needs the pixel, which we do not have:
+ * colour 0 here, as in all 349 such writes of replay 05. The charge comes before the transfer: CGRAM is kept here, and the
+ * writes are walked when the slice ends (docs/imperfections/cgram-writes-during-rendering.md).
+ */
+#define CGRAM_DMA_LEAD 30u /* STA $420B to the next opcode fetch, as snesrecomp's charge counts it */
+static struct { bool pending, second; uint8_t pointer; uint16_t size; uint64_t start; uint16_t cgram[256]; } s_cgram_dma;
+
+static bool cgram_writable(uint64_t t) {
+    const uint64_t j = (t - s_line0) / LINE_CLOCKS, h = (t - s_line0) % LINE_CLOCKS, line = (VBLANK_LINE + j) % 262u;
+    return line >= VBLANK_LINE || line == 0 || h < 88u || h >= 1096u;
+}
+
+/*
+ * A DMA to VRAM outside vblank and forced blank: MesenCE drops each byte, the address still counts; snesrecomp stores it
+ * (its `TODO: vram access during rendering`). Replay 01's NMI 5997 sends 60 KB through the picture. VRAM is kept when such
+ * a DMA starts, and each byte that lands while the picture is drawn is put back as it passes the write hook.
+ */
+static struct { unsigned left; uint64_t t; uint16_t vram[0x8000]; } s_vram_dma;
+
+static bool vram_writable(uint64_t t) { return (VBLANK_LINE + (t - s_line0) / LINE_CLOCKS) % 262u >= VBLANK_LINE; }
+
+static void vram_dma_write(uint32_t byte_addr, uint8_t value) {
+    (void)value;
+    if (!s_vram_dma.left) return;
+    if (refresh_points_upto(s_vram_dma.t + 8u) > refresh_points_upto(s_vram_dma.t)) s_vram_dma.t += REFRESH_CLOCKS;
+    if (!vram_writable(s_vram_dma.t)) {
+        const uint16_t mask = byte_addr & 1u ? 0xFF00 : 0x00FF, word = (uint16_t)(byte_addr >> 1);
+        g_ppu->vram[word] = (uint16_t)((g_ppu->vram[word] & ~mask) | (s_vram_dma.vram[word] & mask));
+    }
+    s_vram_dma.t += 8u;
+    s_vram_dma.left--;
+}
+
+static uint64_t dma_first_byte(uint64_t start) { return start + (8u - (start & 7u)) + 24u; } /* setup, channel, the byte itself */
+
+static void charge_dma(Snes *snes, uint64_t clocks) {
+    const uint64_t start = g_cpu.master_cycles + CGRAM_DMA_LEAD;
+    s_vram_dma.left = 0;
+    for (int i = 0; i < 8 && !PPU_forcedBlank(g_ppu); i++) {
+        const DmaChannel *c = &snes->dma->channel[i];
+        /* The hook is not told the channels and old sizes stay in the others: this one, alone, is what the charge fits. */
+        const uint64_t body = 16u + 8u * (c->size ? (uint64_t)c->size : 0x10000u);
+        if (c->fromB || clocks < body || clocks > body + 32u * (1u + clocks / LINE_CLOCKS)) continue;
+        if (c->bAdr == 0x18 || c->bAdr == 0x19) {
+            if (vram_writable(start) && vram_writable(start + clocks) && clocks < LINE_CLOCKS * (262u - VBLANK_LINE)) break;
+            s_vram_dma.left = c->size ? c->size : 0x10000u;
+            s_vram_dma.t = dma_first_byte(start);
+            memcpy(s_vram_dma.vram, g_ppu->vram, sizeof s_vram_dma.vram);
+            break;
+        }
+        if (c->bAdr != 0x22 || c->mode != 0 || !c->size) continue;
+        s_cgram_dma.pending = true;
+        s_cgram_dma.second = g_ppu->cgramSecondWrite;
+        s_cgram_dma.pointer = g_ppu->cgramPointer;
+        s_cgram_dma.size = c->size;
+        s_cgram_dma.start = start;
+        memcpy(s_cgram_dma.cgram, g_ppu->cgram, sizeof s_cgram_dma.cgram);
+        break;
+    }
+    g_cpu.master_cycles += clocks;
+    snes_sync_master_clock(snes, g_cpu.master_cycles);
+}
+
+static void cgram_dma_finish(void) {
+    if (!s_cgram_dma.pending) return;
+    s_cgram_dma.pending = false;
+    uint64_t t = dma_first_byte(s_cgram_dma.start);
+    bool second = s_cgram_dma.second;
+    uint8_t pointer = s_cgram_dma.pointer;
+    for (unsigned i = 0; i < s_cgram_dma.size; i++, t += 8u) {
+        if (refresh_points_upto(t + 8u) > refresh_points_upto(t)) t += REFRESH_CLOCKS;
+        if (second) {
+            s_cgram_dma.cgram[cgram_writable(t) ? pointer : 0] = g_ppu->cgram[pointer];
+            pointer++;
+        }
+        second = !second;
+    }
+    memcpy(g_ppu->cgram, s_cgram_dma.cgram, sizeof s_cgram_dma.cgram);
+}
+
 void soe_frame_driver_run_frame(void) {
     bank_stats_init();
     snes_set_wram_write_log_hook(cgram_dma_open_bus);
+    snes_set_master_clock_charge_hook(charge_dma);
+    ppu_set_vram_write_log_hook(vram_dma_write);
     if (s_resume_pc == 0) start_from_mesen_state();
     const bool booting = s_resume_pc == 0;
     int slices = 0, late_steps = 0;
@@ -526,6 +613,7 @@ void soe_frame_driver_run_frame(void) {
             update_resume_pc();
             align_beam();
             edge_step(frame_end);
+            cgram_dma_finish();
             if (interp_bridge_lle_took_wai()) s_wai_halted = true;
             if (approach && !s_wai_halted) finish_nmi_approach(frame_end);
             auto_joypad_begin();

@@ -1,7 +1,7 @@
 # Progress: Replays Against MesenCE
 
-How far each replay plays exactly as MesenCE 2.2.1 plays it: WRAM identical, compared each time an NMI is taken
-(the "frame" below is that NMI's number). Measured 2026-11-03, 04 and 05 on 2026-11-04, on branch `snesrecomp-spc-access-cycles`, to the end
+How far each replay plays exactly as MesenCE 2.2.1 plays it: WRAM, VRAM, CGRAM and OAM identical, compared each time an NMI is taken
+(the "frame" below is that NMI's number). Measured 2026-11-04, all four regions, on branch `snesrecomp-spc-access-cycles`, to the end
 of each replay. The native column is the build with compiled resume (snesrecomp `aot-resume`, below).
 
 | Replay | In sync, interpreted | In sync, native | Notes |
@@ -9,8 +9,8 @@ of each replay. The native column is the build with compiled resume (snesrecomp 
 | `01-no-inputs-4m` (attract demo, 14,424 frames of input) | **all**: 120–14424 | **all**: 120–14424 | Needs the snesrecomp changes below and the beam alignment after long DMAs ([short-scanline.md](imperfections/short-scanline.md)). |
 | `02-newgame-boy-available` (New Game to free play, 17,948 frames) | **all**: 120–17948 | **all**: 120–17948 | Inputs arrive on MesenCE's fields ([host-frames-and-fields.md](imperfections/host-frames-and-fields.md)). |
 | `04-newgame-flowers.mmo` (played by hand in MesenCE, 25,923 frames) | **all**: 120–25923 | **all**: 120–25923 | Below. |
-| `05-flowers-from-state.mmo` (04 without the intro, 8,433 frames, from a mid-game state) | **all**: 1–8433 | **all**: 1–8433 | VRAM and OAM too; CGRAM to 2991. Below. |
-| `06-flowers-raptors.mmo` (flowers and raptors, 4,682 frames, from a mid-game state) | **all**: 1–4682 | **all**: 1–4682 | WRAM, VRAM, CGRAM and OAM. |
+| `05-flowers-from-state.mmo` (04 without the intro, 8,433 frames, from a mid-game state) | **all**: 1–8433 | **all**: 1–8433 | Below. |
+| `06-flowers-raptors.mmo` (flowers and raptors, 4,682 frames, from a mid-game state) | **all**: 1–4682 | **all**: 1–4682 | Below. |
 
 `03-complete-run-7h` is not a sync replay: it does not stay in sync with MesenCE, so it is not measured here.
 
@@ -20,14 +20,15 @@ SPC700 and S-DSP and the state of the controller ([imperfections/mmo-reset-start
 every NMI has MesenCE's clock.
 
 **05 starts from a MesenCE save state mid-game, taken over whole** (`src/soe_mesen_state.c`,
-[imperfections/mesen-state.md](imperfections/mesen-state.md)). It needs no RNG copy and every key counts from 1. Only CGRAM parts,
-from key 2992 to 3065, in a fade on an almost black screen ([imperfections/cgram-writes-during-rendering.md](imperfections/cgram-writes-during-rendering.md)).
+[imperfections/mesen-state.md](imperfections/mesen-state.md)). It needs no RNG copy and every key counts from 1. 06 starts the same way.
 
-Both are WRAM-identical native and all-interpreted at every key. What the two recordings found, and 01 and 02 never reached:
+All three are WRAM-identical native and all-interpreted at every key. What the two recordings found, and 01 and 02 never reached:
 the D flag on interrupts (bugs-and-todos.md §2), a frame that starts past line 0 after a long DMA
 ([imperfections/auto-joypad-read.md](imperfections/auto-joypad-read.md)), `$4212` at the access and its open bus
 ([imperfections/vblank-flag-at-access.md](imperfections/vblank-flag-at-access.md)), `$213B` bit 7
-([imperfections/cgram-read-open-bus.md](imperfections/cgram-read-open-bus.md)) and MesenCE's own ROM mirror
+([imperfections/cgram-read-open-bus.md](imperfections/cgram-read-open-bus.md)), CGRAM and VRAM writes during rendering
+([imperfections/cgram-writes-during-rendering.md](imperfections/cgram-writes-during-rendering.md),
+[imperfections/vram-writes-during-rendering.md](imperfections/vram-writes-during-rendering.md)) and MesenCE's own ROM mirror
 ([imperfections/mesen-rom-mirror.md](imperfections/mesen-rom-mirror.md)).
 
 Frames before 120 are not compared: the RNG is copied in from MesenCE at 115. Native and interpreted runs of one

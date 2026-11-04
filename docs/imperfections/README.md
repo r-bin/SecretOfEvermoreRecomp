@@ -32,8 +32,9 @@ Ordered as found, measured on `01-no-inputs-4m.evsmv` (all against MesenCE 2.2.1
 | [mmo-reset-start.md](mmo-reset-start.md) | the comparison | a MesenCE movie's start is a reset of a running console | solved: replay 04 identical to its end |
 | [cgram-read-open-bus.md](cgram-read-open-bus.md) | snesrecomp PPU | `$213B` high byte's bit 7 is 0, not the PPU2 open bus | fixed for DMA reads in our frame driver |
 | [vblank-flag-at-access.md](vblank-flag-at-access.md) | snesrecomp registers | `$4212` bit 7 read at the instruction's start, bits 1-5 read 0 | fixed in our frame driver |
+| [vram-writes-during-rendering.md](vram-writes-during-rendering.md) | snesrecomp PPU | VRAM writes outside vblank are stored, not dropped | fixed for DMA in our frame driver |
 | [mesen-rom-mirror.md](mesen-rom-mirror.md) | MesenCE | its 4th MB is one file page over and over | copied in compare runs only |
-| [cgram-writes-during-rendering.md](cgram-writes-during-rendering.md) | snesrecomp PPU | CGRAM writes during rendering go to the CGRAM address, not the colour being read | open: replay 05's CGRAM, keys 2992-3065 |
+| [cgram-writes-during-rendering.md](cgram-writes-during-rendering.md) | snesrecomp PPU | CGRAM writes during rendering go to the CGRAM address, not the colour being read; bit 7 kept | fixed for DMA in our frame driver, colour 0 as measured |
 
 ## Branch `snesrecomp-spc-access-cycles` (2026-10-31)
 snesrecomp changed on its own branch `spc-access-cycles` (the owner's experiment for an upstream PR;
