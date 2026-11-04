@@ -35,3 +35,15 @@ every file lives: **`recomp-debugging` skill**. Its trap list is the short versi
 ## Finishing
 Add the bug with its lesson to `docs/bugs-and-todos.md`; game facts (addresses, routines) go to
 everscript-vscode's knowledge entries. Work on `develop`; `main` only takes releases. Commit only your files.
+
+## Which replays to run
+`01-no-inputs-4m` (no buttons pressed) is the one mandatory replay: it is the baseline for a change, and what the C share and
+native share are worked on. The others (02, 04, 05, 06) are random scenarios, recorded as played: only a fraction of their
+content adds to 01, and they were not made to exercise any one action. So:
+- Mandatory for a change: 01, native against interpreted (`tools/compare/probes/native-vs-interp.mts`, about a minute, no
+  MesenCE), then against MesenCE before a commit.
+- The other replays are verbose: more testing helps, so run them when it costs nothing, but never wait on them, block a build
+  on them or hold a commit for them. Run them from a copy of the executable, so a build can go on beside them.
+- A replay becomes mandatory only once it is known to contain one specific action, and then for changes to that action. A short
+  recording made for one action is worth more than a long one that happens to pass it.
+- Never run `03-complete-run-7h` for parity or native share: it does not sync.
