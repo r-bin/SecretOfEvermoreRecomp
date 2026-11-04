@@ -44,6 +44,7 @@ add_executable(SecretOfEvermoreSNESRecomp
     src/soe_frame_driver.c
     src/soe_last_cycle.c
     src/soe_bindings.c
+    src/soe_mesen_state.c
     src/gen_stubs.c
 )
 

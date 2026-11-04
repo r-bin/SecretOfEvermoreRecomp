@@ -9,6 +9,7 @@ of each replay. The native column is the build with compiled resume (snesrecomp 
 | `01-no-inputs-4m` (attract demo, 14,424 frames of input) | **all**: 120–14424 | **all**: 120–14424 | Needs the snesrecomp changes below and the beam alignment after long DMAs ([short-scanline.md](imperfections/short-scanline.md)). |
 | `02-newgame-boy-available` (New Game to free play, 17,948 frames) | **all**: 120–17948 | **all**: 120–17948 | Inputs arrive on MesenCE's fields ([host-frames-and-fields.md](imperfections/host-frames-and-fields.md)). |
 | `04-newgame-flowers.mmo` (played by hand in MesenCE, 25,923 frames) | same as native | **to 620** as recorded; **to 23786** with `SOE_MMO_FRESH=1` | Below. |
+| `Secret of Evermore (U) [!].mmo` ("05": 04 without the intro, 8,433 frames, from a mid-game state) | same as native | **to 3065**; VRAM, CGRAM and OAM also to 2991 | Below. |
 
 `03-complete-run-7h` is not a sync replay: it does not stay in sync with MesenCE, so it is not measured here.
 
@@ -22,6 +23,13 @@ pushed return address at key 621 ([imperfections/mmo-reset-start.md](imperfectio
 run shows real differences: `$213B` bit 7 at key 23787 ([imperfections/cgram-read-open-bus.md](imperfections/cgram-read-open-bus.md));
 with that fixed in a throwaway copy of snesrecomp, a pushed return address at key 23835, cause not traced. Native and
 all-interpreted runs of 04 are WRAM-identical at all 25,923 keys, so none of this comes from compiled code or the C bindings.
+
+**05 starts from a MesenCE save state mid-game, taken over whole** (`src/soe_mesen_state.c`,
+[imperfections/mesen-state.md](imperfections/mesen-state.md)). It needs no RNG copy and every key counts from 1, unmasked in the
+first check: NMI clocks, interrupted addresses and WRAM are identical for 3,065 fields. CGRAM differs from key 2992 to 3065
+(zeros on our side, colours on MesenCE's), without touching WRAM or clocks, and is equal again at 3066; there, during
+a map load, NMIs part by 20 clocks, and the maps' decompression is then caught at other points. Cause of both not
+traced. Native and all-interpreted runs are WRAM-identical at all 8,433 keys.
 
 Frames before 120 are not compared: the RNG is copied in from MesenCE at 115. Native and interpreted runs of one
 build have every NMI on the same master clock and WRAM identical at every key from 1 on, both replays to their end
@@ -37,6 +45,7 @@ How much of a replay runs as compiled code: instructions per tier over the whole
 | `01-no-inputs-4m` (to key 14424) | 209,970,461 | 58,001 | **99.97 %** | 16.3 → 72.3 → 97.2 → 99.56 → 99.97 % |
 | `02-newgame-boy-available` (to key 17948) | 260,487,114 | 30,324 | **99.99 %** | 21.7 → 62.6 → 96.7 → 99.75 → 99.99 % |
 | `04-newgame-flowers.mmo` (to key 25923) | 335,357,500 | 229,880 | **99.93 %** | with the three C bindings only |
+| 05 (to key 8433) | 97,421,643 | 34,274 | **99.96 %** | with the three C bindings only |
 
 Rows 01 and 02 are from before the C bindings; with them 01 is at 99.93 % and 02 at 99.92 % (Bound C below).
 Measured 2026-11-03 (5,642 routine variants: 5,568 compiled, 74 interpreter-only); native in sync with MesenCE to
@@ -93,6 +102,7 @@ time). Measured 2026-11-03 on the build above.
 | `01-no-inputs-4m` | **500** (8.3x) | 304 (5.1x) | 280 (4.7x) |
 | `02-newgame-boy-available` | **390** (6.5x) | 259 (4.3x) | 234 (3.9x) |
 | `04-newgame-flowers.mmo` | **384** (6.4x), with the C bindings | not measured | not measured |
+| 05 | **386** (6.4x), with the C bindings | not measured | not measured |
 
 Where the time goes (macOS `sample`, 10 s of the native run on 01, the main thread): about half in the PPU's
 per-pixel renderer (`ppu_resolve_pixel`, `ppu_draw_whole_line_legacy`; our glue keeps the legacy renderer for BG

@@ -51,6 +51,7 @@ extern uint8_t g_ram[0x20000];
  *   SOE_COMPARE_NMI_LOG adds "N <nmi> <master clock> <interrupted pc24>" per NMI: where cycles part.
  *   SOE_COMPARE_NMI_BEAM with it: "[nmibeam] <nmi> <H clock> <line>" on stderr (a probe: it walks the beam there).
  * - SOE_COMPARE_SAVE_ROOT=<dir>: battery RAM from that folder (empty: cleared SRAM), see SoeAfterConfig.
+ * - SOE_COMPARE_MESEN_STATE=<file>: start from a MesenCE state (src/soe_mesen_state.c).
  * - SOE_COMPARE_PADS=<file>: replay input, a little-endian pad word per MesenCE field (soe_compare_pad).
  * - SOE_COMPARE_WRAM=, _SRAM=, _ARAM=, _DSP=, _HW=<file>: the memory, S-DSP registers and what else survives a reset
  *   of a running console (a MesenCE movie's), loaded before the first instruction (soe_compare_start_memory).
@@ -76,6 +77,7 @@ static struct {
 
 static uint32_t s_crc_table[256];
 static void CmpNmi(void);
+static void CmpInit(void);
 
 static uint32_t CmpCrc(uint32_t c, const uint8_t *p, size_t n) {
     if (!s_crc_table[1])
@@ -94,8 +96,11 @@ static uint32_t CmpCrc(uint32_t c, const uint8_t *p, size_t n) {
  * field, master clock 306900 + n * 357368 (a field's length varies by a few clocks; the rounding absorbs it), and
  * takes word n + 1 there: the file has the layout of the Lua script's pads. A word is the "BYsSudlrAXLR" pad, bit 15
  * first; the host's input word has B in bit 0. */
+static uint64_t s_first_poll = 306900;
+void soe_compare_pad_first(uint64_t clock) { s_first_poll = clock; }
+
 void soe_compare_pad(uint64_t beam) {
-    enum { FIRST_POLL = 306900, FIELD = 357368 };
+    enum { FIELD = 357368 };
     static int state = -1;
     static uint16_t *pads;
     static size_t count;
@@ -111,8 +116,8 @@ void soe_compare_pad(uint64_t beam) {
         if (fread(pads, 2, count, f) != count) count = 0;
         fclose(f);
     }
-    if (!state || beam + FIELD / 2 < FIRST_POLL) return;
-    const size_t word = (size_t)((beam + FIELD / 2 - FIRST_POLL) / FIELD) + 1;
+    if (!state || beam + FIELD / 2 < s_first_poll) return;
+    const size_t word = (size_t)((beam + FIELD / 2 - s_first_poll) / FIELD) + 1;
     const uint16_t pad = word < count ? pads[word] : 0;
     uint16_t input = 0;
     for (int i = 0; i < 12; i++) if (pad & (0x8000u >> i)) input |= (uint16_t)(1u << i);
@@ -127,6 +132,9 @@ static void load_start(const char *variable, uint8_t *to, size_t size) {
     if (fread(to, 1, size, f) != size) fprintf(stderr, "%s: short file %s\n", variable, path);
     fclose(f);
 }
+
+/* A run from a MesenCE state takes its first NMI in the first host frame, before the frame hook reads the settings. */
+void soe_compare_ready(void) { if (!s_cmp.state) CmpInit(); }
 
 void soe_compare_start_memory(void) {
     load_start("SOE_COMPARE_WRAM", g_ram, 0x20000);

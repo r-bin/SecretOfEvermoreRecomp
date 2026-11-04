@@ -23,5 +23,6 @@ at key 621 an NMI pushes another return address. Which field causes the jitter i
 first suspect, since the reset code's DMAs come right before NMI 2.
 
 ## Ways out
+Start recording mid-game instead: such a state is taken over whole ([mesen-state.md](mesen-state.md)). Or:
 Record with `snes.ramPowerOnState` set to all zeros and from power-on: no state in the movie, the start is the one
 `01` and `02` have. Or, for this movie, `SOE_MMO_FRESH=1`, which is lockstep but not the recording.

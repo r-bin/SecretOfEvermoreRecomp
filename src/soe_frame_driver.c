@@ -367,8 +367,24 @@ static void finish_nmi_approach(uint64_t frame_end) {
 /* NMI can still fire late in this field: it is off, and the vblank flag has not been read or cleared. */
 static bool late_nmi_possible(void) { return !g_snes->nmiEnabled && g_snes->rdnmiPending; }
 
+/* A MesenCE state sits at line 225 with the instruction that NMI will follow still to run (its line rises at H=6). */
+static void start_from_mesen_state(void) {
+    const uint32_t pc = soe_mesen_state_load();
+    if (!pc) return;
+    s_resume_pc = pc;
+    soe_compare_ready();
+    interp_bridge_set_lle_resume_pc(pc);
+    soe_compare_pad_first(g_snes->beamMasterLast - g_snes->hPos + FIELD_CLOCKS);
+    set_deadline(g_cpu.master_cycles + 1);
+    (void)interp_bridge_run_until_quiescent(&g_cpu, s_resume_pc);
+    set_deadline(0);
+    update_resume_pc();
+    snes_sync_master_clock(g_snes, g_cpu.master_cycles);
+}
+
 void soe_frame_driver_run_frame(void) {
     bank_stats_init();
+    if (s_resume_pc == 0) start_from_mesen_state();
     const bool booting = s_resume_pc == 0;
     int slices = 0, late_steps = 0;
     uint64_t frame_end;

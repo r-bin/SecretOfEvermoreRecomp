@@ -25,7 +25,11 @@ bool soe_frame_driver_irq_possible(void);
 
 /* game_rtl.c: the WRAM and SRAM a compare run starts with (SOE_COMPARE_WRAM, _SRAM), before the first instruction. */
 void soe_compare_start_memory(void);
-/* game_rtl.c: a replay's input for the field at this beam clock (SOE_COMPARE_PADS). */
+/* game_rtl.c: a replay's input for the field at this beam clock (SOE_COMPARE_PADS); `first`: where the first poll is. */
 void soe_compare_pad(uint64_t beam);
+void soe_compare_pad_first(uint64_t clock);
+void soe_compare_ready(void);
+/* soe_mesen_state.c: the machine from a MesenCE state (SOE_COMPARE_MESEN_STATE); its PC, or 0. */
+uint32_t soe_mesen_state_load(void);
 
 #endif
