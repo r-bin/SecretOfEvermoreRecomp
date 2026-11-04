@@ -1,6 +1,6 @@
 # One Host Frame Can Hold Several Video Fields
 
-**Status:** open for replays with input. (A glue workaround was tried and removed, see below.)
+**Status:** solved for replays (input by field, below). (A glue workaround was tried and removed, see below.)
 
 ## What happens
 The frame driver runs one host frame up to the beam's next V=225. A DMA charges its whole time at once, so a
@@ -30,6 +30,10 @@ auto-joypad window and the refresh points of the field were placed lines late: o
 polled `$4212` bit 0 busy where MesenCE had finished the read 16,000 clocks before. `s_line0` now counts back to
 line 225.
 
-## Fix (open)
-Feed replay input per field: the tool knows each host frame's field count from the master clock (the `P`
-peek lines), or the frame driver could stop the CPU at a field boundary inside a long DMA (upstream).
+## Fix (2026-11-04)
+Replay input goes by field: `SOE_COMPARE_PADS=<file>` (`soe_compare_pad` in `src/game_rtl.c`), read at each host frame's
+start. The field follows from the beam's clock (MesenCE polls at line 225: 306900 + n * 357368), so a press of any
+length lands where MesenCE puts it and a host frame holding two fields moves nothing. The script route before it lost
+short presses: a `press` of n frames took n + 1, paid from the next segment, so a 1-frame press could vanish. `02` has
+no press under 4 frames and never showed it; the hand-played `04` dropped a Right at key 16956. 01 and 02 stay
+identical at every key.

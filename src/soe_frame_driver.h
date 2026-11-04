@@ -23,4 +23,9 @@ uint64_t soe_frame_driver_deadline(void);
 uint64_t soe_frame_driver_hard_deadline(void);
 bool soe_frame_driver_irq_possible(void);
 
+/* game_rtl.c: the WRAM and SRAM a compare run starts with (SOE_COMPARE_WRAM, _SRAM), before the first instruction. */
+void soe_compare_start_memory(void);
+/* game_rtl.c: a replay's input for the field at this beam clock (SOE_COMPARE_PADS). */
+void soe_compare_pad(uint64_t beam);
+
 #endif

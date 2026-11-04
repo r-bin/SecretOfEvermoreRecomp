@@ -8,8 +8,20 @@ of each replay. The native column is the build with compiled resume (snesrecomp 
 |---|---|---|---|
 | `01-no-inputs-4m` (attract demo, 14,424 frames of input) | **all**: 120–14424 | **all**: 120–14424 | Needs the snesrecomp changes below and the beam alignment after long DMAs ([short-scanline.md](imperfections/short-scanline.md)). |
 | `02-newgame-boy-available` (New Game to free play, 17,948 frames) | **all**: 120–17948 | **all**: 120–17948 | Inputs arrive on MesenCE's fields ([host-frames-and-fields.md](imperfections/host-frames-and-fields.md)). |
+| `04-newgame-flowers.mmo` (played by hand in MesenCE, 25,923 frames) | same as native | **to 620** as recorded; **to 23786** with `SOE_MMO_FRESH=1` | Below. |
 
 `03-complete-run-7h` is not a sync replay: it does not stay in sync with MesenCE, so it is not measured here.
+
+**04 is the first recording made in MesenCE and the first with short presses.** It starts from a save state at the
+reset vector, which is a reset of a running console with random power-on memory, not a power-on. MesenCE loads that state,
+so its run is the recording. The recomp takes over WRAM, SRAM, ARAM, the S-DSP registers, FastROM, the SPC timers and
+the S-DSP's clock, which brings NMI 1 to the exact clock and the 75-field sound start to within 28 clocks, but not the
+rest (PPU latches, `dmaClockCounter`, ...): NMIs stay up to about 40 clocks apart, and the first WRAM difference is a
+pushed return address at key 621 ([imperfections/mmo-reset-start.md](imperfections/mmo-reset-start.md)). With
+`SOE_MMO_FRESH=1` both sides power on with the movie's WRAM and SRAM only: lockstep, though not the recording. That
+run shows real differences: `$213B` bit 7 at key 23787 ([imperfections/cgram-read-open-bus.md](imperfections/cgram-read-open-bus.md));
+with that fixed in a throwaway copy of snesrecomp, a pushed return address at key 23835, cause not traced. Native and
+all-interpreted runs of 04 are WRAM-identical at all 25,923 keys, so none of this comes from compiled code or the C bindings.
 
 Frames before 120 are not compared: the RNG is copied in from MesenCE at 115. Native and interpreted runs of one
 build have every NMI on the same master clock and WRAM identical at every key from 1 on, both replays to their end
@@ -24,7 +36,9 @@ How much of a replay runs as compiled code: instructions per tier over the whole
 |---|---|---|---|---|
 | `01-no-inputs-4m` (to key 14424) | 209,970,461 | 58,001 | **99.97 %** | 16.3 → 72.3 → 97.2 → 99.56 → 99.97 % |
 | `02-newgame-boy-available` (to key 17948) | 260,487,114 | 30,324 | **99.99 %** | 21.7 → 62.6 → 96.7 → 99.75 → 99.99 % |
+| `04-newgame-flowers.mmo` (to key 25923) | 335,357,500 | 229,880 | **99.93 %** | with the three C bindings only |
 
+Rows 01 and 02 are from before the C bindings; with them 01 is at 99.93 % and 02 at 99.92 % (Bound C below).
 Measured 2026-11-03 (5,642 routine variants: 5,568 compiled, 74 interpreter-only); native in sync with MesenCE to
 the end of both replays, WRAM identical to the all-interpreted run at every key. The last step needed no framework
 change: the seeds had given `$8C:EA43` an exit width the CDL never saw at a call site, and one jump table 98
@@ -78,6 +92,7 @@ time). Measured 2026-11-03 on the build above.
 |---|---|---|---|
 | `01-no-inputs-4m` | **500** (8.3x) | 304 (5.1x) | 280 (4.7x) |
 | `02-newgame-boy-available` | **390** (6.5x) | 259 (4.3x) | 234 (3.9x) |
+| `04-newgame-flowers.mmo` | **384** (6.4x), with the C bindings | not measured | not measured |
 
 Where the time goes (macOS `sample`, 10 s of the native run on 01, the main thread): about half in the PPU's
 per-pixel renderer (`ppu_resolve_pixel`, `ppu_draw_whole_line_legacy`; our glue keeps the legacy renderer for BG
@@ -97,6 +112,7 @@ copies snesrecomp compiles for the other mirrors (`$0x`, `$1x`, `$4x`, `$5x`, `$
 |---|---|---|---|---|---|---|---|
 | 01 | 20.6 % | 10.1 % | 0.04 % | 0.40 % | 53.1 % | 14.8 % | 1.03 % |
 | 02 | 15.8 % | 7.1 % | 0.01 % | 0.36 % | 57.2 % | 18.5 % | 1.13 % |
+| 04 | 24.6 % | 9.4 % | 0.03 % | 0.51 % | 55.1 % | 9.2 % | 1.13 % |
 
 ## Bound C
 
@@ -149,7 +165,7 @@ node tools/compare/compare.mts rom.smc --backend mesen,recomp \
   --replay tools/compare/replays/<replay>.evsmv --regions wram --verbose --keep-going
 ```
 
-That is the native column; the native share is `tools/compare/probes/tier-stats.mts <rom> <replay> <to>`. Headless
+That is the native column (`.evsmv` or `.mmo`; `SOE_MMO_FRESH=1` for a movie's lockstep run); the native share is `tools/compare/probes/tier-stats.mts <rom> <replay> <to>`. Headless
 with no display or audio device (a locked Mac: the GL swap blocks, CoreAudio fails), run them with
 `SDL_VIDEO_DRIVER=dummy SDL_AUDIO_DRIVER=disk SDL_AUDIO_DISK_OUTPUT_FILE=/dev/null`; the instruction counts are the
 same as with real devices. For the interpreted one, run it with the environment from

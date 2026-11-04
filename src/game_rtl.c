@@ -22,7 +22,9 @@
 #include "cpu_state.h"
 #include "desktop/config.h"
 #include "snes/apu.h"
+#include "snes/dsp.h"
 #include "snes/interp_bridge.h"
+#include "snes/joypad.h"
 #include "snes/ppu.h"
 #include "snes/saveload.h"
 #include "snes/snes.h"
@@ -49,6 +51,9 @@ extern uint8_t g_ram[0x20000];
  *   SOE_COMPARE_NMI_LOG adds "N <nmi> <master clock> <interrupted pc24>" per NMI: where cycles part.
  *   SOE_COMPARE_NMI_BEAM with it: "[nmibeam] <nmi> <H clock> <line>" on stderr (a probe: it walks the beam there).
  * - SOE_COMPARE_SAVE_ROOT=<dir>: battery RAM from that folder (empty: cleared SRAM), see SoeAfterConfig.
+ * - SOE_COMPARE_PADS=<file>: replay input, a little-endian pad word per MesenCE field (soe_compare_pad).
+ * - SOE_COMPARE_WRAM=, _SRAM=, _ARAM=, _DSP=, _HW=<file>: the memory, S-DSP registers and what else survives a reset
+ *   of a running console (a MesenCE movie's), loaded before the first instruction (soe_compare_start_memory).
  * Nothing else touches the disk: compare reads fd 3 from a pipe.
  */
 enum { CMP_WRAM, CMP_VRAM, CMP_CGRAM, CMP_OAM };
@@ -82,6 +87,70 @@ static uint32_t CmpCrc(uint32_t c, const uint8_t *p, size_t n) {
     c = ~c;
     while (n--) c = s_crc_table[(c ^ *p++) & 0xFF] ^ (c >> 8);
     return ~c;
+}
+
+/* Replay input by field, not by host frame: a press of any length lands where MesenCE puts it, and a host frame
+ * holding two fields moves nothing (docs/imperfections/host-frames-and-fields.md). MesenCE polls at line 225 of each
+ * field, master clock 306900 + n * 357368 (a field's length varies by a few clocks; the rounding absorbs it), and
+ * takes word n + 1 there: the file has the layout of the Lua script's pads. A word is the "BYsSudlrAXLR" pad, bit 15
+ * first; the host's input word has B in bit 0. */
+void soe_compare_pad(uint64_t beam) {
+    enum { FIRST_POLL = 306900, FIELD = 357368 };
+    static int state = -1;
+    static uint16_t *pads;
+    static size_t count;
+    if (state < 0) {
+        const char *path = getenv("SOE_COMPARE_PADS");
+        FILE *f = path ? fopen(path, "rb") : NULL;
+        state = f != NULL;
+        if (!f) return;
+        fseek(f, 0, SEEK_END);
+        count = (size_t)ftell(f) / 2;
+        rewind(f);
+        pads = calloc(count + 1, 2);
+        if (fread(pads, 2, count, f) != count) count = 0;
+        fclose(f);
+    }
+    if (!state || beam + FIELD / 2 < FIRST_POLL) return;
+    const size_t word = (size_t)((beam + FIELD / 2 - FIRST_POLL) / FIELD) + 1;
+    const uint16_t pad = word < count ? pads[word] : 0;
+    uint16_t input = 0;
+    for (int i = 0; i < 12; i++) if (pad & (0x8000u >> i)) input |= (uint16_t)(1u << i);
+    g_snes->input1_currentState = input;
+    joypad_set_pad(0, input);
+}
+
+static void load_start(const char *variable, uint8_t *to, size_t size) {
+    const char *path = getenv(variable);
+    FILE *f = path ? fopen(path, "rb") : NULL;
+    if (!f) return;
+    if (fread(to, 1, size, f) != size) fprintf(stderr, "%s: short file %s\n", variable, path);
+    fclose(f);
+}
+
+void soe_compare_start_memory(void) {
+    load_start("SOE_COMPARE_WRAM", g_ram, 0x20000);
+    load_start("SOE_COMPARE_SRAM", g_sram, (size_t)g_sram_size);
+    load_start("SOE_COMPARE_ARAM", g_snes->apu->ram, 0x10000);
+    /* A recording with random power-on state has random S-DSP registers, and they decide how long the sound driver's
+     * start takes. */
+    uint8_t dsp[0x80];
+    memset(dsp, 0xFF, sizeof dsp);
+    load_start("SOE_COMPARE_DSP", dsp, sizeof dsp);
+    if (getenv("SOE_COMPARE_DSP"))
+        for (int i = 0; i < 0x80; i++)
+            if (i != 0x4C && i != 0x5C) dsp_write(g_snes->apu->dsp, (uint8_t)i, dsp[i]);   /* not KON, KOFF: no voice runs */
+    /* FastROM on, per SPC timer the cycles to its next tick, divider, target, counter and enable, the S-DSP's clock. */
+    uint8_t hw[17];
+    if (!getenv("SOE_COMPARE_HW")) return;
+    load_start("SOE_COMPARE_HW", hw, sizeof hw);
+    g_memsel = hw[0];
+    for (int i = 0; i < 3; i++) {
+        const uint8_t *t = &hw[1 + i * 5];
+        Timer *timer = &g_snes->apu->timer[i];
+        timer->cycles = t[0]; timer->divider = t[1]; timer->target = t[2]; timer->counter = t[3]; timer->enabled = t[4];
+    }
+    g_snes->apu->dsp->clk.step = (uint8_t)((g_snes->apu->dsp->clk.step + hw[16]) & 31);
 }
 
 static void CmpInit(void) {

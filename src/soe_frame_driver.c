@@ -376,7 +376,9 @@ void soe_frame_driver_run_frame(void) {
         uint32_t to_vblank = snes_master_clocks_until_line(g_snes, VBLANK_LINE);
         frame_end = g_snes->beamMasterLast + (to_vblank ? to_vblank : FIELD_CLOCKS);
     }
+    soe_compare_pad(g_snes->beamMasterLast);
     if (booting) {
+        soe_compare_start_memory();
         s_resume_pc = read_vector(0x00FFFCu);
         /* The 65816's reset sequence: MesenCE runs the first instruction at master clock 186, the beam from 0. */
         if (g_cpu.master_cycles < RESET_CLOCKS) advance_parked(RESET_CLOCKS);
