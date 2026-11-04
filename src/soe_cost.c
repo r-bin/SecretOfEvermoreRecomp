@@ -129,7 +129,11 @@ other:
         return;
     case 0x6B: case 0x60:                                                                /* RTL RTS */
         step(6, 1); wram(op == 0x6B ? 3 : 2);
-        if (!s_t.depth) { s_t.done = true; return; }
+        if (!s_t.depth) {                                /* a mark past the routine's own return: the code it returns to */
+            if (s_t.want) s_t.pc = bank | s_t.want;
+            else s_t.done = true;
+            return;
+        }
         s_t.pc = s_t.ret[--s_t.depth];
         return;
     default: stop_at("opcode not modelled", pc);
@@ -167,8 +171,10 @@ static void walk_traced(void) {
 }
 
 void soe_at(uint16_t pc) {
+    static int trace = -1;
+    if (trace < 0) trace = getenv("SOE_COST_TRACE") != NULL;
     s_t.want = pc;
-    if (getenv("SOE_COST_TRACE")) fprintf(stderr, "[wk] @%04X\n", pc);
+    if (trace) fprintf(stderr, "[wk] @%04X\n", pc);
     if (!s_t.started) {
         s_t.started = true;
         if ((s_t.pc & 0xFFFF) != pc) stop_at("first mark is not the entry", s_t.pc);

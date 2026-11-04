@@ -20,3 +20,5 @@ hle 909DE8 HleEvalTileCollision body=909DEA eval_tile_collision, reconstructed-c
 hle 809685 HleInitEntityPool body=809686 init_entity_pool, reconstructed-c/80/809685 (G1-rated); C only when it ends before the slice deadline
 hle 8FC773 HleEntitySpriteDepth body=8FC776 entity_sprite_depth, reconstructed-c/8F/8FC773 (G1-rated); C only when it ends before the slice deadline
 hle 8F9F05 HleRaycast body=8F9F07 companion_metatile_raycast_line_stepper, reconstructed-c/8F/8F9F05; a step at a time, the ROM code takes over at $9F43 when a step might not fit
+hle 8F9821 HleSpareTime body=8F9824 field_spare_time_loop, reconstructed-c/8F/8F9817; passes in C up to the next stop, the ROM code around the NMI
+hle 80858F HleWaitForNmi body=808592 wait_for_nmi, reconstructed-c/80/80858C; passes in C up to the next stop, the ROM code around the NMI

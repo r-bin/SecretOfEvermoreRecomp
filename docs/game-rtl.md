@@ -198,6 +198,8 @@ far: a walk can run on past many refresh stops, and refreshes left to the end of
 deadline check. The driver's refresh count works from the framework's own high-water mark, since the framework has not seen what C
 charged. `RAY_STEP_BOUND` is an upper limit on a step, not its cost.
 
+**Loops that wait for the NMI.** `field_spare_time_loop` and `wait_for_nmi` are bound at their loop heads, `$8F:9821` and `$80:858F`, so an `hle` line can stand inside a routine: every edge into that address, compiled branches and task returns too, becomes a tail transfer to the helper. The NMI comes between slices, so C cannot see the frame counter move: the C runs passes while one fits before the next stop, and the compiled code from the second instruction runs the passes around the NMI. With no deadline it must not start at all, or it would spin for ever. The tasks of the spare-time loop usually end in their first few instructions, so those heads are C as well; the rest of a task goes on from an instruction inside it, because the first instruction of a compiled routine has no resume case and would run interpreted.
+
 Without the reconstructed C (no sibling checkout) every helper runs the ROM bytes: the build stays exact.
 `SOE_HLE_STATS=1` counts both paths; `SOE_HLE_MUTATE=<helper's name>` (`1`: all) corrupts the C path's result, the
 control that shows the sync replays catch a wrong binding. To pick the next routine: `SOE_BANK_STATS=1
@@ -211,6 +213,8 @@ SOE_PC_COUNTS=<file>` writes how often each PC ran.
 | `$80:9685` `init_entity_pool` | `reconstructed-c/80/809685_init_entity_pool.c` | same |
 | `$8F:C773` `entity_sprite_depth` | `reconstructed-c/8F/8FC773_entity_sprite_depth.c` | same |
 | `$8F:9F05` `companion_metatile_raycast_line_stepper` | `reconstructed-c/8F/8F9F05_companion_metatile_raycast_line_stepper.c` | same |
+| `$8F:9817` `field_spare_time_loop`, bound at `$9821` | `reconstructed-c/8F/8F9817_field_spare_time_loop.c` | same; no G1, it only ends on the NMI |
+| `$80:858C` `wait_for_nmi`, bound at `$858F` | `reconstructed-c/80/80858C_wait_for_nmi.c` | same; no G1, it only ends on the NMI |
 
 ---
 

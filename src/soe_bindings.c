@@ -49,6 +49,7 @@ void eval_tile_collision_bind(soe_regs r);
 void init_entity_pool_bind(soe_regs r);
 void entity_sprite_depth_bind(soe_regs r);
 #include "raycast.h"
+#include "spare_time.h"
 
 /* The raycast's STA $004202 and LDA $004216, in the registers the game can read back. */
 uint16_t soe_multiply(uint16_t factors) {
@@ -58,10 +59,11 @@ uint16_t soe_multiply(uint16_t factors) {
 }
 #endif
 
-enum { RNG, PLANE, TILE, POOL, DEPTH, RAY, BINDINGS };
+enum { RNG, PLANE, TILE, POOL, DEPTH, RAY, SPARE, WAIT, BINDINGS };
 static struct { const char *name; unsigned long long c, across, compiled; bool mutate; } s_bind[BINDINGS] = {
     { "random_number_generator" }, { "update_entity_plane" }, { "eval_tile_collision" },
     { "init_entity_pool" }, { "entity_sprite_depth" }, { "companion_metatile_raycast_line_stepper" },
+    { "field_spare_time_pass" }, { "wait_for_nmi_pass" },
 };
 static int s_stats = -1;
 static void print_stats(void) {
@@ -576,6 +578,10 @@ static void ray_first(CpuState *cpu) {
 #ifdef SOE_RECONSTRUCTED_C
 /* Far more than any one step's clocks: a step fits when this does. */
 #define RAY_STEP_BOUND 6000u
+/* The same for a pass of field_spare_time_loop and a task's head, about 1,100 at their longest. */
+#define SPARE_PASS_BOUND 1500u
+/* And for a pass of wait_for_nmi, about 80. */
+#define WAIT_PASS_BOUND 200u
 
 static void charge_trace(CpuState *cpu) {
     SoeCostTrace t;
@@ -641,4 +647,113 @@ RecompReturn HleRaycast(CpuState *cpu) {
     }
 #endif
     return run_rom_bytes(cpu, RAY, 0x9F05, 0x9F07, ray_first);
+}
+
+/* $8F:9821, first instruction: LDA $0100. */
+static void spare_first(CpuState *cpu) {
+    const uint32_t a = (uint32_t)cpu->DB << 16 | 0x0100;
+    Cost c = { 0 };
+    insn(&c, 5, 3); word_at(&c, a);
+    cpu->A = (uint16_t)(g_ram[0x0100] | g_ram[0x0101] << 8);
+    set_nz16(cpu, cpu->A);
+    cpu->open_bus = g_ram[0x0101];
+    charge(cpu, &c);
+}
+
+/*
+ * $8F:9821, the head of field_spare_time_loop (knowledge/routines). Nothing but the NMI ends the loop, and the NMI comes
+ * between slices, so a pass in C cannot see the frame counter move: the C runs passes while one fits before the next stop, and
+ * the compiled ROM code from $9824 runs the passes around the NMI and sees the new frame. The head of a task is C too; the rest
+ * of a task goes on in compiled code inside the routine (an entry has no resume case), and its return to $9821 comes back here.
+ */
+RecompReturn HleSpareTime(CpuState *cpu) {
+    stats_init();
+    if (!interp_bridge_in_lle_scheduler()) {
+        fprintf(stderr, "soe_bindings: field_spare_time_loop outside the scheduler\n");
+        abort();
+    }
+    const bool plain = wide_a(cpu) && !cpu->x_flag && cpu->DB == 0x7E;
+#ifdef SOE_RECONSTRUCTED_C
+    cpu_mirrors_to_p(cpu);
+    const uint16_t s = cpu->S;
+    const uint16_t frame = (uint16_t)(g_ram[(uint16_t)(s + 1)] | g_ram[(uint16_t)(s + 2)] << 8);
+    if (plain && !(cpu->P & CPU_P_D) && dp_in_wram(cpu, 0x4F) && s > 16 && s < 0x1FF0
+        && frame == (uint16_t)(g_ram[0x0100] | g_ram[0x0101] << 8)
+        && soe_frame_driver_deadline() && fits(cpu, SPARE_PASS_BOUND, SPARE)) {
+        const uint32_t bank = (uint32_t)cpu->PB << 16;
+        soe_regs_t r = { cpu->A, cpu->X, cpu->Y, cpu->D, cpu->DB, cpu->P };
+        soe_cost_begin(bank | 0x9821, cpu->D, cpu->DB, true, true, s);
+        soe_at(0x9821);
+        for (;;) {
+            const uint16_t next = field_spare_time_pass(&r, frame);
+            charge_trace(cpu);
+            s_bind[SPARE].c++;
+            if (next == SPARE_NEW_FRAME) {
+                fprintf(stderr, "soe_bindings: the frame counter moved inside a C pass\n");
+                abort();
+            }
+            if (next != SPARE_NEXT) {
+                g_ram[s] = cpu->PB;                                                      /* PHK, PEA $9820 */
+                g_ram[(uint16_t)(s - 1)] = 0x98;
+                g_ram[(uint16_t)(s - 2)] = 0x20;
+                const uint16_t rest = field_spare_time_task(&r, next);
+                charge_trace(cpu);
+                if (rest != SPARE_NEXT) {
+                    cpu->S = (uint16_t)(s - 3);
+                    take_regs(cpu, &r);
+                    if (s_bind[SPARE].mutate) g_ram[0x3BC5] ^= 2;                        /* the next task */
+                    return interp_bridge_lle_yield_unwind(cpu, bank | rest);
+                }
+            }
+            if (!soe_frame_driver_deadline() || !fits_more(SPARE_PASS_BOUND)) break;
+        }
+        take_regs(cpu, &r);
+    }
+#endif
+    return run_rom_bytes(cpu, SPARE, 0x9821, 0x9824, plain ? spare_first : NULL);
+}
+
+/* $80:858F, first instruction: CMP $0100. */
+static void wait_first(CpuState *cpu) {
+    const uint32_t a = (uint32_t)cpu->DB << 16 | 0x0100;
+    const uint16_t m = (uint16_t)(g_ram[0x0100] | g_ram[0x0101] << 8), d = (uint16_t)(cpu->A - m);
+    Cost c = { 0 };
+    insn(&c, 5, 3); word_at(&c, a);
+    set_nz16(cpu, d);
+    cpu->P = (uint8_t)((cpu->P & ~CPU_P_C) | (cpu->A >= m ? CPU_P_C : 0));
+    cpu->open_bus = g_ram[0x0101];
+    charge(cpu, &c);
+}
+
+/*
+ * $80:858F, the spin of wait_for_nmi (knowledge/routines). As in HleSpareTime the NMI comes between slices: the C spins while a
+ * pass fits before the next stop, and the compiled ROM code from $8592 runs the last passes and sees the counter move.
+ */
+RecompReturn HleWaitForNmi(CpuState *cpu) {
+    stats_init();
+    if (!interp_bridge_in_lle_scheduler()) {
+        fprintf(stderr, "soe_bindings: wait_for_nmi outside the scheduler\n");
+        abort();
+    }
+    const bool plain = wide_a(cpu) && db_in_wram(cpu);
+#ifdef SOE_RECONSTRUCTED_C
+    cpu_mirrors_to_p(cpu);
+    if (plain && cpu->A == (uint16_t)(g_ram[0x0100] | g_ram[0x0101] << 8) && soe_frame_driver_deadline()
+        && fits(cpu, WAIT_PASS_BOUND, WAIT)) {
+        soe_regs_t r = { cpu->A, cpu->X, cpu->Y, cpu->D, cpu->DB, cpu->P };
+        soe_cost_begin((uint32_t)cpu->PB << 16 | 0x858F, cpu->D, cpu->DB, true, !cpu->x_flag, cpu->S);
+        soe_at(0x858F);
+        do {
+            if (!wait_for_nmi_pass(&r)) {
+                fprintf(stderr, "soe_bindings: the frame counter moved inside a C pass\n");
+                abort();
+            }
+            charge_trace(cpu);
+            s_bind[WAIT].c++;
+        } while (soe_frame_driver_deadline() && fits_more(WAIT_PASS_BOUND));
+        take_regs(cpu, &r);
+        if (s_bind[WAIT].mutate) cpu->master_cycles += 6;                                /* a late NMI */
+    }
+#endif
+    return run_rom_bytes(cpu, WAIT, 0x858F, 0x8592, plain ? wait_first : NULL);
 }
