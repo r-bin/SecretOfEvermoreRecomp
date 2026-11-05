@@ -14,7 +14,7 @@ into a native, standalone, portable C desktop executable using
 - **Seeds:** a CDL covering 90.3 % of the ROM (a full playthrough), written into `recomp/` by
   everscript-vscode's export: 5,642 routine variants, 5,568 compiled, 74 interpreter-only, 6 routines bound to C.
 - **Framework:** the results need four snesrecomp branches that are not upstream, pinned locally
-  ([upstream-access-timing.md](upstream-access-timing.md)).
+  ([upstream-access-timing.md](upstream-access-timing.md)); their way upstream: [pr/README.md](pr/README.md).
 
 ---
 
@@ -30,6 +30,7 @@ into a native, standalone, portable C desktop executable using
 | **[headless-exploration.md](headless-exploration.md)** | **Headless Exploration**<br>Into the game from SRAM, save states without a UI, reading rooms (`room-nav.js`), teleporting onto step-on triggers, fighting, narrowing a glitch to its frame, snes9x comparison. |
 | **[bugs-and-todos.md](bugs-and-todos.md)** | **Open Bugs, Findings & Roadmap**<br>Open issues (timing drift), resolved case studies with their lessons (BG mode 4, stack-resident dispatch, sprite allocator, save states, HUD portrait / force_lle), upstream bug reports, next milestones. |
 | **[mesence-parity-lessons.md](mesence-parity-lessons.md)** | **What the MesenCE parity work taught us**<br>Results, why the framework changes were needed (A/B per switch), snesrecomp facts, the method and its traps. |
+| **[pr/README.md](pr/README.md)** | **Changes to snesrecomp, on the way upstream**<br>Every framework change as a pull request: tracker, PR texts, what each one needs and how to reproduce it |
 | **[upstream-access-timing.md](upstream-access-timing.md)** | **Upstream Proposal: Access-Exact Timing**<br>The one game-neutral snesrecomp change that would close every open MesenCE difference: each bus access at its own clock, catch-up sync at shared registers, SPC700 port accesses on their cycle, events inside DMA. |
 | **[snesmod-addons.md](snesmod-addons.md)** | **.snesmod Packages, Addons & Config**<br>ZIP package architecture, TOML manifests, native trusted plugins in C/C++, options (bool, choice, int), and ideal Evermore addons (2-player co-op, bugfixes, MSU-1 audio, QoL). |
 | **[enhancements.md](enhancements.md)** | **Widescreen, Localization & Overlays**<br>Hybrid 16:9/21:9 implementation, Evermore widescreen invariants (scroll phase, room prefill, HUD pinning), declarative TOML translations, in-game map/hitbox overlays, and native randomizer plugins. |

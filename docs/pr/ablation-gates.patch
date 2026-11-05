@@ -1,0 +1,278 @@
+diff --git a/runner/src/abl_gate.h b/runner/src/abl_gate.h
+new file mode 100644
+index 00000000..3bdefab9
+--- /dev/null
++++ b/runner/src/abl_gate.h
+@@ -0,0 +1,5 @@
++#ifndef ABL_GATE_H
++#define ABL_GATE_H
++#include <stdlib.h>
++#define ABL(n) ({ static int _a=-1; if(_a<0)_a=getenv("ABL_" #n)!=NULL; _a; })
++#endif
+diff --git a/runner/src/common_rtl.c b/runner/src/common_rtl.c
+index 04ed9cbc..a78c0c19 100644
+--- a/runner/src/common_rtl.c
++++ b/runner/src/common_rtl.c
+@@ -1,3 +1,4 @@
++#include "abl_gate.h"
+ #ifdef _WIN32
+ #include <io.h>
+ #else
+@@ -336,10 +337,10 @@ static uint16_t s_apu_access_adr;
+ static bool s_apu_access_write;
+ static uint64_t rtl_apu_half_ticks(void) {
+   extern uint32_t interp_bridge_access_lead(uint16_t adr, uint32_t fallback);
+-  uint32_t lead = s_apu_access_adr ? interp_bridge_access_lead(s_apu_access_adr, s_apu_lead) : s_apu_lead;
++  uint32_t lead = s_apu_access_adr && !ABL(ACCESS_LEAD) ? interp_bridge_access_lead(s_apu_access_adr, s_apu_lead) : s_apu_lead;
+   /* A write lands at the end of its 6-clock bus cycle, 4 after the sample point. */
+-  if (s_apu_access_write) lead += 4;
+-  uint64_t m = s_cpu_access_clock ? s_cpu_access_clock(g_cpu.master_cycles, lead)
++  if (s_apu_access_write && !ABL(WRITE_LEAD)) lead += 4;
++  uint64_t m = s_cpu_access_clock && !ABL(ACCESS_HOOK) ? s_cpu_access_clock(g_cpu.master_cycles, lead)
+                                   : g_cpu.master_cycles + lead;
+   return (m / RTL_MASTER_PER_SEC) * RTL_SMP_HALF_PER_SEC +
+          (m % RTL_MASTER_PER_SEC) * RTL_SMP_HALF_PER_SEC / RTL_MASTER_PER_SEC;
+@@ -1917,8 +1918,8 @@ uint8 ReadRegOpenBus(uint16 reg, uint8 open_bus) {
+    * ($2138/$213B fetch-dependent), $4210-$4212 and the joypad ports all read
+    * beam state. Compiled bus-exact code charges an instruction after its
+    * access, so g_cpu.master_cycles is that start clock. */
+-  if (g_snes && ((reg >= 0x2100 && reg < 0x2140) || reg == 0x4016 || reg == 0x4017 ||
+-                 (reg >= 0x4200 && reg < 0x4220)))
++  if (g_snes && (ABL(BEAM_READS) ? reg == 0x2137 : ((reg >= 0x2100 && reg < 0x2140) || reg == 0x4016 || reg == 0x4017 ||
++                 (reg >= 0x4200 && reg < 0x4220))))
+     snes_sync_master_clock(g_snes, g_cpu.master_cycles);
+   if (reg >= 0x3000 && reg < 0x3300 && g_snes->cart->type == CART_SUPERFX) {
+     cart_sync_coprocessors(g_snes->cart, g_cpu.master_cycles);
+@@ -1926,7 +1927,7 @@ uint8 ReadRegOpenBus(uint16 reg, uint8 open_bus) {
+   }
+   if (reg >= 0x2100 && reg < 0x2140) {
+     uint8 v = ppu_read(g_ppu, reg & 0xff);
+-    if (reg == 0x2137) v = open_bus;  /* SLHV drives no data: the read sees open bus (MesenCE) */
++    if (reg == 0x2137 && !ABL(OPENBUS2137)) v = open_bus;  /* SLHV drives no data: the read sees open bus (MesenCE) */
+     /* SNESRECOMP_PPU_READ_LOG=1: "[ppur] <reg> <val> <cpu clock>" per PPU register read (a probe). */
+     static int ppur_log = -1;
+     if (ppur_log < 0) ppur_log = getenv("SNESRECOMP_PPU_READ_LOG") != NULL;
+@@ -1978,7 +1979,7 @@ uint16 ReadRegWord(uint16 reg) {
+     void rtl_sync_apu_for_access_locked(uint16_t adr);
+     rtl_sync_apu_for_access_locked(reg);
+     uint8_t lo = g_snes->apu->outPorts[(reg & 0x3)];
+-    if (rtl_apu_master_clock()) rtl_sync_apu_for_access_locked((uint16_t)(reg + 1));
++    if (rtl_apu_master_clock() && !ABL(WORD_PORT)) rtl_sync_apu_for_access_locked((uint16_t)(reg + 1));
+     uint8_t hi = g_snes->apu->outPorts[((reg + 1) & 0x3)];
+     RtlApuUnlock();
+     lo = rtl_apu_port_observers_read(reg, lo);
+diff --git a/runner/src/snes/apu.c b/runner/src/snes/apu.c
+index 19135850..2fb99365 100644
+--- a/runner/src/snes/apu.c
++++ b/runner/src/snes/apu.c
+@@ -1,3 +1,4 @@
++#include "../abl_gate.h"
+ 
+ #include <stdio.h>
+ #include <stdlib.h>
+@@ -60,14 +61,14 @@ static void apu_timerStep(Apu* apu, int i) {
+ /* A timer access on cycle `k` of the running opcode sees the timers as they
+  * are there: advance them to it now; apu_cycle skips what was done ahead. */
+ static void apu_timersTo(Apu* apu, uint8_t k) {
+-  if (!apu_accessCycles()) return;
++  if (!apu_accessCycles() || ABL(TIMERS_TO)) return;
+   for (int i = 0; i < 3; i++)
+     while (apu->timerAhead[i] < k) { apu_timerStep(apu, i); apu->timerAhead[i]++; }
+ }
+ /* A $F3 access on cycle `k` of the running opcode sees the per-clock S-DSP
+  * as it is there (MesenCE steps it before each bus cycle's access). */
+ static void apu_dspTo(Apu* apu, uint8_t k) {
+-  if (!dsp_perClock() || !apu_accessCycles()) return;
++  if (!dsp_perClock() || !apu_accessCycles() || ABL(DSP_TO)) return;
+   while (apu->dspAhead < k) { dsp_clock(apu->dsp); apu->dspAhead++; }
+ }
+ /* SNESRECOMP_PORT_LOG=1: every SPC access to $F4 on stderr, "[pl] S<R|W> <val> <spc cycle>". */
+@@ -98,7 +99,7 @@ static int apu_accessCycles(void) {
+ /* Before an opcode starts at portClock: true if it must wait, because one of
+  * its port accesses lands after the clock the CPU has reached. */
+ static bool apu_holdOpcode(Apu* apu) {
+-  if (!apu->holdActive) return false;
++  if (!apu->holdActive || ABL(HOLD)) return false;
+   if (apu->portClock + 16u <= apu->holdTarget) return false;  /* fits whole */
+   int c = spc_probePortCycle(apu->spc);
+   if (c < 0) return false;
+@@ -144,7 +145,7 @@ void apu_reset(Apu* apu) {
+   }
+   /* Access-exact timing: the IPL's first $F4 access lands on SPC cycle 2400
+    * from power-on (MesenCE), which a 3-cycle reset gives this core. */
+-  apu->cpuCyclesLeft = apu_accessCycles() ? 3 : 7;
++  apu->cpuCyclesLeft = apu_accessCycles() && !ABL(RESET3) ? 3 : 7;
+   apu->portClock = 0;
+   apu->holdActive = false;
+   apu->held = false;
+@@ -294,7 +295,7 @@ bool apu_enqueuePortWriteAt(Apu* apu, uint8_t port, uint8_t val, uint64_t target
+   /* Keep the queue in time order: a word write arrives high byte first but
+    * lands low byte first. */
+   uint32_t i = apu->portQTail;
+-  while (i != apu->portQHead &&
++  while (!ABL(QUEUE_ORDER) && i != apu->portQHead &&
+          apu->portQueue[(i - 1) & (APU_PORT_QUEUE_LEN - 1)].target_cycle > target) {
+     apu->portQueue[i & (APU_PORT_QUEUE_LEN - 1)] = apu->portQueue[(i - 1) & (APU_PORT_QUEUE_LEN - 1)];
+     i--;
+@@ -491,7 +492,7 @@ uint8_t apu_cpuRead(Apu* apu, uint16_t adr) {
+     case 0xf5:
+     case 0xf6:
+     case 0xf7: {
+-      if (apu_accessCycles() && apu->spc->accessCycle) {
++      if (apu_accessCycles() && apu->spc->accessCycle && !ABL(DRAIN_TO)) {
+         int64_t at = (int64_t)apu->portClock + apu->spc->accessCycle + s_read_bias;
+         if (at > (int64_t)apu->portClock) apu_drainPortQueueTo(apu, (uint64_t)at);
+       }
+diff --git a/runner/src/snes/interp_bridge.c b/runner/src/snes/interp_bridge.c
+index ecf09b81..bc4a37b1 100644
+--- a/runner/src/snes/interp_bridge.c
++++ b/runner/src/snes/interp_bridge.c
+@@ -1,3 +1,4 @@
++#include "../abl_gate.h"
+ /*
+  * interp_bridge.c — interp816 <-> AOT bridge. See interp_bridge.h and
+  * docs/MULTI_TIER.md.
+@@ -1265,7 +1266,7 @@ void cpu_aot_insn_begin(const CpuState *cpu, uint32_t pc16) {
+     const uint32_t pc24 = ((uint32_t)cpu->PB << 16) | (pc16 & 0xFFFF);
+     s_aot_exact_seen = 1;
+     if (tier_stats_on()) s_tier_aot++;
+-    if (g_interp_bridge_pc_hook)
++    if (g_interp_bridge_pc_hook && !ABL(PC_HOOK_AOT))
+         g_interp_bridge_pc_hook(pc24, cpu->m_flag ? 1 : 0, cpu->x_flag ? 1 : 0);
+     static int on = -1;
+     static unsigned long lo, hi;
+@@ -1327,7 +1328,7 @@ int interp_bridge_lle_master_deadline_reached(const CpuState *cpu) {
+ }
+ 
+ RecompReturn interp_bridge_aot_rti(CpuState *cpu, uint32 popped_pc24) {
+-    if (s_interp_bridge_depth > 0 && s_interp_owner_is_scheduler) {
++    if (!ABL(RTI_YIELD) && s_interp_bridge_depth > 0 && s_interp_owner_is_scheduler) {
+         /* The handler's frame is done, not suspended: nothing to resume later. */
+         s_aot_captured = 1;
+         return interp_bridge_lle_yield_unwind(cpu, popped_pc24 & 0xFFFFFFu);
+@@ -3665,7 +3666,7 @@ static int interp_bridge_run_ex2(CpuState *cpu, uint32_t entry_pc24,
+     g_interp_wlog_pc24 = 0;  /* control returns to compiled code */
+     /* Back to the host: the beam to the CPU's clock, however the run ended (compiled code advances it only at
+      * its own sync points; the host reads the beam for its next slice's line grid and its beam-gated events). */
+-    if (s_interp_bridge_depth == 1 && g_snes) snes_sync_master_clock(g_snes, cpu->master_cycles);
++    if (!ABL(BEAM_HOST) && s_interp_bridge_depth == 1 && g_snes) snes_sync_master_clock(g_snes, cpu->master_cycles);
+     s_tier_entry = _saved_tier_entry;
+     RecompStackPop();
+     g_last_recomp_func = _saved_func;
+diff --git a/runner/src/snes/ppu.c b/runner/src/snes/ppu.c
+index 0dfc9bfa..ed8afd02 100644
+--- a/runner/src/snes/ppu.c
++++ b/runner/src/snes/ppu.c
+@@ -1,3 +1,4 @@
++#include "../abl_gate.h"
+ #include "ppu.h"
+ #include "hd_jobs_internal.h"
+ #include "mode7_hd.h"
+@@ -3234,7 +3235,7 @@ static int ppu_renderReadsOn(void) {
+ /* The OAM byte address the PPU reads for a $2138 read now, or -1 when the CPU's. */
+ static int ppu_renderOamAddress(const Ppu *ppu) {
+   uint16_t hc, v;
+-  if (!ppu_renderReadsOn() || !g_ppu_beam_hook || PPU_forcedBlank(ppu)) return -1;
++  if (ABL(RENDER_OAM) || !ppu_renderReadsOn() || !g_ppu_beam_hook || PPU_forcedBlank(ppu)) return -1;
+   if (!g_ppu_beam_hook(0x2138, &hc, &v) || v >= (PPU_overscan(ppu) ? 240 : 225)) return -1;
+   int dot = hc <= 1292 ? hc >> 2 : hc <= 1310 ? (hc - 2) >> 2 : (hc - 4) >> 2;
+   if (hc <= 1020) return ((ppu_objFirst(ppu) + ((dot + 1) >> 1)) & 0x7f) << 2;
+@@ -3248,7 +3249,7 @@ static int ppu_renderOamAddress(const Ppu *ppu) {
+ /* The CGRAM word index the PPU reads for a $213B read now, or -1 when the CPU's. */
+ static int ppu_renderCgramAddress(const Ppu *ppu) {
+   uint16_t hc, v;
+-  if (!ppu_renderReadsOn() || !g_ppu_beam_hook || PPU_forcedBlank(ppu)) return -1;
++  if (ABL(RENDER_CGRAM) || !ppu_renderReadsOn() || !g_ppu_beam_hook || PPU_forcedBlank(ppu)) return -1;
+   if (!g_ppu_beam_hook(0x213b, &hc, &v) || v == 0 || v >= (PPU_overscan(ppu) ? 240 : 225)) return -1;
+   if (hc < 88 || hc >= 1096) return -1;
+   if ((ppu->screenEnabled[1] & 0x1f) == 0) return 0;
+@@ -3269,7 +3270,8 @@ uint8_t ppu_read(Ppu* ppu, uint8_t adr) {
+        * games waiting for any other line loop forever.
+        * Only while WRIO ($4201) bit 7 is set: the read pulls the latch line
+        * that bit drives (MesenCE's SnesPpu::Read, $2137). */
+-      if (!g_snes->ppuLatch) return 0;
++      if (!g_snes->ppuLatch && !ABL(WRIO_GATE)) return 0;
++      if (ABL(HV_TOGGLE)) { ppu->hCountSecond = false; ppu->vCountSecond = false; }
+       /* The flip-flops of $213C/$213D are left as they are: only a $213F read
+        * resets them (MesenCE: a latch does not touch _hLocToggle/_vLocToggle). */
+       if (g_ppu_latch_position_hook) {
+diff --git a/runner/src/snes/snes.c b/runner/src/snes/snes.c
+index b7d5f315..ac9696c4 100644
+--- a/runner/src/snes/snes.c
++++ b/runner/src/snes/snes.c
+@@ -1,3 +1,4 @@
++#include "../abl_gate.h"
+ 
+ #include <stdio.h>
+ #include <stdlib.h>
+@@ -307,9 +308,9 @@ void snes_reset(Snes* snes, bool hard) {
+   snes->joypad1Index = snes->joypad2Index = 0;
+   snes->joypad1Latched = snes->joypad2Latched = 0;
+   joypad_reset_state();
+-  snes->ppuLatch = true;  /* WRIO reads $FF after power-on and reset */
++  snes->ppuLatch = !ABL(WRIO_POWERON);  /* WRIO reads $FF after power-on and reset */
+   s_latch_snes = snes;
+-  g_ppu_latch_position_hook = snes_latch_position;
++  if (!ABL(HV_HOOK)) g_ppu_latch_position_hook = snes_latch_position;
+   g_ppu_beam_hook = snes_ppu_beam;
+   snes->multiplyA = 0xff;
+   snes->multiplyResult = 0xfe01;
+@@ -731,7 +732,7 @@ uint8_t snes_readReg(Snes* snes, uint16_t adr) {
+       /* Bus-exact compiled code (an access prefix is set) keeps the beam on its own clock, as the interpreter
+        * does: no polling tick for it either. */
+       extern uint32_t g_aot_access_prefix;
+-      if (!g_interp_apu_driving && !snes->cpuReadClocked && g_aot_access_prefix == 0xFFFFFFFFu /* AOT_NO_ACCESS */)
++      if (!g_interp_apu_driving && !snes->cpuReadClocked && !ABL(TICK_UPSTREAM) && (ABL(TICK4212) || g_aot_access_prefix == 0xFFFFFFFFu))
+         snes_advance_beam(snes, 64, false);
+       // Bit 7 = vblank. The real frame loop drives vblank via inNmi, not
+       // inVblank (inVblank is never set true), so on the static-recomp
+@@ -979,11 +980,12 @@ void snes_writeReg(Snes* snes, uint16_t adr, uint8_t val) {
+         }
+         uint64_t dma_master = 12 + body;
+         if (dma_align && !val) {
+-          dma_master = 0;  /* no channel: no transfer, no time */
++          dma_master = ABL(DMA_ZERO) ? 12 : 0;  /* no channel: no transfer, no time */
+         } else if (dma_align) {
+           extern uint64_t rtl_cpu_master_now(void);
+           const uint64_t now = rtl_cpu_master_now();
+-          uint64_t start = now + (uint64_t)dma_lead;
++          extern uint32_t interp_bridge_access_lead(uint16_t adr, uint32_t fallback);
++          uint64_t start = now + (ABL(DMA_LEAD_DYN) ? (uint64_t)interp_bridge_access_lead(0x420b, 20) + 10u : (uint64_t)dma_lead);
+           /* MesenCE's HDMA init event (line 0, H = 12 + (line start & 7))
+            * takes a CPU cycle start of its own, then another for the HDMA
+            * init itself, even with no HDMA channel on; a pending DMA waits
+@@ -992,7 +994,7 @@ void snes_writeReg(Snes* snes, uint16_t adr, uint8_t val) {
+           {
+             const uint64_t line = snes->beamMasterLast - snes->hPos;
+             const uint64_t line0 = snes->vPos == 0 ? line : snes->vPos == 261 ? line + 1364u : 0;
+-            if (line0) {
++            if (line0 && !ABL(HDMA_INIT)) {
+               const uint64_t ev = line0 + 12u + (line0 & 7u);
+               const uint64_t write_cycle = start - 12u, next_fetch = start - 6u;
+               if (ev > write_cycle - 6u && ev <= next_fetch) start += 6u;
+@@ -1014,7 +1016,7 @@ void snes_writeReg(Snes* snes, uint16_t adr, uint8_t val) {
+         /* SnesInit installs the CpuState-clock charge; a host that drives
+          * the beam itself installs its own (see snes.h). With no hook the
+          * device layer advances its own beam, so snes.c needs no CpuState. */
+-        g_snes_dma_charged += dma_master;
++        if (!ABL(DMA_CHARGED)) g_snes_dma_charged += dma_master;
+         if (s_master_clock_charge_hook) {
+           s_master_clock_charge_hook(snes, dma_master);
+         } else {
+diff --git a/runner/src/snes/spc.c b/runner/src/snes/spc.c
+index ba48adc4..2b18cb70 100644
+--- a/runner/src/snes/spc.c
++++ b/runner/src/snes/spc.c
+@@ -1,3 +1,4 @@
++#include "../abl_gate.h"
+ 
+ #include <stdio.h>
+ #include <stdlib.h>
+@@ -51,6 +52,7 @@ static void spc_doOpcode(Spc* spc, uint8_t opcode);
+  * before fetching the destination operand (core: both operands first), and
+  * word reads idle a cycle between the low and the high byte. */
+ static uint8_t spc_hwCycle(const Spc* spc, uint8_t idx) {
++  if (ABL(HW_CYCLE)) return idx;
+   switch (spc->op) {
+     case 0x09: case 0x29: case 0x49: case 0x69: case 0x89: case 0xa9: case 0xfa:
+       return idx == 2 ? 3 : idx == 3 ? 2 : idx;

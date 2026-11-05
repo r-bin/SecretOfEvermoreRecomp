@@ -16,6 +16,8 @@ new hunt: the same failure classes repeat.
 `cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j` -> `build/SecretOfEvermoreSNESRecomp`.
 Headless: `build/SecretOfEvermoreSNESRecomp --no-launcher --script s.txt <rom>` with `SNESRECOMP_DUMP_DIR`.
 Copy `build/` to a scratch folder before experimenting: `saves/`, `config.ini` belong to the user.
+Upstream's `v2_emit` reuses `src/gen` without looking at `SNESRECOMP_EXACT_BUS` / `SNESRECOMP_AOT_RESUME`: to change them, delete
+`src/gen` first and check the log says `28 bank(s) emitted`.
 New seeds: `npm run recomp` in the sibling everscript-vscode checkout (writes `recomp/bank*.cfg` here).
 
 ## Ownership

@@ -48,6 +48,14 @@ next steps for the Secret of Evermore static recompilation.
 
 ## 3. Upstream Bug Reports & Contributions
 
+Our own framework changes and their pull requests: [pr/README.md](pr/README.md). Found while rebasing them on upstream's main:
+
+- **PB lost after a resumed call:** #248 keeps the live PB while an LLE unwind is pending; with compiled resume that flag can still be set
+  on a normal return, so the caller ran on in the callee's bank (native 6 clocks short, parted at NMI 2938). Fix: keep it only when the
+  call propagates the unwind (`73d951bc`). Lesson: a rebase needs replay 01 native too; interpreted stayed in sync throughout.
+- **`v2_emit` reuses output across our generator switches:** see Build in the `recomp` skill. A run measured this way looked like
+  "EXACT_BUS is not needed". Lesson: check a regenerate's `emitted` line before believing an A/B.
+
 These issues should be submitted to the [RetroPortingToolKit/snesrecomp](https://github.com/RetroPortingToolKit/snesrecomp) repository:
 
 1. **BG Mode 4 Support in `NewRenderer`:**

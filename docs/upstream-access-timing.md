@@ -5,6 +5,8 @@
 ([../AGENTS.md](../AGENTS.md) rule 2). It holds no Evermore facts: every rule below is SNES hardware, so every game on
 snesrecomp gains from it. Results and what is left: [Prototype](#prototype-2026-10-31).
 
+The pull requests this became, and what is left of it: [pr/README.md](pr/README.md).
+
 ## Goal
 WRAM identical to MesenCE at every NMI, for the whole run, native build included. Today we have that through NMI
 key 319 of `01-no-inputs-4m.evsmv`, then 97.9–99.98 % ([imperfections/README.md](imperfections/README.md)).
