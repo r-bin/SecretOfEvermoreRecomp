@@ -13,6 +13,8 @@ plus `mstan`'s repairs on the PR.
 3. Take out everything under [Not proposed](README.md#not-proposed) marked #241. `mstan`'s snapshot work serializes the DSP pipeline, so
    check it before removing the per-sample DSP fields.
 4. Replace the fitted DMA constant (below). Remove the two comments naming the game (`common_rtl.c`, `snes.c`).
+5. Run replay 01 on the result. The removed parts were each tested off alone, never all together, and this branch itself has not run on
+   main: only `pr-stack-on-main` has.
 
 ## PR title
 
@@ -40,8 +42,13 @@ Result, with the later PRs of this series, on current main: WRAM, VRAM, CGRAM, O
 five replays, 71,055 frames, interpreted and compiled. With this PR alone, interpreted: identical through frame 5997 of the attract
 replay; the next PR covers the rest.
 
-Limits: `RTL_MASTER_PER_SEC` is the NTSC master clock, PAL is not handled. DMA's end alignment assumes 6-clock code. The result also
-needs a frame driver with the interrupt rules in the recipe; ours is game glue today and could move here in a follow-up.
+Limits and doubts:
+- `RTL_MASTER_PER_SEC` is the NTSC master clock, PAL is not handled. DMA's end alignment assumes 6-clock code.
+- The result needs a frame driver with the interrupt rules in the recipe; ours is game glue today and could move here in a follow-up.
+  Until then, no other game gets the full result.
+- `RtlApuUseMasterClock`, `RtlSetCpuAccessClockHook` and `g_snes_dma_charged` have no caller in snesrecomp yet.
+- Sync is measured on one game. For other games there is the four-game regression run below, which shows nothing broke, not that they
+  gain.
 ```
 
 ## Comment to post

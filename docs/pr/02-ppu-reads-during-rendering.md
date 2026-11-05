@@ -36,6 +36,9 @@ Only active on the master-clock APU timeline, whose access clocks are exact, so 
 Result: the attract replay of Secret of Evermore stays identical to MesenCE to its end, 14,305 frames, compiled and interpreted.
 Turned off, it parts at frame 5998. Recipe: https://github.com/r-bin/SecretOfEvermoreRecomp/blob/<head>/docs/pr/README.md#reproduce
 
+Doubts: the rules are checked against one game's reads only, and each `$2138` read during rendering walks the lines above the beam, which
+would cost a game that polls it.
+
 Depends on #241.
 ```
 

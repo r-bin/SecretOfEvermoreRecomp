@@ -51,6 +51,13 @@ Off by default: without the switch the emitter, the interpreter and existing bui
 Result: Secret of Evermore's attract replay, compiled, identical to MesenCE on WRAM, VRAM, CGRAM, OAM and SRAM to its end, 14,305 frames.
 Recipe: https://github.com/r-bin/SecretOfEvermoreRecomp/blob/<head>/docs/pr/README.md#reproduce
 
+Doubts:
+- This overlaps #250 and #251, whose `--instruction-blocks --region-paced` define nearly the same clock contract. I have not tested
+  their flags on this game, so I can't say what would be missing. If they cover it, I'd rather rework this on top of them than add a
+  second mechanism.
+- It only helps compiled code: the interpreter already keeps these clocks.
+- Read-modify-write and word accesses that straddle regions are untested; this game has none.
+
 Depends on #241.
 ```
 
@@ -69,8 +76,9 @@ Yes: the charges come from the 65816's bus cycles and the region map, as in the 
 
 ## Good for future games?
 
-Yes, for any game that needs exact timing and compiled speed. It is the only way compiled code can pass a frame-by-frame comparison at
-all. If #250/#251 land, future games get this from them instead, which is why the decision comes first.
+Yes, but only for compiled code, in games that need exact timing and compiled speed. An all-interpreted build stays in sync without it.
+Compiled code needs this or something like it to pass a frame-by-frame comparison; #250/#251 may be that something. If they land, future
+games get it from them instead, which is why the decision comes first.
 
 ## Reproduce
 

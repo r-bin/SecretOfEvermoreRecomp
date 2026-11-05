@@ -34,6 +34,9 @@ S and return frame). `SNESRECOMP_AOT_RESUME=0` at run time turns it off. Off by 
 
 Native share on that replay: 99.70 %.
 
+This only helps the native share. It fixes no game behaviour and no sync: with resume off, the same five replays stay identical to
+MesenCE, just mostly interpreted. If that is not worth this much code in the runtime, it is fine to leave it out.
+
 What keeps the tiers alike:
 - A compiled RTI goes on at the popped PC while the scheduler owns the run (`interp_bridge_aot_rti`), so handlers can run as slices.
 - The beam is synced before compiled code reads PPU, joypad and `$42xx` registers.
@@ -43,6 +46,11 @@ What keeps the tiers alike:
 
 Result: Secret of Evermore identical to MesenCE on five replays, 71,055 frames, with and without resume. Without the PB line the attract
 replay parts at NMI 2938. Recipe: https://github.com/r-bin/SecretOfEvermoreRecomp/blob/<head>/docs/pr/README.md#reproduce
+
+Doubts:
+- The speed gain is not measured: 99.70 % counts instructions, not time.
+- It is built on `bus_exact.py` from #<PR 3>. If that gives way to #250/#251, this has to be redone on top of them, and their fallbacks to
+  the interpreter may lower the share.
 
 Depends on #<PR 3>.
 ```
@@ -75,7 +83,8 @@ default at generation.
 
 ## Good for future games?
 
-For hosts that want instruction-exact timing and compiled speed together, yes. Hosts with block-level timing gain nothing and pay nothing.
+Only for the native share, and only for hosts that want instruction-exact timing and compiled speed together. It makes no game more
+correct. Hosts with block-level timing gain nothing and pay nothing.
 
 ## Reproduce
 

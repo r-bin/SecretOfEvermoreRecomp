@@ -15,6 +15,15 @@ Upstream: https://github.com/RetroPortingToolKit/snesrecomp. Measured 2026-11-05
 | 3 | [03-bus-exact-compiled-code.md](03-bus-exact-compiled-code.md) | not opened | draft, **blocked** on a decision | 1 | Decide against [#250](https://github.com/RetroPortingToolKit/snesrecomp/pull/250)/[#251](https://github.com/RetroPortingToolKit/snesrecomp/pull/251) |
 | 4 | [04-compiled-resume.md](04-compiled-resume.md) | not opened | draft | 3 | Follows 3 |
 
+**Why each one, and the doubts:**
+
+| # | Needed for sync? | Doubts |
+|---|---|---|
+| 1 | Yes, from frame 319 | Full result needs our frame driver; NTSC only; hooks without a caller; measured on one game |
+| 2 | Yes, from frame 5998 | Checked against one game's reads; one CGRAM case not modelled |
+| 3 | Compiled code only, from frame 320 | **#250/#251 may replace it**, untested |
+| 4 | **No.** Only the native share, 16.31 % → 99.70 % | Speed gain not measured; built on 3, so it moves with 3; can be dropped |
+
 State values: draft, open, conflicts, merged, closed. Update this table when a state changes, and the file's Status line with it.
 
 **Blocking all of them:** the recipe needs public commits. `r-bin/SecretOfEvermoreRecomp` has no branches on GitHub, and
