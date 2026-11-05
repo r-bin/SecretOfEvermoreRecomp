@@ -217,6 +217,10 @@ SOE_PC_COUNTS=<file>` writes how often each PC ran.
 | `$80:858C` `wait_for_nmi`, bound at `$858F` | `reconstructed-c/80/80858C_wait_for_nmi.c` | same; no G1, it only ends on the NMI |
 | `$80:8650` `vram_dma_upload_tile_block` | `reconstructed-c/80/808650_vram_dma_upload_tile_block.c` | same |
 | `$90:A1B4` `map_anim_tile_channel_tick_and_vram_stream` | `reconstructed-c/90/90A1B4_map_anim_tile_channel_tick_and_vram_stream.c` | same |
+| `$80:960A` `oam_depth_sorted_sprite_insert_node` | `reconstructed-c/80/80960A_oam_depth_sorted_sprite_insert_node.c` | same |
+| `$8F:C6C5` `sprite_sorting_canopy_occlusion_and_render_depth` | `reconstructed-c/8F/8FC6C5_sprite_sorting_canopy_occlusion_and_render_depth.c` | same |
+| `$8F:AA51` `direction_index_from_signed_byte_pair` | `reconstructed-c/8F/8FAA51_direction_index_from_signed_byte_pair.c` | same |
+| `$8F:A723` `companion_waypoint_history_poll` | `reconstructed-c/8F/8FA723_companion_waypoint_history_poll.c` | same |
 
 ---
 

@@ -66,7 +66,7 @@ the native build's tiers leave of it. Calls is the share of calls to the bound r
 
 | Replay | Total | Compiled | Interpreted | As C | Native (compiled + C) | C | Calls in C |
 |---|---|---|---|---|---|---|---|
-| `01-no-inputs-4m` | 210,107,833 | 101,262,561 | 286,201 | 108,559,071 | **99.86 %** | 51.67 % | 99.7 % |
+| `01-no-inputs-4m` | 210,107,833 | 96,938,309 | 292,169 | 112,877,355 | **99.86 %** | 53.72 % | 99.7 % |
 | `02-newgame-boy-available` | 260,809,086 | 164,353,139 | 116,319 | 96,339,628 | **99.96 %** | 36.94 % | 94.6 % |
 | `04-newgame-flowers.mmo` | 376,947,079 | 254,073,258 | 159,107 | 122,714,714 | **99.96 %** | 32.55 % | 94.5 % |
 | `05-flowers-from-state.mmo` | 126,651,642 | 106,857,320 | 35,227 | 19,759,095 | **99.97 %** | 15.60 % | 94.6 % |
@@ -169,8 +169,12 @@ path ran often, and a corrupted C path (`SOE_HLE_MUTATE=1`) is caught.
 | `$80:858F` `wait_for_nmi`, a pass | 6,729,928 / 5,378 | not measured | to 14424 | caught at NMI 2 |
 | `$80:8650` `vram_dma_upload_tile_block` | 55,319 / 807 | not measured | to 14424 | caught at key 362 |
 | `$90:A1B4` `map_anim_tile_channel_tick_and_vram_stream` | 11,734 / 553 | not measured | to 14424 | caught at key 364 |
+| `$80:960A` `oam_depth_sorted_sprite_insert_node` | 47,953 / 2 | not measured | to 14424 | caught at key 384 |
+| `$8F:C6C5` `sprite_sorting_canopy_occlusion_and_render_depth` | 44,903 / 1,887 | not measured | to 14424 | caught at key 363 |
+| `$8F:AA51` `direction_index_from_signed_byte_pair` | 123,247 / 5,463 | not measured | to 14424 | caught at key 363 |
+| `$8F:A723` `companion_waypoint_history_poll` | 19,788 / 378 | not measured | to 14424 | caught at key 322 |
 
-Measured 2026-11-03 and, for the last three rows, 2026-11-04 (`run-stats.mts --stats`, `compare.mts --backend mesen,recomp --verbose`). `A` is dead after those two, so their control corrupts a WRAM result instead; `init_entity_pool` also leaves the bytes its `PHB` and `PEA` wrote below S, which G1 does not check and the replays do. The C path runs only
+Measured 2026-11-03 and, for the last seven rows, 2026-11-04/2026-11-05 (`run-stats.mts --stats`, `compare.mts --backend mesen,recomp --verbose`). `A` is dead after those two, so their control corrupts a WRAM result instead; `init_entity_pool` also leaves the bytes its `PHB` and `PEA` wrote below S, which G1 does not check and the replays do. The C path runs only
 when the routine ends before the next stop that is not a DRAM refresh, with no IRQ possible (96 % of calls). The rest
 run the ROM bytes compiled from the second instruction (`body=`, [game-rtl.md](game-rtl.md) §4b), which took the RNG's
 interpreted instructions from 35,139 to 1,525 on 01. Each call that reaches its entry at a deadline, mostly in

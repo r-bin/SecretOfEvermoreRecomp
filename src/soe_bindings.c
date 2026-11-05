@@ -51,6 +51,11 @@ void init_entity_pool_bind(soe_regs r);
 void entity_sprite_depth_bind(soe_regs r);
 void vram_dma_upload_tile_block_bind(soe_regs r);
 void map_anim_tile_channel_tick_and_vram_stream_bind(soe_regs r);
+void oam_depth_sorted_sprite_insert_node_bind(soe_regs r);
+void sprite_sorting_canopy_occlusion_and_render_depth_bind(soe_regs r);
+void direction_index_from_signed_byte_pair_bind(soe_regs r);
+void anim_start_record_bind(soe_regs r);
+void companion_waypoint_history_poll_bind(soe_regs r);
 #include "raycast.h"
 #include "spare_time.h"
 
@@ -62,12 +67,14 @@ uint16_t soe_multiply(uint16_t factors) {
 }
 #endif
 
-enum { RNG, PLANE, TILE, POOL, DEPTH, RAY, SPARE, WAIT, DMA, ANIM, BINDINGS };
+enum { RNG, PLANE, TILE, POOL, DEPTH, RAY, SPARE, WAIT, DMA, ANIM, OAM_INSERT, SPRITE_SORT, DIR_PAIR, ANIM_START, WAYPOINT_POLL, BINDINGS };
 static struct { const char *name; unsigned long long c, across, compiled; bool mutate; } s_bind[BINDINGS] = {
     { "random_number_generator" }, { "update_entity_plane" }, { "eval_tile_collision" },
     { "init_entity_pool" }, { "entity_sprite_depth" }, { "companion_metatile_raycast_line_stepper" },
     { "field_spare_time_pass" }, { "wait_for_nmi_pass" },
     { "vram_dma_upload_tile_block" }, { "map_anim_tile_channel_tick_and_vram_stream" },
+    { "oam_depth_sorted_sprite_insert_node" }, { "sprite_sorting_canopy_occlusion_and_render_depth" },
+    { "direction_index_from_signed_byte_pair" }, { "anim_start_record" }, { "companion_waypoint_history_poll" },
 };
 static int s_stats = -1;
 static void print_stats(void) {
@@ -115,10 +122,26 @@ static void charge(CpuState *cpu, const Cost *c) {
     cpu->cycles += c->cycles;
     cpu->master_cycles += master_of(c, cpu);
 }
-/* The RTL at the end of the C path: S, and the open bus its last read leaves (the return bank). */
-static void leave_rtl(CpuState *cpu) {
-    cpu->open_bus = g_ram[(uint16_t)(cpu->S + 3)];
-    cpu->S = (uint16_t)(cpu->S + 3);
+/* The RTL/RTS at the end of the C path: S, the open bus its last read leaves, and when a tail transfer from a
+ * frameless-resumed routine reached this helper, the unwind back to the scheduler at the popped return address. */
+static RecompReturn leave_rtl(CpuState *cpu) {
+    const uint16_t s0 = cpu->S;
+    const uint32_t rpc = ((g_ram[(uint16_t)(s0 + 1)] | (uint16_t)g_ram[(uint16_t)(s0 + 2)] << 8) + 1u) & 0xFFFFu;
+    const uint8_t rpb = g_ram[(uint16_t)(s0 + 3)];
+    cpu->open_bus = rpb;
+    cpu->S = (uint16_t)(s0 + 3);
+    if (interp_bridge_return_targets_owner(s0, cpu->S) || (interp_bridge_in_lle_scheduler() && rpc == 0x9821u))
+        return interp_bridge_lle_yield_unwind(cpu, (uint32_t)rpb << 16 | rpc);
+    return RECOMP_RETURN_NORMAL;
+}
+static RecompReturn leave_rts(CpuState *cpu) {
+    const uint16_t s0 = cpu->S;
+    const uint32_t rpc = ((g_ram[(uint16_t)(s0 + 1)] | (uint16_t)g_ram[(uint16_t)(s0 + 2)] << 8) + 1u) & 0xFFFFu;
+    cpu->open_bus = g_ram[(uint16_t)(s0 + 2)];
+    cpu->S = (uint16_t)(s0 + 2);
+    if (interp_bridge_return_targets_owner(s0, cpu->S))
+        return interp_bridge_lle_yield_unwind(cpu, (uint32_t)cpu->PB << 16 | rpc);
+    return RECOMP_RETURN_NORMAL;
 }
 static void set_nz16(CpuState *cpu, uint16_t v) {
     cpu->P = (uint8_t)((cpu->P & ~(CPU_P_N | CPU_P_Z)) | (v ? 0 : CPU_P_Z) | (v & 0x8000 ? CPU_P_N : 0));
@@ -151,16 +174,19 @@ static bool fits_more(uint64_t master) {
  * compiled root behind it, between the same two instructions as any compiled code. A deadline already reached at
  * the entry stops there first. `first` is NULL when the widths or the operand's place are not the ones it handles:
  * the interpreter then runs from the entry, as it does outside the scheduler (a nested run). */
-static RecompReturn run_rom_bytes(CpuState *cpu, int which, uint16_t entry16, uint16_t body16, void (*first)(CpuState *)) {
+static RecompReturn run_rom_bytes_frame(CpuState *cpu, int which, uint16_t entry16, uint16_t body16, void (*first)(CpuState *), int frame) {
     const uint32_t bank = (uint32_t)cpu->PB << 16, entry = bank | entry16;
     s_bind[which].compiled++;
-    if (!interp_bridge_in_lle_scheduler()) return interp_tier_run_call_frame(cpu, entry, entry, 3, NULL);
+    if (!interp_bridge_in_lle_scheduler()) return interp_tier_run_call_frame(cpu, entry, entry, frame, NULL);
     if (!first || interp_bridge_lle_master_deadline_reached(cpu)) return interp_bridge_lle_yield_unwind(cpu, entry);
     cpu_aot_insn_begin(cpu, entry16);
     cpu_mirrors_to_p(cpu);
     first(cpu);
     cpu_p_to_mirrors(cpu);
     return interp_bridge_lle_yield_unwind(cpu, bank | body16);
+}
+static RecompReturn run_rom_bytes(CpuState *cpu, int which, uint16_t entry16, uint16_t body16, void (*first)(CpuState *)) {
+    return run_rom_bytes_frame(cpu, which, entry16, body16, first, 3);
 }
 
 /* Registers the C sees and hands back. A, X and P are all a binding here changes. */
@@ -848,15 +874,191 @@ RecompReturn HleMapAnimTileChannelTick(CpuState *cpu) {
                 }
                 const Cost c = { t.cycles, t.fetches, t.data };
                 take_regs(cpu, &r);
-                leave_rtl(cpu);
                 charge(cpu, &c);
                 if (s_bind[ANIM].mutate) g_ram[(uint16_t)(cpu->D + 0xD8)] ^= 4;
                 s_bind[ANIM].c++;
                 if (last_ch >= 0) s_bind[DMA].c += (unsigned long long)(2 * updates);
-                return RECOMP_RETURN_NORMAL;
+                return leave_rtl(cpu);
             }
         }
     }
 #endif
     return run_rom_bytes(cpu, ANIM, 0xA1B4, 0xA1B5, cpu->S < 0x2000 ? pool_first : NULL);
+}
+
+/*
+ * $80:960A oam_depth_sorted_sprite_insert_node (RTL; knowledge/routines/oam_depth_sorted_sprite_insert_node.md).
+ * Allocates a 15-byte OAM sprite node from the free pool at $7E1276 and inserts it into the depth-sorted doubly
+ * linked list at $7E1278 in bank $7E. Charged from SOE_AT marks.
+ */
+RecompReturn HleOamInsertNode(CpuState *cpu) {
+    stats_init();
+#ifdef SOE_RECONSTRUCTED_C
+    cpu_mirrors_to_p(cpu);
+    const uint16_t s0 = cpu->S;
+    if (wide_a(cpu) && !cpu->x_flag && !(cpu->P & CPU_P_D) && dp_in_wram(cpu, 0x15) && s0 > 8 && s0 < 0x1FF8
+        && (uint16_t)(g_ram[0x1276] | g_ram[0x1277] << 8) < 0xC000u
+        && (uint16_t)(g_ram[0x1278] | g_ram[0x1279] << 8) < 0xC000u
+        && fits(cpu, 3000u, OAM_INSERT)) {
+        soe_regs_t r = { cpu->A, cpu->X, cpu->Y, cpu->D, cpu->DB, cpu->P };
+        SoeCostTrace t;
+        soe_cost_begin((uint32_t)cpu->PB << 16 | 0x960A, cpu->D, cpu->DB, true, true, s0);
+        oam_depth_sorted_sprite_insert_node_bind(&r);
+        soe_cost_end(&t);
+        const Cost c = { t.cycles, t.fetches, t.data };
+        take_regs(cpu, &r);
+        charge(cpu, &c);
+        if (s_bind[OAM_INSERT].mutate) g_ram[0x1276] ^= 0x0F;
+        s_bind[OAM_INSERT].c++;
+        return leave_rtl(cpu);
+    }
+#endif
+    return run_rom_bytes(cpu, OAM_INSERT, 0x960A, 0x960B, cpu->S < 0x2000 ? pool_first : NULL);
+}
+
+/* $8F:C6C5, first instruction: LDY $4C. */
+static void sort_first(CpuState *cpu) {
+    Cost c = { 0 };
+    dp16(&c, cpu, 0x4C);
+    cpu->Y = dp_word(cpu, 0x4C);
+    set_nz16(cpu, cpu->Y);
+    cpu->open_bus = (uint8_t)(cpu->Y >> 8);
+    charge(cpu, &c);
+}
+
+/*
+ * $8F:C6C5 sprite_sorting_canopy_occlusion_and_render_depth (RTS; knowledge/routines/sprite_sorting_canopy_occlusion_and_render_depth.md).
+ * Computes sprite depth via $8F:C773, evaluates BG canopy occlusion, and inserts the entity's main and shadow OAM
+ * nodes via $80:960A. Charged from SOE_AT marks across $8F:C6C5 and its nested $8F:C773 / $80:960A calls.
+ */
+RecompReturn HleSpriteSort(CpuState *cpu) {
+    stats_init();
+    const bool plain = wide_a(cpu) && !cpu->x_flag && dp_in_wram(cpu, 0x5C);
+#ifdef SOE_RECONSTRUCTED_C
+    cpu_mirrors_to_p(cpu);
+    const uint16_t s0 = cpu->S;
+    if (plain && !(cpu->P & CPU_P_D) && cpu->DB == 0x7E && s0 > 16 && s0 < 0x1FF0
+        && (uint32_t)dp_word(cpu, 0x4C) + 0x90 < 0x10000u
+        && (uint16_t)(g_ram[0x1276] | g_ram[0x1277] << 8) < 0xC000u
+        && (uint16_t)(g_ram[0x1278] | g_ram[0x1279] << 8) < 0xC000u
+        && fits(cpu, 8500u, SPRITE_SORT)) {
+        const uint16_t free_before = (uint16_t)(g_ram[0x1276] | g_ram[0x1277] << 8);
+        soe_regs_t r = { cpu->A, cpu->X, cpu->Y, cpu->D, cpu->DB, cpu->P };
+        SoeCostTrace t;
+        soe_cost_begin((uint32_t)cpu->PB << 16 | 0xC6C5, cpu->D, cpu->DB, true, true, s0);
+        sprite_sorting_canopy_occlusion_and_render_depth_bind(&r);
+        soe_cost_end(&t);
+        const uint16_t free_after = (uint16_t)(g_ram[0x1276] | g_ram[0x1277] << 8);
+        const Cost c = { t.cycles, t.fetches, t.data };
+        take_regs(cpu, &r);
+        charge(cpu, &c);
+        if (s_bind[SPRITE_SORT].mutate) g_ram[(uint16_t)(dp_word(cpu, 0x4C) + 0x84)] ^= 1;
+        s_bind[SPRITE_SORT].c++;
+        s_bind[DEPTH].c++;
+        if (free_after > free_before) s_bind[OAM_INSERT].c += (unsigned long long)((free_after - free_before) / 0x0Fu);
+        return leave_rts(cpu);
+    }
+#endif
+    return run_rom_bytes_frame(cpu, SPRITE_SORT, 0xC6C5, 0xC6C7, plain ? sort_first : NULL, 2);
+}
+
+/* $8F:AA51, first instruction: XBA. */
+static void dir_first(CpuState *cpu) {
+    Cost c = { 0 };
+    insn(&c, 3, 1);
+    cpu->A = (uint16_t)((cpu->A & 0xFF) << 8 | (cpu->A >> 8));
+    cpu->P = (uint8_t)((cpu->P & ~(CPU_P_N | CPU_P_Z)) | ((cpu->A & 0xFF) == 0 ? CPU_P_Z : 0) | (cpu->A & 0x80 ? CPU_P_N : 0));
+    cpu->open_bus = 0xEB;
+    charge(cpu, &c);
+}
+
+/*
+ * $8F:AA51 direction_index_from_signed_byte_pair (RTL; knowledge/routines/direction_index_from_signed_byte_pair.md).
+ * Pure register routine (entered with 8-bit A) that maps signed (dx, dy) in A low/high bytes to an even direction
+ * index $00..$10. Charged from SOE_AT marks.
+ */
+RecompReturn HleDirectionFromSignedBytePair(CpuState *cpu) {
+    stats_init();
+    const bool plain = !cpu->emulation && cpu->m_flag;
+#ifdef SOE_RECONSTRUCTED_C
+    cpu_mirrors_to_p(cpu);
+    if (plain && !(cpu->P & CPU_P_D) && fits(cpu, 250u, DIR_PAIR)) {
+        soe_regs_t r = { cpu->A, cpu->X, cpu->Y, cpu->D, cpu->DB, cpu->P };
+        SoeCostTrace t;
+        soe_cost_begin((uint32_t)cpu->PB << 16 | 0xAA51, cpu->D, cpu->DB, false, !cpu->x_flag, cpu->S);
+        direction_index_from_signed_byte_pair_bind(&r);
+        soe_cost_end(&t);
+        const Cost c = { t.cycles, t.fetches, t.data };
+        take_regs(cpu, &r);
+        charge(cpu, &c);
+        if (s_bind[DIR_PAIR].mutate) cpu->A ^= 2;
+        s_bind[DIR_PAIR].c++;
+        return leave_rtl(cpu);
+    }
+#endif
+    return run_rom_bytes(cpu, DIR_PAIR, 0xAA51, 0xAA52, plain ? dir_first : NULL);
+}
+
+/* $90:8124, first instruction: LDA $C40002,x. */
+static void anim_start_first(CpuState *cpu) {
+    const uint32_t a = 0xC40002u + cpu->X;
+    Cost c = { 0 };
+    insn(&c, 6, 4); word_at(&c, a);
+    cpu->A = (uint16_t)(*soe_bus(a) | *soe_bus(a + 1) << 8);
+    set_nz16(cpu, cpu->A);
+    cpu->open_bus = (uint8_t)(cpu->A >> 8);
+    charge(cpu, &c);
+}
+
+/*
+ * $90:8124 anim_start_record (RTL; knowledge/routines/anim_start_record.md). Initializes an animation record in
+ * bank $7E from the table entry at $C4:0000,x. Charged from SOE_AT marks.
+ */
+RecompReturn HleAnimStartRecord(CpuState *cpu) {
+    stats_init();
+    const bool plain = wide_a(cpu) && !cpu->x_flag && cpu->X < 0xFFFCu;
+    return run_rom_bytes(cpu, ANIM_START, 0x8124, 0x8128, plain ? anim_start_first : NULL);
+}
+
+/* $8F:A723, first instruction: PHY. */
+static void poll_first(CpuState *cpu) {
+    Cost c = { 0 };
+    insn(&c, 4, 1); word_at(&c, (uint16_t)(cpu->S - 1));
+    g_ram[cpu->S] = (uint8_t)(cpu->Y >> 8);
+    g_ram[(uint16_t)(cpu->S - 1)] = (uint8_t)cpu->Y;
+    cpu->S = (uint16_t)(cpu->S - 2);
+    cpu->open_bus = (uint8_t)cpu->Y;
+    charge(cpu, &c);
+}
+
+/*
+ * $8F:A723 companion_waypoint_history_poll (RTL; knowledge/routines/companion_waypoint_history_poll.md). Advances the
+ * 16-entry companion waypoint ring buffer in bank $7E when the leader moves by more than 16 pixels on either axis.
+ * Charged from SOE_AT marks.
+ */
+RecompReturn HleCompanionWaypointHistoryPoll(CpuState *cpu) {
+    stats_init();
+    const bool plain = wide_a(cpu) && !cpu->x_flag && cpu->S > 4 && cpu->S < 0x1FFE;
+#ifdef SOE_RECONSTRUCTED_C
+    cpu_mirrors_to_p(cpu);
+    const uint16_t s0 = cpu->S;
+    if (plain && !(cpu->P & CPU_P_D) && cpu->DB == 0x7E && cpu->X < 0xC000u
+        && (uint16_t)(g_ram[0x3BFF + cpu->X] | g_ram[0x3C00 + cpu->X] << 8) < 0xC000u
+        && fits(cpu, 1200u, WAYPOINT_POLL)) {
+        g_ram[s0] = (uint8_t)(cpu->Y >> 8);
+        g_ram[(uint16_t)(s0 - 1)] = (uint8_t)cpu->Y;
+        soe_regs_t r = { cpu->A, cpu->X, cpu->Y, cpu->D, cpu->DB, cpu->P };
+        SoeCostTrace t;
+        soe_cost_begin((uint32_t)cpu->PB << 16 | 0xA723, cpu->D, cpu->DB, true, true, s0);
+        companion_waypoint_history_poll_bind(&r);
+        soe_cost_end(&t);
+        const Cost c = { t.cycles, t.fetches, t.data };
+        take_regs(cpu, &r);
+        charge(cpu, &c);
+        if (s_bind[WAYPOINT_POLL].mutate) g_ram[0x3C12 + cpu->X] ^= 0x10;
+        s_bind[WAYPOINT_POLL].c++;
+        return leave_rtl(cpu);
+    }
+#endif
+    return run_rom_bytes(cpu, WAYPOINT_POLL, 0xA723, 0xA724, plain ? poll_first : NULL);
 }

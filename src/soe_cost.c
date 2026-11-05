@@ -96,6 +96,9 @@ other:
         step(3 + xw - 1 + dl(), 2); wram(xw); break;
     case 0xAE: case 0xAC: case 0x8E: case 0x8C: case 0xEC: case 0xCC:                    /* the same, abs */
         step(4 + xw - 1, 3); data(db | rom16(pc + 1), xw); break;
+    case 0xBC: case 0xBE:                                                                /* LDY abs,x LDX abs,y */
+        if (!s_t.x16) stop_at("8-bit index: its page cross needs the index", pc);
+        step(5 + xw - 1, 3); data(db | rom16(pc + 1), xw); break;
     case 0x24: step(3 + w - 1 + dl(), 2); wram(w); break;                                /* BIT dp */
     case 0x2C: step(4 + w - 1, 3); data(db | rom16(pc + 1), w); break;                   /* BIT abs */
     case 0x64: step(3 + w - 1 + dl(), 2); wram(w); break;                                /* STZ dp */
@@ -159,7 +162,8 @@ other:
     for (unsigned i = 0; i < sizeof two; i++) if (op == two[i]) len = 2;
     if (op == 0x89) len = 1 + w;
     if (op == 0xA2 || op == 0xA0 || op == 0xE0 || op == 0xC0) len = 1 + xw;
-    if (op == 0xAE || op == 0xAC || op == 0x8E || op == 0x8C || op == 0xEC || op == 0xCC || op == 0x2C || op == 0x9C || op == 0xF4
+    if (op == 0xAE || op == 0xAC || op == 0x8E || op == 0x8C || op == 0xEC || op == 0xCC || op == 0xBC || op == 0xBE
+        || op == 0x2C || op == 0x9C || op == 0xF4
         || op == 0x0E || op == 0x2E || op == 0x4E || op == 0x6E || op == 0xCE || op == 0xEE || op == 0x0C || op == 0x1C
         || op == 0x1E || op == 0x3E || op == 0x5E || op == 0x7E || op == 0xDE || op == 0xFE) len = 3;
     s_t.pc = pc + len;

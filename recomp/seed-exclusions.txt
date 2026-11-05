@@ -24,3 +24,8 @@ hle 8F9821 HleSpareTime body=8F9824 field_spare_time_loop, reconstructed-c/8F/8F
 hle 80858F HleWaitForNmi body=808592 wait_for_nmi, reconstructed-c/80/80858C; passes in C up to the next stop, the ROM code around the NMI
 hle 808650 HleVramDmaUploadTileBlock body=808652 vram_dma_upload_tile_block, reconstructed-c/80/808650 (G1-rated); C on the ring-buffer path when it ends before the slice deadline
 hle 90A1B4 HleMapAnimTileChannelTick map_anim_tile_channel_tick_and_vram_stream, reconstructed-c/90/90A1B4 (G1-rated); C when active display is on and the pass ends before the slice deadline
+hle 80960A HleOamInsertNode body=80960B oam_depth_sorted_sprite_insert_node, reconstructed-c/80/80960A (G1-rated); C only when it ends before the slice deadline
+hle 8FC6C5 HleSpriteSort body=8FC6C7 sprite_sorting_canopy_occlusion_and_render_depth, reconstructed-c/8F/8FC6C5 (G1-rated); C only when it ends before the slice deadline
+hle 8FAA51 HleDirectionFromSignedBytePair body=8FAA52 direction_index_from_signed_byte_pair, reconstructed-c/8F/8FAA51 (G1-rated); C only when it ends before the slice deadline
+hle 908124 HleAnimStartRecord body=908128 anim_start_record, reconstructed-c/90/908124 (G1-rated); C only when it ends before the slice deadline
+hle 8FA723 HleCompanionWaypointHistoryPoll body=8FA724 companion_waypoint_history_poll, reconstructed-c/8F/8FA723 (G1-rated); C only when it ends before the slice deadline
