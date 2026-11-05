@@ -39,7 +39,11 @@ static void alu(uint8_t op, uint32_t pc, unsigned w) {
     case 0x01: step(6 + m + dl(), 2); wram(w); break;                                    /* (dp,x) */
     case 0x03: step(4 + m, 2); wram(w); break;                                           /* sr,s */
     case 0x05: step(3 + m + dl(), 2); wram(w); break;                                    /* dp */
-    case 0x07: step(6 + m + dl(), 2); wram(w + 3); break;                                /* [dp] */
+    case 0x07: case 0x17: {                                                              /* [dp], [dp],y */
+        const uint16_t dp = (uint16_t)(s_t.d + rom8(pc + 1));
+        const uint32_t ptr = (uint32_t)g_ram[dp] | (uint32_t)g_ram[(uint16_t)(dp + 1)] << 8 | (uint32_t)g_ram[(uint16_t)(dp + 2)] << 16;
+        step(6 + m + dl(), 2); wram(3); data(ptr, w); break;
+    }
     case 0x09: step(2 + m, 1 + w); break;                                                /* # */
     case 0x0D: step(4 + m, 3); data(db | rom16(pc + 1), w); break;                       /* abs */
     case 0x0F: step(5 + m, 4); data(rom16(pc + 1) | (uint32_t)rom8(pc + 3) << 16, w); break;   /* long */
@@ -47,7 +51,6 @@ static void alu(uint8_t op, uint32_t pc, unsigned w) {
     case 0x12: step(5 + m + dl(), 2); wram(w + 2); break;                                /* (dp) */
     case 0x13: step(7 + m, 2); wram(w + 2); break;                                       /* (sr,s),y */
     case 0x15: step(4 + m + dl(), 2); wram(w); break;                                    /* dp,x */
-    case 0x17: step(6 + m + dl(), 2); wram(w + 3); break;                                /* [dp],y */
     case 0x19: case 0x1D:                                                                /* abs,y abs,x */
         if (!s_t.x16 && !store) stop_at("8-bit index: its page cross needs the index", pc);
         step(5 + m, 3); data(db | rom16(pc + 1), w); break;
@@ -101,13 +104,23 @@ other:
         step(5 + 2 * (w - 1) + dl(), 2); wram(2 * w); break;
     case 0x0E: case 0x2E: case 0x4E: case 0x6E: case 0xCE: case 0xEE: case 0x0C: case 0x1C:   /* RMW abs */
         step(6 + 2 * (w - 1), 3); data(db | rom16(pc + 1), w); data(db | rom16(pc + 1), w); break;
+    case 0x1E: case 0x3E: case 0x5E: case 0x7E: case 0xDE: case 0xFE:                    /* RMW abs,x */
+        step(7 + 2 * (w - 1), 3); data(db | rom16(pc + 1), w); data(db | rom16(pc + 1), w); break;
     case 0x48: step(3 + w - 1, 1); wram(w); s_t.s = (uint16_t)(s_t.s - w); break;        /* PHA */
     case 0x68: step(4 + w - 1, 1); wram(w); s_t.s = (uint16_t)(s_t.s + w); break;        /* PLA */
     case 0xDA: case 0x5A: step(3 + xw - 1, 1); wram(xw); s_t.s = (uint16_t)(s_t.s - xw); break;   /* PHX PHY */
     case 0xFA: case 0x7A: step(4 + xw - 1, 1); wram(xw); s_t.s = (uint16_t)(s_t.s + xw); break;   /* PLX PLY */
-    case 0x8B: case 0x4B: case 0x08: step(3, 1); wram(1); break;                         /* PHB PHK PHP */
-    case 0xAB: case 0x28: step(4, 1); wram(1); break;                                    /* PLB PLP */
-    case 0xF4: step(5, 3); wram(2); break;                                               /* PEA */
+    case 0x8B: step(3, 1); wram(1); g_ram[s_t.s] = s_t.db; s_t.s = (uint16_t)(s_t.s - 1); break;               /* PHB */
+    case 0x4B: step(3, 1); wram(1); g_ram[s_t.s] = (uint8_t)(pc >> 16); s_t.s = (uint16_t)(s_t.s - 1); break;  /* PHK */
+    case 0x08: step(3, 1); wram(1); s_t.s = (uint16_t)(s_t.s - 1); break;                /* PHP */
+    case 0xAB: step(4, 1); wram(1); s_t.s = (uint16_t)(s_t.s + 1); s_t.db = g_ram[s_t.s]; break;               /* PLB */
+    case 0x28: step(4, 1); wram(1); s_t.s = (uint16_t)(s_t.s + 1); break;                /* PLP */
+    case 0xF4:                                                                           /* PEA */
+        step(5, 3); wram(2);
+        g_ram[s_t.s] = rom8(pc + 2);
+        g_ram[(uint16_t)(s_t.s - 1)] = rom8(pc + 1);
+        s_t.s = (uint16_t)(s_t.s - 2);
+        break;
     case 0x80: step(3, 2); next = (uint32_t)(pc + 2 + (int8_t)rom8(pc + 1)); break;      /* BRA */
     case 0x4C: step(3, 3); next = bank | rom16(pc + 1); break;                           /* JMP */
     case 0x7C: step(6, 3); data(bank | rom16(pc + 1), 2); next = bank | s_t.want; break; /* JMP (abs,x): to the mark */
@@ -125,10 +138,12 @@ other:
         g_ram[s_t.s] = (uint8_t)(pc >> 16);                                              /* what it leaves on the stack */
         g_ram[(uint16_t)(s_t.s - 1)] = (uint8_t)((pc + 3) >> 8);
         g_ram[(uint16_t)(s_t.s - 2)] = (uint8_t)(pc + 3);
+        s_t.s = (uint16_t)(s_t.s - 3);
         s_t.pc = rom16(pc + 1) | (uint32_t)rom8(pc + 3) << 16;
         return;
     case 0x6B: case 0x60:                                                                /* RTL RTS */
         step(6, 1); wram(op == 0x6B ? 3 : 2);
+        s_t.s = (uint16_t)(s_t.s + (op == 0x6B ? 3 : 2));
         if (!s_t.depth) {                                /* a mark past the routine's own return: the code it returns to */
             if (s_t.want) s_t.pc = bank | s_t.want;
             else s_t.done = true;
@@ -145,7 +160,8 @@ other:
     if (op == 0x89) len = 1 + w;
     if (op == 0xA2 || op == 0xA0 || op == 0xE0 || op == 0xC0) len = 1 + xw;
     if (op == 0xAE || op == 0xAC || op == 0x8E || op == 0x8C || op == 0xEC || op == 0xCC || op == 0x2C || op == 0x9C || op == 0xF4
-        || op == 0x0E || op == 0x2E || op == 0x4E || op == 0x6E || op == 0xCE || op == 0xEE || op == 0x0C || op == 0x1C) len = 3;
+        || op == 0x0E || op == 0x2E || op == 0x4E || op == 0x6E || op == 0xCE || op == 0xEE || op == 0x0C || op == 0x1C
+        || op == 0x1E || op == 0x3E || op == 0x5E || op == 0x7E || op == 0xDE || op == 0xFE) len = 3;
     s_t.pc = pc + len;
 }
 

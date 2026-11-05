@@ -55,7 +55,8 @@ set(SOE_RECONSTRUCTED_C "${CMAKE_SOURCE_DIR}/../everscript-vscode/reconstructed-
     "everscript-vscode's reconstructed-c folder (empty: no C bindings)")
 set(SOE_BOUND_C 80/80859B_random_number_generator.c 8F/8FA914_update_entity_plane.c 90/909DE8_eval_tile_collision.c
     80/809685_init_entity_pool.c 8F/8FC773_entity_sprite_depth.c 8F/8F9F05_companion_metatile_raycast_line_stepper.c
-    8F/8F9817_field_spare_time_loop.c 80/80858C_wait_for_nmi.c)
+    8F/8F9817_field_spare_time_loop.c 80/80858C_wait_for_nmi.c 80/808650_vram_dma_upload_tile_block.c
+    90/90A1B4_map_anim_tile_channel_tick_and_vram_stream.c)
 if(SOE_RECONSTRUCTED_C AND EXISTS "${SOE_RECONSTRUCTED_C}/include/soe.h")
     foreach(f ${SOE_BOUND_C})
         target_sources(SecretOfEvermoreSNESRecomp PRIVATE "${SOE_RECONSTRUCTED_C}/${f}")

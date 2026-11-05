@@ -34,12 +34,13 @@
 #define SOE_COST
 #include "soe.h"
 
-/* soe.h's host bus: WRAM through any bank that maps it. Bindings run only where their accesses are WRAM. */
+/* soe.h's host bus: WRAM through any bank that maps it, and HiROM for read-only descriptor tables. */
 uint8_t *soe_bus(uint32_t addr) {
     const uint8_t bank = (uint8_t)(addr >> 16);
     if (bank == 0x7E || bank == 0x7F) return &g_ram[addr & 0x1FFFF];
     if (!(bank & 0x40) && (addr & 0xFFFF) < 0x2000) return &g_ram[addr & 0x1FFF];
-    fprintf(stderr, "soe_bindings: bus access $%06X outside WRAM\n", (unsigned)addr);
+    if ((bank & 0x40) || (addr & 0x8000)) return (uint8_t *)&g_rom[(addr & 0x3F0000) | (addr & 0xFFFF)];
+    fprintf(stderr, "soe_bindings: bus access $%06X outside WRAM/ROM\n", (unsigned)addr);
     abort();
 }
 
@@ -48,6 +49,8 @@ void update_entity_plane_bind(soe_regs r);
 void eval_tile_collision_bind(soe_regs r);
 void init_entity_pool_bind(soe_regs r);
 void entity_sprite_depth_bind(soe_regs r);
+void vram_dma_upload_tile_block_bind(soe_regs r);
+void map_anim_tile_channel_tick_and_vram_stream_bind(soe_regs r);
 #include "raycast.h"
 #include "spare_time.h"
 
@@ -59,11 +62,12 @@ uint16_t soe_multiply(uint16_t factors) {
 }
 #endif
 
-enum { RNG, PLANE, TILE, POOL, DEPTH, RAY, SPARE, WAIT, BINDINGS };
+enum { RNG, PLANE, TILE, POOL, DEPTH, RAY, SPARE, WAIT, DMA, ANIM, BINDINGS };
 static struct { const char *name; unsigned long long c, across, compiled; bool mutate; } s_bind[BINDINGS] = {
     { "random_number_generator" }, { "update_entity_plane" }, { "eval_tile_collision" },
     { "init_entity_pool" }, { "entity_sprite_depth" }, { "companion_metatile_raycast_line_stepper" },
     { "field_spare_time_pass" }, { "wait_for_nmi_pass" },
+    { "vram_dma_upload_tile_block" }, { "map_anim_tile_channel_tick_and_vram_stream" },
 };
 static int s_stats = -1;
 static void print_stats(void) {
@@ -176,7 +180,7 @@ static void run_c(CpuState *cpu, int which, void (*bind)(soe_regs), const Cost *
 /* run_c with the marks' cost held against the one worked out by hand: they must agree on every call. */
 static void run_checked(CpuState *cpu, int which, void (*bind)(soe_regs), const Cost *c, uint32_t entry) {
     SoeCostTrace t;
-    soe_cost_begin(entry, cpu->D, cpu->DB, true, !cpu->x_flag, cpu->S);
+    soe_cost_begin(entry, cpu->D, cpu->DB, wide_a(cpu), !cpu->x_flag, cpu->S);
     run_c(cpu, which, bind, c);
     soe_cost_end(&t);
     if (t.cycles != c->cycles || t.fetches != c->fetches || t.data != c->data) {
@@ -756,4 +760,103 @@ RecompReturn HleWaitForNmi(CpuState *cpu) {
     }
 #endif
     return run_rom_bytes(cpu, WAIT, 0x858F, 0x8592, plain ? wait_first : NULL);
+}
+
+/* $80:8650, first instruction: SEP #$20. */
+static void dma_first(CpuState *cpu) {
+    Cost c = { 0 };
+    insn(&c, 3, 2);
+    cpu->P |= CPU_P_M;
+    cpu->open_bus = 0x20;
+    charge(cpu, &c);
+}
+
+/*
+ * $80:8650 vram_dma_upload_tile_block (RTL; knowledge/routines/vram_dma_upload_tile_block.md). During active display
+ * ($0106 bit 7 clear) the routine only stages an 8-byte descriptor into the WRAM ring buffer at $013F,x and advances
+ * $013D; during forced blank ($0106 bit 7 set) it writes PPU/DMA registers directly, which stays in compiled ROM code.
+ */
+RecompReturn HleVramDmaUploadTileBlock(CpuState *cpu) {
+    stats_init();
+#ifdef SOE_RECONSTRUCTED_C
+    cpu_mirrors_to_p(cpu);
+    const uint32_t db = (uint32_t)cpu->DB << 16;
+    if (!cpu->emulation && !cpu->x_flag && !(cpu->P & CPU_P_D) && db_in_wram(cpu) && dp_in_wram(cpu, 0x2F)
+        && !(g_ram[0x0106] & 0x80)) {
+        Cost c = { 0 };
+        insn(&c, 3, 2);                                                                  /* SEP #$20 */
+        insn(&c, 4, 3); c.data += extra(db | 0x0106);                                    /* LDA $0106 */
+        branch(&c, true);                                                                /* BPL $8686 */
+        dp16(&c, cpu, 0x12);                                                             /* STX $12 */
+        abs16(&c, db | 0x013D);                                                          /* LDX $013D */
+        insn(&c, 2, 2);                                                                  /* LDA #$80 */
+        insn(&c, 5, 3); c.data += extra(db | 0x013F);                                    /* STA $013F,x */
+        insn(&c, (cpu->D & 0xFF) ? 4 : 3, 2); c.data += extra((uint16_t)(cpu->D + 0x28));/* LDA $28 */
+        insn(&c, 5, 3); c.data += extra(db | 0x0142);                                    /* STA $0142,x */
+        insn(&c, 3, 2);                                                                  /* REP #$30 */
+        dp16(&c, cpu, 0x26); abs_i16(&c, db | 0x0140);                                   /* LDA $26, STA $0140,x */
+        dp16(&c, cpu, 0x2E); abs_i16(&c, db | 0x0143);                                   /* LDA $2E, STA $0143,x */
+        dp16(&c, cpu, 0x12); abs_i16(&c, db | 0x0145);                                   /* LDA $12, STA $0145,x */
+        implied(&c); implied(&c); imm16(&c); imm16(&c);                                  /* TXA, CLC, ADC #$0008, AND #$01FF */
+        abs16(&c, db | 0x013D);                                                          /* STA $013D */
+        rtl(&c, cpu);
+        if (fits(cpu, master_of(&c, cpu), DMA)) {
+            run_checked(cpu, DMA, vram_dma_upload_tile_block_bind, &c, (uint32_t)cpu->PB << 16 | 0x8650);
+            if (s_bind[DMA].mutate) g_ram[0x013D] ^= 8;
+            return RECOMP_RETURN_NORMAL;
+        }
+    }
+#endif
+    return run_rom_bytes(cpu, DMA, 0x8650, 0x8652, !cpu->emulation ? dma_first : NULL);
+}
+
+/*
+ * $90:A1B4 map_anim_tile_channel_tick_and_vram_stream (RTL; knowledge/routines/map_anim_tile_channel_tick_and_vram_stream.md).
+ * Ticks the active room's background tile animation channels and queues expired 16x16 tiles for VRAM DMA via $80:8650.
+ * When active display is on ($0106 bit 7 clear), all reads/writes are in WRAM and ROM, and the path is charged from the
+ * SOE_AT marks across both $90:A1B4 and nested $80:8650 calls.
+ */
+RecompReturn HleMapAnimTileChannelTick(CpuState *cpu) {
+    stats_init();
+#ifdef SOE_RECONSTRUCTED_C
+    cpu_mirrors_to_p(cpu);
+    const uint16_t s0 = cpu->S;
+    if (wide_a(cpu) && !cpu->x_flag && !(cpu->P & CPU_P_D) && dp_in_wram(cpu, 0xDA) && s0 > 16 && s0 < 0x1FF0
+        && !(g_ram[0x0106] & 0x80)) {
+        const uint16_t count = (uint16_t)(g_ram[0x106C] | g_ram[0x106D] << 8);
+        const uint8_t desc_bank = g_ram[(uint16_t)(cpu->D + 0xA9)];
+        const uint16_t desc_off = dp_word(cpu, 0xA7);
+        const bool desc_in_rom = (desc_bank & 0x40) != 0 || desc_off >= 0x8000;
+        if (count <= 50 && g_ram[0x504A + count] != 0 && desc_in_rom) {
+            int updates = 0, last_ch = -1;
+            for (uint16_t ch = 0; ch < count && updates < 10; ch++) {
+                if (g_ram[0x504A + ch] != 0 && ((uint8_t)(g_ram[0x5018 + ch] - 1) & 0x80) != 0) {
+                    last_ch = (int)ch;
+                    updates++;
+                }
+            }
+            const uint64_t bound = 500u + 250u * count + 2600u * (unsigned)updates;
+            if (fits(cpu, bound, ANIM)) {
+                soe_regs_t r = { cpu->A, cpu->X, cpu->Y, cpu->D, cpu->DB, cpu->P };
+                SoeCostTrace t;
+                soe_cost_begin((uint32_t)cpu->PB << 16 | 0xA1B4, cpu->D, cpu->DB, true, true, s0);
+                map_anim_tile_channel_tick_and_vram_stream_bind(&r);
+                soe_cost_end(&t);
+                if (last_ch >= 0) {
+                    g_ram[(uint16_t)(s0 - 1)] = (uint8_t)(last_ch >> 8);
+                    g_ram[(uint16_t)(s0 - 2)] = (uint8_t)last_ch;
+                }
+                const Cost c = { t.cycles, t.fetches, t.data };
+                take_regs(cpu, &r);
+                leave_rtl(cpu);
+                charge(cpu, &c);
+                if (s_bind[ANIM].mutate) g_ram[(uint16_t)(cpu->D + 0xD8)] ^= 4;
+                s_bind[ANIM].c++;
+                if (last_ch >= 0) s_bind[DMA].c += (unsigned long long)(2 * updates);
+                return RECOMP_RETURN_NORMAL;
+            }
+        }
+    }
+#endif
+    return run_rom_bytes(cpu, ANIM, 0xA1B4, 0xA1B5, cpu->S < 0x2000 ? pool_first : NULL);
 }
