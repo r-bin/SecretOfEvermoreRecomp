@@ -1,8 +1,8 @@
 /*
  * Routines replaced with everscript-vscode's reconstructed C (`hle_func`, docs/game-rtl.md §4b).
  *
- * The C is compiled from the sibling checkout (CMake: SOE_RECONSTRUCTED_C, default ../everscript-vscode/
- * reconstructed-c). It is the documented code, never edited for us: this file only adapts the machine to it. A
+ * The C is compiled from src/bound-c/, exported from everscript-vscode's reconstructed-c (CMake: SOE_RECONSTRUCTED_C).
+ * It is the documented code, never edited for us: this file only adapts the machine to it. A
  * binding must be indistinguishable from the ROM routine, so a helper takes the C path only when that is provable:
  *  - the C runs in one step, so it runs only when the routine would finish before the frame driver's next
  *    deadline, or crosses only a DRAM refresh stop with no IRQ possible (fits() below);

@@ -12,6 +12,12 @@
 /build-*/
 /dist/
 /saves/
+/out/
+
+# Replays with a save state or save data hold memory from a ROM: local only
+/tools/compare/replays/local/
+*.mmo
+*.mss
 
 # Local probe output that names paths on one machine
 /rom_probe.json

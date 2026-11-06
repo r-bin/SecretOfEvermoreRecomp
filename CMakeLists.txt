@@ -49,30 +49,29 @@ add_executable(SecretOfEvermoreSNESRecomp
     src/gen_stubs.c
 )
 
-# Routines replaced with everscript-vscode's reconstructed C (src/soe_bindings.c, docs/game-rtl.md 4b). Without
-# the sibling checkout the helpers run the ROM bytes in the interpreter, so the build stays exact either way.
-set(SOE_RECONSTRUCTED_C "${CMAKE_SOURCE_DIR}/../everscript-vscode/reconstructed-c" CACHE PATH
-    "everscript-vscode's reconstructed-c folder (empty: no C bindings)")
+# Routines replaced with reconstructed C (src/soe_bindings.c, docs/game-rtl.md 4b). src/bound-c/ is an exported copy:
+# everscript-vscode's reconstructed-c is the source, its `npm run recomp` refreshes the copy. Point SOE_RECONSTRUCTED_C
+# at that folder to try C before exporting it.
+set(SOE_RECONSTRUCTED_C "${CMAKE_SOURCE_DIR}/src/bound-c" CACHE PATH "Folder with the bound routines' C and include/")
 set(SOE_BOUND_C 80/80859B_random_number_generator.c 8F/8FA914_update_entity_plane.c 90/909DE8_eval_tile_collision.c
     80/809685_init_entity_pool.c 8F/8FC773_entity_sprite_depth.c 8F/8F9F05_companion_metatile_raycast_line_stepper.c
     8F/8F9817_field_spare_time_loop.c 80/80858C_wait_for_nmi.c 80/808650_vram_dma_upload_tile_block.c
     90/90A1B4_map_anim_tile_channel_tick_and_vram_stream.c 80/80960A_oam_depth_sorted_sprite_insert_node.c
     8F/8FC6C5_sprite_sorting_canopy_occlusion_and_render_depth.c 8F/8FAA51_direction_index_from_signed_byte_pair.c
     90/908124_anim_start_record.c 8F/8FA723_companion_waypoint_history_poll.c)
-if(SOE_RECONSTRUCTED_C AND EXISTS "${SOE_RECONSTRUCTED_C}/include/soe.h")
-    foreach(f ${SOE_BOUND_C})
-        target_sources(SecretOfEvermoreSNESRecomp PRIVATE "${SOE_RECONSTRUCTED_C}/${f}")
-        set_source_files_properties("${SOE_RECONSTRUCTED_C}/${f}" PROPERTIES COMPILE_DEFINITIONS SOE_COST)
-    endforeach()
-    target_include_directories(SecretOfEvermoreSNESRecomp PRIVATE "${SOE_RECONSTRUCTED_C}/include")
-    target_compile_definitions(SecretOfEvermoreSNESRecomp PRIVATE SOE_RECONSTRUCTED_C)
-    message(STATUS "C bindings from ${SOE_RECONSTRUCTED_C}: ${SOE_BOUND_C}")
-else()
-    message(STATUS "No reconstructed C (SOE_RECONSTRUCTED_C): bindings run the ROM bytes")
-endif()
+foreach(f ${SOE_BOUND_C})
+    target_sources(SecretOfEvermoreSNESRecomp PRIVATE "${SOE_RECONSTRUCTED_C}/${f}")
+    set_source_files_properties("${SOE_RECONSTRUCTED_C}/${f}" PROPERTIES COMPILE_DEFINITIONS SOE_COST)
+endforeach()
+target_include_directories(SecretOfEvermoreSNESRecomp PRIVATE "${SOE_RECONSTRUCTED_C}/include")
+target_compile_definitions(SecretOfEvermoreSNESRecomp PRIVATE SOE_RECONSTRUCTED_C)
 
-# ROM-backed tests (ctest), skipped without a ROM: -DSOE_TEST_ROM=/path/to/rom.sfc. Each pins a fixed bug.
+# Tests (docs/testing.md). compare_units needs node only; the others your own ROM: -DSOE_TEST_ROM=/path/to/rom.sfc.
 enable_testing()
+find_program(SOE_NODE node)
+if(SOE_NODE)
+    add_test(NAME compare_units COMMAND ${SOE_NODE} ${CMAKE_SOURCE_DIR}/tests/compare-units.test.mts)
+endif()
 set(SOE_TEST_ROM "" CACHE FILEPATH "Your own ROM, for the ROM-backed ctest tests (empty: none run)")
 if(SOE_TEST_ROM)
     add_test(NAME reset_equals_boot
@@ -83,6 +82,12 @@ if(SOE_TEST_ROM)
              COMMAND bash ${CMAKE_SOURCE_DIR}/tests/save_state_resume.sh
                      $<TARGET_FILE:SecretOfEvermoreSNESRecomp> ${SOE_TEST_ROM})
     set_tests_properties(save_state_resume PROPERTIES TIMEOUT 240)
+    if(SOE_NODE)
+        add_test(NAME replay_01_recorded
+                 COMMAND bash ${CMAKE_SOURCE_DIR}/tests/replay_01_recorded.sh
+                         $<TARGET_FILE:SecretOfEvermoreSNESRecomp> ${SOE_TEST_ROM})
+        set_tests_properties(replay_01_recorded PROPERTIES TIMEOUT 900)
+    endif()
 endif()
 
 # ROM identity. rom_identity.txt is the one place the digests live: the build

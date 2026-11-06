@@ -43,6 +43,8 @@ if [ ! -f "$CLI" ]; then
   exit 1
 fi
 
+bash "$SCRIPT_DIR/apply-framework-patch.sh"
+
 PYTHON=${PYTHON:-}
 if [ -z "$PYTHON" ]; then
   # Windows App Execution Aliases can exist on PATH without running Python.
@@ -86,11 +88,11 @@ else
   echo "== Skipping ROM verification (--no-verify) =="
 fi
 
-# Bus-exact compiled code (snesrecomp v2/bus_exact.py, branch aot-bus-exact): every instruction charged as the
+# Bus-exact compiled code (snesrecomp v2/bus_exact.py, in framework/snesrecomp.patch): every instruction charged as the
 # interpreter charges it, so native runs keep MesenCE's timing. SNESRECOMP_EXACT_BUS=0 generates the old
 # block-folded charges (docs/imperfections/compiled-cycle-charges.md).
 export SNESRECOMP_EXACT_BUS="${SNESRECOMP_EXACT_BUS:-1}"
-# Compiled resume (snesrecomp v2, branch aot-resume): every instruction of a compiled variant is also an entry, so
+# Compiled resume (snesrecomp v2, in framework/snesrecomp.patch): every instruction of a compiled variant is also an entry, so
 # code a CPU slice stopped in goes on compiled instead of interpreted (docs/progress.md, native share).
 # SNESRECOMP_AOT_RESUME=0 at regen leaves it out; =0 at run time turns it off, =2 keeps only suspended frames.
 export SNESRECOMP_AOT_RESUME="${SNESRECOMP_AOT_RESUME:-1}"
@@ -100,6 +102,8 @@ GEN_ARGS=(--rom "$ROM" --cfg-dir recomp --out-dir src/gen
 if [ "$CFG_ROOTS" -eq 1 ]; then GEN_ARGS+=(--cfg-roots); fi
 if [ "$VERIFY" -eq 1 ]; then GEN_ARGS+=("${VERIFY_ARGS[@]}"); fi
 
+# snesrecomp reuses published output without looking at the switches above: always generate from nothing.
+rm -rf src/gen
 echo "== Generating src/gen =="
 "$PYTHON" "$CLI" generate "${GEN_ARGS[@]}"
 
