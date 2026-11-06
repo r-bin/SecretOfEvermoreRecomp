@@ -33,5 +33,5 @@ How much of each replay plays exactly as MesenCE 2.2.1 plays it, at every NMI. M
 - `03-complete-run-7h` does not stay in sync with MesenCE, so it is not measured here. The five replays are about 17.5 minutes of
   distinct play: the whole game is not proven.
 - Replay 01 is the mandatory one, measured on the current build. The others last ran with the raycast's binding (`59ee9d7`): all columns as shown. They have not run with the two NMI loops bound, so their Native and C columns are from then too.
-- Measured with everscript-vscode `npm run compare:full` and `tools/compare/probes/run-stats.mts`. The results need four snesrecomp
-  branches that are not upstream ([upstream-access-timing.md](upstream-access-timing.md)).
+- Measured with `node tools/compare/full.mts` and `tools/compare/probes/run-stats.mts`. The results need four snesrecomp
+  branches that are not upstream, carried here as one patch ([framework.md](framework.md)).

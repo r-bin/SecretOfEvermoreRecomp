@@ -4,7 +4,7 @@
 
 ## What it is
 `SOE_COMPARE_MESEN_STATE=<file>` starts the game from a MesenCE state's field stream (everscript-vscode
-`tools/recomp/mesen-state.mts` writes it from a `.mmo` or `.mss`; a compare run does it by itself). It does not depend on the
+`tools/compare/mesen-state.mts` writes it from a `.mmo` or `.mss`; a compare run does it by itself). It does not depend on the
 compare harness: a normal launch with the variable set starts there too. Saving a recomp state from such a run is
 not tested yet.
 

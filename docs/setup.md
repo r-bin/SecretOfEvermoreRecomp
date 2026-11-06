@@ -55,7 +55,7 @@ there); what reaches this repository is `recomp/bank*.cfg`.
 
 | Component | Required Version | Purpose |
 |---|---|---|
-| **snesrecomp** | pinned submodule (`framework_pins.txt`) | 65816 static recompiler and desktop runner |
+| **snesrecomp** | pinned submodule (`framework_pins.txt`) plus `framework/snesrecomp.patch` | 65816 static recompiler and desktop runner |
 | **Python** | $\ge 3.9$ | `tools/regen.sh` |
 | **Rust / cargo** | stable | snesrecomp's native analyzer (built on the first regen) |
 | **CMake** | $\ge 3.20$ | configures the host C project |

@@ -36,7 +36,7 @@ so only that one decides whether the recomp is right.
   the recorded code/data split.
 - AI access: `mesen2-mcp` (sibling checkout) bridges an agent to a running Mesen via a Lua script
   (`lua/mcp_bridge.lua`): memory read/write, input, frame step, save states.
-- Lockstep against the recomp: everscript-vscode's `tools/compare` (`--backend mesen,recomp`) runs a
+- Lockstep against the recomp: `tools/compare` (`--backend mesen,recomp`) runs a
   generated Lua script that hashes per NMI key, like the recomp's `SOE_COMPARE_*` output
   (`src/game_rtl.c`). Results and the known differences: [imperfections/README.md](imperfections/README.md).
 - Lua traps: the testrunner has no `io` library (dumps go over stdout); memory callbacks on a CPU address
@@ -48,7 +48,7 @@ so only that one decides whether the recomp is right.
   state. No scripting, no headless mode.
 
 ### snes9x 2005
-- everscript-vscode's core: `npm run compare -- recomp=<rom>` (the lockstep that drifts after
+- everscript-vscode's core, before compare moved here: lockstep against snes9x (it drifted after
   counter ~300, see [bugs-and-todos.md](bugs-and-todos.md) §1.1), `tools/recomp/s9x-run.js` (a
   recomp headless script on snes9x), write breakpoints in node, the emulator panel.
 

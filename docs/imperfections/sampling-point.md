@@ -1,6 +1,6 @@
 # Where a Comparison Samples
 
-**Status:** solved in the tooling (`SOE_COMPARE_AT=nmi`, everscript-vscode `tools/compare` `atNmi`), 2026-10-30.
+**Status:** solved in the tooling (`SOE_COMPARE_AT=nmi`, `tools/compare` `atNmi`), 2026-10-30.
 
 Sampling at the end of a frame is not the same moment on both sides: MesenCE's `endFrame` fires exactly at
 V=225, inside an instruction; the recomp's CPU finishes the instruction that crossed V=225 (16–50 clocks more).

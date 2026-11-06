@@ -16,8 +16,8 @@ new hunt: the same failure classes repeat.
 `cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j` -> `build/SecretOfEvermoreSNESRecomp`.
 Headless: `build/SecretOfEvermoreSNESRecomp --no-launcher --script s.txt <rom>` with `SNESRECOMP_DUMP_DIR`.
 Copy `build/` to a scratch folder before experimenting: `saves/`, `config.ini` belong to the user.
-Upstream's `v2_emit` reuses `src/gen` without looking at `SNESRECOMP_EXACT_BUS` / `SNESRECOMP_AOT_RESUME`: to change them, delete
-`src/gen` first and check the log says `28 bank(s) emitted`.
+Upstream's `v2_emit` reuses `src/gen` without looking at `SNESRECOMP_EXACT_BUS` / `SNESRECOMP_AOT_RESUME`, so `regen.sh` deletes
+`src/gen` first; the log must say `28 bank(s) emitted`.
 New seeds: `npm run recomp` in the sibling everscript-vscode checkout (writes `recomp/bank*.cfg` here).
 
 ## Ownership
@@ -25,8 +25,9 @@ New seeds: `npm run recomp` in the sibling everscript-vscode checkout (writes `r
   `recomp/seed-exclusions.txt`. The seeds `recomp/bank8x..9x.cfg` and the data-region block of
   `recomp/bank00.cfg` are written by everscript-vscode's export: change them there (or through the exclusions
   file), never by hand.
-- `snesrecomp/` is a pinned submodule (PolyForm Noncommercial): never edit or patch it (owner's
-  rule). Timing the game needs lives in our frame driver `src/soe_frame_driver.c`.
+- `snesrecomp/` is a submodule on public upstream plus `framework/snesrecomp.patch`, applied by `regen.sh`
+  (`docs/framework.md`). Never edit it here; game timing lives in our frame driver `src/soe_frame_driver.c`.
+- `src/bound-c/` is exported from everscript-vscode's `reconstructed-c`: never edit it here.
 - `src/gen/` is derived from the ROM: never commit it. No ROM bytes, dumps or screenshots in git.
 
 ## Bugs

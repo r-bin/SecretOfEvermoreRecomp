@@ -79,7 +79,7 @@ measured the same. Lessons: upstream is not working on timing, so nothing there 
    (port handshakes, `$F3` reads, `$4212`, PPU registers). The value that differs names the subsystem.
 4. Read MesenCE's source for the rule, implement it in our own code, and keep a switch to turn it off for A/B runs.
 
-The probes live in the session scratch space; worth moving into everscript-vscode's `tools/compare/probes/`: the
+The probes live in the session scratch space; worth moving into `tools/compare/probes/`: the
 absolute-clock trace, the WRAM diff at a key, a per-frame peek, the `$F3` and handshake comparisons, the DMA and H/V
 latch logs (`SNESRECOMP_DMA_LOG`, `SNESRECOMP_HV_LOG`, `SNESRECOMP_PPU_READ_LOG`, `SNESRECOMP_DSP_LOG`,
 `SNESRECOMP_PORT_LOG`).

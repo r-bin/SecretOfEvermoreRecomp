@@ -1,6 +1,6 @@
 # Curated Replays for Integration Testing & Differential Comparisons
 
-This folder contains the curated suite of `.evsmv` and MesenCE `.mmo` replay recordings used for integration testing and differential verification across execution backends (`snesrecomp`, `mesence`, `snes9x-wasm`, and `ares`).
+The suite of `.evsmv` and MesenCE `.mmo` recordings used to compare the recomp with MesenCE. Only 01 is in git: it has no save state or save data. The others go in `local/`, which git ignores ([docs/testing.md](../../../docs/testing.md)).
 
 ## The Replay Suite
 
@@ -13,30 +13,12 @@ This folder contains the curated suite of `.evsmv` and MesenCE `.mmo` replay rec
 | `05-flowers-from-state.mmo` | 8,433 | ~2m 20s | **04 without the intro:** from a MesenCE save state mid-game. The recomp takes the state over whole, so nothing is copied and every key counts. |
 | `06-flowers-raptors.mmo` | 4,682 | ~1m 18s | **Flowers and raptors screens:** from a MesenCE save state mid-game, taken over whole like 05. |
 
-Like `.evsmv`, `.mmo` files stay out of git: the save state inside holds memory from the user's ROM. Only `mesen` and `recomp` play `.mmo`; a movie that presses reset, or whose state is not at a field's line 225, is refused (`src/platform/tas/mesen-movie.ts`).
+A save state holds memory from the user's ROM, so such a movie stays out of git. Only `mesen` and `recomp` play `.mmo`; a movie that presses reset, or whose state is not at a field's line 225, is refused (`../movie.mts`).
 
 ## Running Comparisons
 
-Use `tools/compare/compare.mts` to execute lockstep differential hashing against any replay:
-
 ```bash
-# 1. Quick attract loop check (4 minutes)
-node dist/tools/compare/compare.mts \
-  --rom "Secret of Evermore (U) [!].smc" \
-  --replay tools/compare/replays/01-no-inputs-4m.evsmv \
-  --backend mesen recomp
-
-# 2. Opening cutscene through Boy control
-node dist/tools/compare/compare.mts \
-  --rom "Secret of Evermore (U) [!].smc" \
-  --replay tools/compare/replays/02-newgame-boy-available.evsmv \
-  --backend mesen recomp
-
-# 3. Targeted frame-window comparison of the complete run
-node dist/tools/compare/compare.mts \
-  --rom "Secret of Evermore (U) [!].smc" \
-  --replay tools/compare/replays/03-complete-run-7h.evsmv \
-  --frames 50000 \
-  --backend mesen recomp
+node tools/compare/compare.mts mesen recomp <rom> --replay tools/compare/replays/01-no-inputs-4m.evsmv
+node tools/compare/compare.mts mesen recomp <rom> --replay tools/compare/replays/local/02-newgame-boy-available.evsmv
+node tools/compare/compare.mts mesen recomp <rom> --replay tools/compare/replays/local/03-complete-run-7h.evsmv --frames 50000
 ```
-

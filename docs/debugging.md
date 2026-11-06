@@ -94,14 +94,13 @@ snesrecomp can be configured to run in multiple diagnostic modes to isolate faul
 
 ## 4. What and How to Compare
 
-### 4.1 Lockstep WRAM Comparison (everscript-vscode's `npm run compare`)
+### 4.1 Lockstep WRAM Comparison (`tools/compare`)
 Lockstep runs the clean ROM in a reference and in the recompiled binary side by side. MesenCE is the
 reference; snes9x only finds the first differing frame and its writers:
 
 ```sh
 # in everscript-vscode; runs build/ here
 node tools/compare/compare.mts rom.smc --backend mesen,recomp --replay tools/compare/replays/01-no-inputs-4m.evsmv
-npm run compare -- recomp=/path/to/rom.smc                # against snes9x: a lead
 ```
 
 Known differences from MesenCE and how they were measured: [imperfections/README.md](imperfections/README.md).

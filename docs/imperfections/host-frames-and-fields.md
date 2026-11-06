@@ -18,7 +18,7 @@ With extended frame timing ([apu-time-in-long-frames.md](apu-time-in-long-frames
 gives the APU at least one field of time, so a skipped frame ran the SPC700 a field ahead. Removed 2026-10-30.
 
 ## Replay input in compare runs (2026-10-31)
-`tools/compare/recomp.mts` (everscript-vscode) now gives each pad value to the field MesenCE gives it: the runner's
+`tools/compare/recomp.mts` now gives each pad value to the field MesenCE gives it: the runner's
 script spends frames of its own (a `poke` 2, a `press` of n frames n + 1), which come off the next segment, and the
 script's frame f is MesenCE's frame f + 1 (the reset code's 5 fields in 4 host frames). With that,
 `02-newgame-boy-available.evsmv` is identical at every NMI key to its end. A later DMA that packs two fields into one

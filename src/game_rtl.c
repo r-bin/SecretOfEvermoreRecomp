@@ -41,7 +41,7 @@ extern uint8_t g_ram[0x20000];
  * so the raw counter is not a key; a drop counts as a restart from 0.
  * - SOE_COMPARE_STRIDE: hash memory each time the key reaches a new multiple of the stride and write
  *   "H <key> <crc> ..." to fd 3, one CRC-32 per region of SOE_COMPARE_REGIONS (wram, vram, cgram, oam, sram, aram,
- *   dsp, sound, picture; everscript-vscode tools/compare/README.md). aram, dsp and sound need SOE_COMPARE_AT=nmi: they
+ *   dsp, sound, picture; tools/compare/README.md). aram, dsp and sound need SOE_COMPARE_AT=nmi: they
  *   are read at the SPC700's next instruction on a copy of the APU (CmpSpcEnter). picture is a word hash, not a CRC.
  * - SOE_COMPARE_MASK: WRAM offsets zeroed before hashing (hex, "a-b" ranges, comma separated).
  * - SOE_COMPARE_DUMP=<key>: write "D <key>\n" and the raw regions once.

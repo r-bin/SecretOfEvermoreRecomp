@@ -13,8 +13,8 @@ into a native, standalone, portable C desktop executable using
   reset work. The whole game is not proven; open work: everscript-vscode `docs/todo/static-recompilation.md`.
 - **Seeds:** a CDL covering 90.3 % of the ROM (a full playthrough), written into `recomp/` by
   everscript-vscode's export: 5,642 routine variants, 5,568 compiled, 74 interpreter-only, 6 routines bound to C.
-- **Framework:** the results need four snesrecomp branches that are not upstream, pinned locally
-  ([upstream-access-timing.md](upstream-access-timing.md)); their way upstream: [pr/README.md](pr/README.md).
+- **Framework:** public upstream snesrecomp plus one patch ([framework.md](framework.md)); the patch's way upstream:
+  [pr/README.md](pr/README.md).
 
 ---
 
@@ -24,6 +24,8 @@ into a native, standalone, portable C desktop executable using
 |---|---|
 | **[progress.md](progress.md)** | **Progress Against MesenCE**<br>One table: each replay against every memory, the picture, native share and C. |
 | **[progress-details.md](progress-details.md)** | **Progress in Detail**<br>What stands behind that table: how each replay starts, what differs, native share, speed, banks, bound C, what it took, how to measure. |
+| **[testing.md](testing.md)** | **Testing**<br>What runs with node only, with your ROM, with MesenCE |
+| **[framework.md](framework.md)** | **Framework**<br>Upstream submodule plus `framework/snesrecomp.patch` |
 | **[setup.md](setup.md)** | **Setup & Build Pipeline**<br>Prerequisites, required assets (ROM, CDL, knowledge), environment variables, the build, and how the seeds come from everscript-vscode. |
 | **[game-rtl.md](game-rtl.md)** | **Game Runtime Layer (Game RTL / Glue Code)**<br>Why "Game RTL" is the proper architectural term, how `game_rtl.c` drives frames and interrupts, host configuration hooks (`SoeAfterConfig`), and licensing isolation. |
 | **[debugging.md](debugging.md)** | **Debugging, Emulators & Comparison**<br>Available emulators (snes9x2005-wasm, Mesen2, desktop host), execution modes (native vs interpreter, renderer modes), WRAM lockstep diffing, headless script automation, and seed bisection. |
@@ -63,7 +65,7 @@ npm run recomp -- --no-build # only write recomp/bank*.cfg (reads recomp/seed-ex
 Commit the changed `recomp/bank*.cfg` here.
 
 ### Lockstep against snes9x
-From everscript-vscode: `npm run compare -- recomp=` runs this repository's `build/` game.
+`node tools/compare/compare.mts` runs this repository's `build/` game against MesenCE ([testing.md](testing.md)).
 
 ---
 

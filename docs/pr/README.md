@@ -26,8 +26,8 @@ Upstream: https://github.com/RetroPortingToolKit/snesrecomp. Measured 2026-11-05
 
 State values: draft, open, conflicts, merged, closed. Update this table when a state changes, and the file's Status line with it.
 
-**Blocking all of them:** the recipe needs public commits. `r-bin/SecretOfEvermoreRecomp` has no branches on GitHub, and
-`pr-stack-on-main` is a local branch of the snesrecomp submodule. `mstan` can follow nothing below until both are pushed.
+**Blocking all of them:** the recipe needs public commits: `r-bin/SecretOfEvermoreRecomp` has no branches on GitHub yet. The
+framework side is `framework/snesrecomp.patch`, which is `pr-stack-on-main`'s tree against main ([../framework.md](../framework.md)).
 
 ## What was tested
 
@@ -62,44 +62,32 @@ Everything is one setup. The ROM stays yours; generated C and ROM bytes stay out
 2. **Reference:** MesenCE 2.2.1 from https://github.com/r-bin/MesenCE as `/Applications/Mesen.app` or `$MESEN`. Our binary is dated
    2026-06-05; its source commit was not recorded. Run headless: `--testrunner`, `--snes.ramPowerOnState=AllZeros`,
    `--snes.disableFrameSkipping=true`.
-3. **Sources, side by side:** `SecretOfEvermoreRecomp` (the game's glue) and
-   [`everscript-vscode`](https://github.com/r-bin/everscript-vscode) (`npm ci`, then `npm run roms` to add the ROM).
+3. **Sources:** `SecretOfEvermoreRecomp`, with its submodules. Nothing else.
 4. **Build:**
    ```sh
    cd SecretOfEvermoreRecomp
-   git -C snesrecomp checkout pr-stack-on-main
    bash tools/regen.sh --rom /path/to/rom.sfc
    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j
    ```
-5. **Replay 01** needs no recording: it is power-on and 14,424 frames with no button pressed. This file gives the same result as
-   the stored one (checked, in sync through 14424):
+5. **Replay 01** is in the repository: power-on and 14,424 frames with no button pressed.
+6. **Compare**, about 4 minutes:
    ```sh
-   cat > 01-no-inputs-4m.evsmv <<'E'
-   # Everscript movie 3
-   # rom.sha256: 17c864a76d498feb6479eee8e7d6807b951c66225033228622bb66754baab1db
-   # start: power-on, empty SRAM
-   F|................*14424
-   # frames: 14424
-   E
-   ```
-6. **Compare**, from `everscript-vscode`, about 4 minutes:
-   ```sh
-   npm run compare -- mesen recomp --replay 01-no-inputs-4m.evsmv --regions wram,vram,cgram,oam --verbose
+   node tools/compare/compare.mts mesen recomp --replay tools/compare/replays/01-no-inputs-4m.evsmv --regions wram,vram,cgram,oam --verbose
    ```
    Expected: `in sync through counter $0100 = 14424, 14305 checkpoints`.
 7. **Turn one change off** with its switch and run the same command. It stops at the frame its PR file names, for example:
    ```sh
-   SNESRECOMP_APU_MASTER_CLOCK=0 npm run compare -- mesen recomp --replay 01-no-inputs-4m.evsmv --regions wram,vram,cgram,oam --verbose
+   SNESRECOMP_APU_MASTER_CLOCK=0 node tools/compare/compare.mts mesen recomp --replay tools/compare/replays/01-no-inputs-4m.evsmv --regions wram,vram,cgram,oam --verbose
    ```
    Expected: `wram differ at counter $0100 = 319`.
 
 **Switches named `ABL_*`** do not exist upstream. They come from [ablation-gates.patch](ablation-gates.patch), one line per change
 that has no switch of its own; never part of a PR:
 ```sh
-git -C snesrecomp apply ../docs/pr/ablation-gates.patch   # then rebuild
+git -C snesrecomp apply ../docs/pr/ablation-gates.patch   # after regen.sh applied the framework patch; then rebuild
 ```
 
-**All of it at once:** `tools/compare/probes/ablate.mts` in everscript-vscode runs MesenCE once, keeps its hashes in
+**All of it at once:** `tools/compare/probes/ablate.mts` runs MesenCE once, keeps its hashes in
 `out/compare/ablate/`, then runs each variant alone against them, several at a time. About a minute per variant.
 ```sh
 echo '[{"name":"no DMA alignment","env":{"SNESRECOMP_DMA_ALIGN":"0"}}]' > variants.json
@@ -130,7 +118,7 @@ of [#241](01-access-exact-timing.md) and the later commits unless someone brings
 | Nested interpreter stops at the deadline | `SNESRECOMP_NESTED_DEADLINE=0` | bus-exact | No effect, with or without compiled resume |
 | Beam sync when the outermost bridge run returns | `ABL_BEAM_HOST` | compiled interrupts | No effect, with or without compiled resume |
 | `SNESRECOMP_TIER_STATS` | — | own commit | Measures, changes nothing. Our Native column uses it, so it stays on our branch |
-| Diagnostics and tuning knobs | `SNESRECOMP_PORT_LOG`, `_DMA_LOG`, `_DSP_LOG`, `_SPC_EXEC_LOG`, `_SYNC_WATCH`, `_HV_LOG`, `_PPU_READ_LOG`, `_APU_KR`, `_APU_KW`, `_APU_LEAD`, `_SPC_READ_BIAS`, `_SPC_WRITE_BIAS`, `_DMA_LEAD`, `_DMA_END_SPEED` | #241 | Change nothing by default. `tools/compare/probes/port-handshakes` and `ppu-reads` in everscript-vscode use some of them |
+| Diagnostics and tuning knobs | `SNESRECOMP_PORT_LOG`, `_DMA_LOG`, `_DSP_LOG`, `_SPC_EXEC_LOG`, `_SYNC_WATCH`, `_HV_LOG`, `_PPU_READ_LOG`, `_APU_KR`, `_APU_KW`, `_APU_LEAD`, `_SPC_READ_BIAS`, `_SPC_WRITE_BIAS`, `_DMA_LEAD`, `_DMA_END_SPEED` | #241 | Change nothing by default. `tools/compare/probes/port-handshakes` and `ppu-reads` use some of them |
 
 One exception stays, for a reason replays cannot show: **an access's own lead for port timing** (`ABL_ACCESS_LEAD`). Without it no
 replay changes, but ports fall back to a constant 20 clocks, which is right only for an absolute-addressed FastROM access: a

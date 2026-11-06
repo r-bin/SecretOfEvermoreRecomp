@@ -6,13 +6,13 @@ These rules apply to every AI agent working in this repository.
 
 1. **Legal first.** No ROM or ROM bytes, no generated C (`src/gen/`), no dumps, screenshots or
    extracted assets in git. Everyone regenerates from their own ROM.
-2. **Never edit the framework.** `snesrecomp/` and `recomp-ui/` are pinned submodules
-   (`framework_pins.txt`), not patched either: everything this port needs is in our glue (our own
-   frame driver `src/soe_frame_driver.c` replaces the framework's), and what upstream should change
-   is written up in `docs/imperfections/` and `docs/bugs-and-todos.md` §3.
-3. **Seeds come from everscript-vscode.** `recomp/bank8x..9x.cfg` and the data-region block in
-   `recomp/bank00.cfg` are written by its `npm run recomp` (sibling checkout). Change them through
-   `recomp/seed-exclusions.txt` and a new export, never by hand.
+2. **Never edit the framework.** `snesrecomp/` and `recomp-ui/` are pinned public submodules (`framework_pins.txt`).
+   Our framework changes are one file, `framework/snesrecomp.patch`, applied by `tools/regen.sh` (`docs/framework.md`).
+   This repository names no other snesrecomp repository. What the port needs otherwise is in our glue (our own frame
+   driver `src/soe_frame_driver.c` replaces the framework's).
+3. **Seeds and bound C come from everscript-vscode.** `recomp/bank8x..9x.cfg`, the data-region block in
+   `recomp/bank00.cfg` and `src/bound-c/` are written by its `npm run recomp` (sibling checkout). Change them through
+   `recomp/seed-exclusions.txt` and a new export, never by hand. Build and test need nothing but this repository.
 4. **Write down what you learn.** Every bug gets its root cause, fix and lesson in
    `docs/bugs-and-todos.md` in the same commit. Game facts (addresses, routines, RAM) belong in
    everscript-vscode's knowledge entries, not here.
@@ -28,12 +28,12 @@ These rules apply to every AI agent working in this repository.
 | Where | What |
 |---|---|
 | `src/game_rtl.c` | our glue: frame driver, renderer hook, save states, compare hashes |
-| `src/soe_bindings.c` | routines run as everscript-vscode's reconstructed C (`hle` lines in `recomp/seed-exclusions.txt`; proof rules in `docs/game-rtl.md` §4b) |
+| `src/soe_bindings.c`, `src/bound-c/` | routines run as reconstructed C, exported from everscript-vscode (`hle` lines in `recomp/seed-exclusions.txt`; proof rules in `docs/game-rtl.md` §4b) |
 | `src/soe_mesen_state.c` | a MesenCE save state as a run's start (`SOE_COMPARE_MESEN_STATE`; `docs/imperfections/mesen-state.md`) |
 | `src/main.c` | the scaffold's host descriptor, plus our `after_config` line |
-| `tests/` | ROM-backed `ctest` tests (`-DSOE_TEST_ROM=...`), each pinning a fixed bug |
+| `tests/` | `ctest` tests (`docs/testing.md`): `compare_units` with node only, the others with `-DSOE_TEST_ROM=...` |
 | `recomp/` | seeds (`bank*.cfg`), `seed-exclusions.txt`, `symbols.toml` |
-| `tools/` | `regen.sh` (ROM -> C), `bisect.js`, `verify-intro.js`, `check-obj-tiles.js` |
+| `tools/` | `regen.sh` (ROM -> C), `compare/` (MesenCE against the recomp, replays, probes), `bisect.js`, `verify-intro.js`, `check-obj-tiles.js` |
 | `docs/` | `README.md` (status, map), setup, glue, debugging, headless exploration, bugs and roadmap, research |
 
 ## Skills

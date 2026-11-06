@@ -1,7 +1,7 @@
 # Replay Sync Against MesenCE
 
 How much of each replay the recomp (native build, `develop` 2026-10-30) plays exactly as MesenCE does.
-Replays: everscript-vscode `tools/compare/replays/`. Measured with
+Replays: `tools/compare/replays/` (with a save state: `replays/local/`, not in git). Measured with
 
 ```sh
 node tools/compare/compare.mts "Secret of Evermore (U) [!].smc" --backend mesen,recomp \
@@ -33,7 +33,7 @@ All interpreted, cleared SRAM on both sides: `02-newgame-boy-available.evsmv` �
 `01-no-inputs-4m.evsmv` 🟢 from 120 to 5997, then the RNG seed from PPU reads during rendering.
 With snesrecomp `ppu-render-reads` (pin `3b73e98c`) and the NMI handler sliced at refresh points
 (dram-refresh.md), 2026-11-02, all interpreted, both 🟢 at every key to the end of their input, measured with
-everscript-vscode's `node tools/compare/compare.mts rom.smc --backend mesen,recomp --replay <replay> --regions wram --verbose --keep-going` (the recomp's environment from `tools/compare/probes/interp.mts`):
+`node tools/compare/compare.mts rom.smc --backend mesen,recomp --replay <replay> --regions wram --verbose --keep-going` (the recomp's environment from `tools/compare/probes/interp.mts`):
 
 | Replay | Keys compared, all identical |
 |---|---|

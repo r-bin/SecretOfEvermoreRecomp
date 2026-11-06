@@ -26,11 +26,11 @@ the D flag on interrupts (bugs-and-todos.md §2), a frame that starts past line 
 
 Frames before 120 are not compared: the RNG is copied in from MesenCE at 115. Native and interpreted runs of one
 build have every NMI on the same master clock and WRAM identical at every key from 1 on, both replays to their end
-(everscript-vscode `tools/compare/probes/native-vs-interp.mts`).
+(`tools/compare/probes/native-vs-interp.mts`).
 
 ## Picture and sound
 
-Every RAM, the picture and the S-DSP at every key, MesenCE against the recomp (everscript-vscode `npm run compare:full`, measured
+Every RAM, the picture and the S-DSP at every key, MesenCE against the recomp (`node tools/compare/full.mts`, measured
 2026-11-04). The number is the keys that differ. The native and all-interpreted builds (`--interpreted`) give the same counts in every
 column, at the same keys; the last column is the native build with `--fade`.
 
@@ -53,12 +53,12 @@ What the differences are:
 The S-DSP state holds the output samples, voices, envelopes, BRR buffers and echo, once per key: MesenCE's Lua gives no sample
 stream, so the audio itself is not compared, and how the open keys sound is not measured. The checks were tested by
 breaking them: no sprites fails the picture alone, the per-sample S-DSP fails ARAM, the S-DSP and then WRAM
-(everscript-vscode `tools/compare/README.md`).
+(`tools/compare/README.md`).
 
 ## Native share
 
 How much of a replay runs without the interpreter: instructions per tier over the whole run (snesrecomp
-`SNESRECOMP_TIER_STATS=1`, glue `SOE_HLE_STATS=1`; everscript-vscode `tools/compare/probes/run-stats.mts --stats`, measured
+`SNESRECOMP_TIER_STATS=1`, glue `SOE_HLE_STATS=1`; `tools/compare/probes/run-stats.mts --stats`, measured
 2026-11-04 on the current build, without the RNG copy). The goal is 100 %.
 
 Instructions run as C count in no tier, so the total is an all-interpreted run's (`--mode interp`, the same path); C is what
@@ -120,7 +120,7 @@ What still runs interpreted (0.07-0.08 %):
 ## Speed
 
 Emulated frames per second, uncapped (the scripted run does not wait for vsync), headless, Apple Silicon, to the
-end of each replay (everscript-vscode `tools/compare/probes/run-stats.mts --mode <mode>`; 60.1 frames/s is real
+end of each replay (`tools/compare/probes/run-stats.mts --mode <mode>`; 60.1 frames/s is real
 time). Measured 2026-11-03 on the build above; 04 and 05 on 2026-11-04.
 
 | Replay | Native | Native, no compiled resume | All interpreted |

@@ -31,7 +31,7 @@ player features beyond save states.
 | Reproducible from the public repo | framework pinned, upstream is its author's | GitHub lists no branches yet, and sync needs four snesrecomp branches that are not upstream | **large** |
 | Whole game proven | owner playtests plus 12,000-frame routes; issues get replays | replays reach Prehistoria; `03-complete-run-7h` does not sync | **large** |
 | Released | Windows ZIP, Linux AppImage, Steam Deck folder, launcher | `release.yml` and setup pack written; no tag, `main` is the scaffold | **large** |
-| Tests and CI | 63 test files, `ctest`, ROM-free CI on every push, ROM tests opt-in | 2 ROM-backed `ctest` tests, no CI; replays run by hand (`npm run compare:full` in everscript-vscode) | **large** |
+| Tests and CI | 63 test files, `ctest`, ROM-free CI on every push, ROM tests opt-in | 4 `ctest` tests, no CI; the full replay set runs by hand (`node tools/compare/full.mts`) | **large** |
 | Bug reports | always-on replay recording, session logs, crash reports | none | medium |
 | Player features | widescreen, co-op, netplay with rollback, MSU-1, rewind, run-ahead, save-state browser, boss rush, character and weapon mods | save states (F1) | **large** |
 | Mods | 15 packages, hook layers, all off = vanilla | `mods/preloaded/` empty; [snesmod-addons.md](snesmod-addons.md), [enhancements.md](enhancements.md) are plans | **large** |
@@ -102,7 +102,7 @@ to a video hosted elsewhere if at all.
 MMX builds a ROM-free host in CI and runs every ROM-free test on each push. ROM-backed state tests
 are opt-in (`-DMMX_STATE_TESTS=ON`). Each fixed bug gets a test that failed before the fix (for
 example, frames after a soft reset must equal the same frames after power-on). Our checks live in
-everscript-vscode (`tools/compare/`, probes) and are run by hand.
+`tools/compare/` (with probes) and are run by hand.
 
 **How:**
 1. CI: configure with `-DSNESRECOMP_SETUP_HOST=ON` (as `package_release.sh` does) and build on

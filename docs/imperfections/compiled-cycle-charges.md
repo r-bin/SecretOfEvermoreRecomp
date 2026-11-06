@@ -22,7 +22,7 @@ FastROM (header `$FFD5` = `$31`, the reset code writes `$420D = 1`).
 ## Evidence
 - Example, `$8C:9ADF` (the decompressor's bit reader, `lda [$2A],y` and shifts): the generated body charged
   `19 * 6` clocks; the pointer and data reads go to WRAM at 8.
-- Native against the same build all-interpreted (everscript-vscode `tools/compare/probes/native-vs-interp.mts`):
+- Native against the same build all-interpreted (`tools/compare/probes/native-vs-interp.mts`):
   NMI 1 already 14 clocks apart (1,738,956 against 1,738,942).
 
 ## The fix (snesrecomp `aot-bus-exact`, `recompiler/v2/bus_exact.py`)

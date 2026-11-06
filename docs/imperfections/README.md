@@ -1,7 +1,7 @@
 # Imperfections: Where the Recomp Differs from MesenCE
 
 The recomp is compared with MesenCE, the reference ([../reference-emulators.md](../reference-emulators.md)),
-through everscript-vscode's `tools/compare` (`--backend mesen,recomp`). Each file below is one known way the
+through `tools/compare` (`--backend mesen,recomp`). Each file below is one known way the
 recomp differs: what it is, how it was measured, and how it was fixed or what would fix it. The owner's
 rule: **snesrecomp is not changed**; we work only in the files that adjust the game (glue `src/`, our frame
 driver `src/soe_frame_driver.c`, seeds `recomp/`, tools). What snesrecomp itself should change is written down

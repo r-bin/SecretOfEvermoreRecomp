@@ -130,7 +130,7 @@ then 2516–3862; 4,773 of its 9,287 keys (51.4 %). With cleared SRAM the replay
 Fourth round (2026-10-31): the late NMI one instruction later, NMI recognition past a DMA's cycle, refresh inside
 the interrupt sequence, the DMA start behind the line-0 HDMA init event, line 225 counted back when a host frame
 starts late, the H/V latch (WRIO gate, flip-flops, access clock, open bus), and replay input on MesenCE's fields
-(everscript-vscode `tools/compare/recomp.mts`). Interpreted: `02-newgame-boy-available.evsmv` identical at every NMI
+(`tools/compare/recomp.mts`). Interpreted: `02-newgame-boy-available.evsmv` identical at every NMI
 key to its end (9,227 of 9,227); `01-no-inputs-4m.evsmv` at every key from 120 to 5997, every NMI through 6358 on
 MesenCE's clock.
 
