@@ -1,6 +1,6 @@
 # CGRAM Reads Leave Bit 7 of the High Byte at 0
 
-**Status:** fixed for DMA reads, the only reads the game uses for it, in our frame driver (`cgram_dma_open_bus`). snesrecomp
+**Status:** fixed for DMA reads, the only reads the game uses for it, in our glue (`src/soe_ppu_fixes.c`: `cgram_dma_open_bus`). snesrecomp
 itself still returns 0.
 
 ## What happens

@@ -25,7 +25,7 @@ of the 3 MB ROM sees what MesenCE sees. A normal launch keeps the cartridge mirr
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSOE_TEST_ROM=/path/to/rom.sfc
 cmake --build build -j
-ctest --test-dir build --output-on-failure        # about 90 s
+ctest --test-dir build --output-on-failure        # 4-6 minutes on an M-series Mac; replay 02 is most of it
 ```
 
 | Test | Needs | What it proves |

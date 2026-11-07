@@ -9,7 +9,10 @@
  *   master-clock APU timeline of snesrecomp PR #241 (framework/snesrecomp.patch), fed the port access clock with the
  *   refresh stall in front of it (access_clock);
  * - the automatic joypad read's busy window (auto-joypad-read.md);
- * - where the field's NMI is recognised (nmi-recognition.md, with soe_last_cycle.c).
+ * - where the field's NMI is recognised (nmi-recognition.md, with soe_last_cycle.c);
+ * - $4212 bit 7 as the access sees it (vblank-flag-at-access.md).
+ * What the PPU and registers lack (DMA during rendering, open bus, 15-bit CGRAM) is in soe_ppu_fixes.c. Only hardware
+ * rules belong here, no game: the candidate for upstream (docs/pr/05-frame-driver.md).
  *
  * The game's reset code and its scene loads switch NMI back on inside vblank (MesenCE: the reset code at V=226,
  * 6 times in the first 4 minutes). While NMI is off and the vblank flag is set, the CPU runs one instruction per
@@ -20,12 +23,12 @@
  */
 #include "soe_frame_driver.h"
 #include "soe_last_cycle.h"
+#include "soe_ppu_fixes.h"
 
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 
 #include "common_cpu_infra.h"
 #include "common_rtl.h"
@@ -63,7 +66,6 @@ void soe_frame_driver_set_resume(uint32_t pc, bool wai_halted) { s_resume_pc = p
 
 static void align_field_length(void);
 static void align_beam(void);
-static void finish_4212_read(void);
 
 static uint32_t read_vector(uint32_t addr) {
     return ((uint32_t)snes_read(g_snes, addr + 1u) << 8) | snes_read(g_snes, addr);
@@ -130,6 +132,9 @@ static uint64_t refresh_points_upto(uint64_t m) {
     while (refresh_point(j + 1) <= m) j++;
     return j + 1;
 }
+
+uint64_t soe_frame_driver_refresh_points_upto(uint64_t clock) { return refresh_points_upto(clock); }
+uint64_t soe_frame_driver_line0(void) { return s_line0; }
 
 static uint64_t next_refresh_after(uint64_t m) {
     return refresh_point(refresh_points_upto(m));
@@ -238,7 +243,7 @@ static void auto_joypad_begin(void) {
 #define INTERRUPT_CLOCKS (2u * 6u + 4u * 8u + 2u * 8u)
 
 static void run_interrupt(uint32_t vector, uint64_t deadline, bool nmi) {
-    if (nmi) finish_4212_read();
+    if (nmi) soe_ppu_fixes_nmi_entry();
     cpu_push_interrupt_frame_at(&g_cpu, s_resume_pc);
     /* The 65816 clears D as it takes an interrupt, cpu_push_interrupt_frame_at does not: an NMI inside the BCD routine at
      * $80:B283 ran its handler in decimal mode and its DMA queue walked off (NMI 6844 of replay 05). */
@@ -254,7 +259,7 @@ static void run_interrupt(uint32_t vector, uint64_t deadline, bool nmi) {
         snes_sync_master_clock(g_snes, g_cpu.master_cycles); /* the beam crosses V=225 before the handler reads $4212 */
         auto_joypad_begin();
     }
-    if (nmi) for (int i = 0; i < 256; i++) g_ppu->cgram[i] &= 0x7FFF; /* 15 bits; snesrecomp stores the high byte's bit 7 */
+    if (nmi) soe_ppu_fixes_nmi_taken();
     if (nmi && soe_frame_driver_nmi_hook) soe_frame_driver_nmi_hook();
     const uint64_t before = g_cpu.master_cycles;
     /* The NMI handler runs as an ordinary slice from its vector (the frame is pushed above), so it stops at the next
@@ -393,26 +398,12 @@ static void bank_stats_init(void) {
     atexit(print_bank_stats);
 }
 
+uint32_t soe_frame_driver_last_pc(void) { return s_last_pc; }
+
 static void record_pc(uint32_t pc24, int m_flag, int x_flag) {
     if (s_bank_stats > 0) count_pc(pc24, m_flag, x_flag);
     s_last_pc = pc24;
     s_last_dma = g_snes_dma_charged;
-}
-
-/*
- * $4212 bits 1-5 are open bus on MesenCE, $42 from the address after LDA $4212: bit 1 reads 1. snesrecomp reads 0 there
- * and the read goes past our files, but the game only tests bits 6, 7 and 0 of it, so only an NMI sees the rest: the
- * handler pushes A, the frame P, while the value still sits in A (docs/imperfections/vblank-flag-at-access.md).
- */
-static void finish_4212_read(void) {
-    uint32_t pc = s_last_pc;
-    if (!pc || !g_cpu.m_flag) return;
-    const uint8_t op = snes_read(g_snes, pc);
-    if (op == 0x10 || op == 0x30) pc -= 3; /* the wait's BPL / BMI */
-    if (snes_read(g_snes, pc) != 0xAD || snes_read(g_snes, pc + 1) != 0x12 || snes_read(g_snes, pc + 2) != 0x42) return;
-    g_cpu.A |= 0x02;
-    g_cpu._flag_Z = 0;
-    g_cpu.P &= (uint8_t)~CPU_P_Z;
 }
 
 /* After the slice that reached V=225+12: run one more instruction if MesenCE would. */
@@ -453,108 +444,9 @@ static void start_from_mesen_state(void) {
     snes_sync_master_clock(g_snes, g_cpu.master_cycles);
 }
 
-/*
- * A CGRAM word has 15 bits: MesenCE's $213B returns bit 7 of the high byte from the PPU2 open bus, which the low byte's
- * read just set; snesrecomp returns 0 and has no such bus. The game reads CGRAM back by DMA, whose stores into WRAM pass
- * this hook after they landed (docs/imperfections/cgram-read-open-bus.md).
- */
-static void cgram_dma_open_bus(uint32_t wram, uint8_t value, const char *via) {
-    static uint8_t low;
-    wlog_addr_note_direct(wram, value, via);
-    int i = 0;
-    while (i < 8 && !g_snes->dma->channel[i].dmaActive) i++;
-    if (i == 8 || !g_snes->dma->channel[i].fromB || g_snes->dma->channel[i].bAdr != 0x3B) return;
-    if (g_ppu->cgramSecondWrite) low = value; /* the read has already moved the latch on */
-    else g_snes->ram[wram] = (uint8_t)(value | (low & 0x80));
-}
-
-/*
- * A DMA to $2122 during rendering. Outside vblank, forced blank and H<88, H>=1096 MesenCE writes a colour to the one the
- * PPU is reading, not the CGRAM address; snesrecomp to the address. Which colour needs the pixel, which we do not have:
- * colour 0 here, as in all 349 such writes of replay 05. The charge comes before the transfer: CGRAM is kept here, and the
- * writes are walked when the slice ends (docs/imperfections/cgram-writes-during-rendering.md).
- */
-#define CGRAM_DMA_LEAD 30u /* STA $420B to the next opcode fetch, as snesrecomp's charge counts it */
-static struct { bool pending, second; uint8_t pointer; uint16_t size; uint64_t start; uint16_t cgram[256]; } s_cgram_dma;
-
-static bool cgram_writable(uint64_t t) {
-    const uint64_t j = (t - s_line0) / LINE_CLOCKS, h = (t - s_line0) % LINE_CLOCKS, line = (VBLANK_LINE + j) % 262u;
-    return line >= VBLANK_LINE || line == 0 || h < 88u || h >= 1096u;
-}
-
-/*
- * A DMA to VRAM outside vblank and forced blank: MesenCE drops each byte, the address still counts; snesrecomp stores it
- * (its `TODO: vram access during rendering`). Replay 01's NMI 5997 sends 60 KB through the picture. VRAM is kept when such
- * a DMA starts, and each byte that lands while the picture is drawn is put back as it passes the write hook.
- */
-static struct { unsigned left; uint64_t t; uint16_t vram[0x8000]; } s_vram_dma;
-
-static bool vram_writable(uint64_t t) { return (VBLANK_LINE + (t - s_line0) / LINE_CLOCKS) % 262u >= VBLANK_LINE; }
-
-static void vram_dma_write(uint32_t byte_addr, uint8_t value) {
-    (void)value;
-    if (!s_vram_dma.left) return;
-    if (refresh_points_upto(s_vram_dma.t + 8u) > refresh_points_upto(s_vram_dma.t)) s_vram_dma.t += REFRESH_CLOCKS;
-    if (!vram_writable(s_vram_dma.t)) {
-        const uint16_t mask = byte_addr & 1u ? 0xFF00 : 0x00FF, word = (uint16_t)(byte_addr >> 1);
-        g_ppu->vram[word] = (uint16_t)((g_ppu->vram[word] & ~mask) | (s_vram_dma.vram[word] & mask));
-    }
-    s_vram_dma.t += 8u;
-    s_vram_dma.left--;
-}
-
-static uint64_t dma_first_byte(uint64_t start) { return start + (8u - (start & 7u)) + 24u; } /* setup, channel, the byte itself */
-
-static void charge_dma(Snes *snes, uint64_t clocks) {
-    const uint64_t start = g_cpu.master_cycles + CGRAM_DMA_LEAD;
-    s_vram_dma.left = 0;
-    for (int i = 0; i < 8 && !PPU_forcedBlank(g_ppu); i++) {
-        const DmaChannel *c = &snes->dma->channel[i];
-        /* The hook is not told the channels and old sizes stay in the others: this one, alone, is what the charge fits. */
-        const uint64_t body = 16u + 8u * (c->size ? (uint64_t)c->size : 0x10000u);
-        if (c->fromB || clocks < body || clocks > body + 32u * (1u + clocks / LINE_CLOCKS)) continue;
-        if (c->bAdr == 0x18 || c->bAdr == 0x19) {
-            if (vram_writable(start) && vram_writable(start + clocks) && clocks < LINE_CLOCKS * (262u - VBLANK_LINE)) break;
-            s_vram_dma.left = c->size ? c->size : 0x10000u;
-            s_vram_dma.t = dma_first_byte(start);
-            memcpy(s_vram_dma.vram, g_ppu->vram, sizeof s_vram_dma.vram);
-            break;
-        }
-        if (c->bAdr != 0x22 || c->mode != 0 || !c->size) continue;
-        s_cgram_dma.pending = true;
-        s_cgram_dma.second = g_ppu->cgramSecondWrite;
-        s_cgram_dma.pointer = g_ppu->cgramPointer;
-        s_cgram_dma.size = c->size;
-        s_cgram_dma.start = start;
-        memcpy(s_cgram_dma.cgram, g_ppu->cgram, sizeof s_cgram_dma.cgram);
-        break;
-    }
-    g_cpu.master_cycles += clocks;
-    snes_sync_master_clock(snes, g_cpu.master_cycles);
-}
-
-static void cgram_dma_finish(void) {
-    if (!s_cgram_dma.pending) return;
-    s_cgram_dma.pending = false;
-    uint64_t t = dma_first_byte(s_cgram_dma.start);
-    bool second = s_cgram_dma.second;
-    uint8_t pointer = s_cgram_dma.pointer;
-    for (unsigned i = 0; i < s_cgram_dma.size; i++, t += 8u) {
-        if (refresh_points_upto(t + 8u) > refresh_points_upto(t)) t += REFRESH_CLOCKS;
-        if (second) {
-            s_cgram_dma.cgram[cgram_writable(t) ? pointer : 0] = g_ppu->cgram[pointer];
-            pointer++;
-        }
-        second = !second;
-    }
-    memcpy(g_ppu->cgram, s_cgram_dma.cgram, sizeof s_cgram_dma.cgram);
-}
-
 void soe_frame_driver_run_frame(void) {
     bank_stats_init();
-    snes_set_wram_write_log_hook(cgram_dma_open_bus);
-    snes_set_master_clock_charge_hook(charge_dma);
-    ppu_set_vram_write_log_hook(vram_dma_write);
+    soe_ppu_fixes_install();
     if (s_resume_pc == 0) start_from_mesen_state();
     const bool booting = s_resume_pc == 0;
     int slices = 0, late_steps = 0;
@@ -619,7 +511,7 @@ void soe_frame_driver_run_frame(void) {
             update_resume_pc();
             align_beam();
             edge_step(frame_end);
-            cgram_dma_finish();
+            soe_ppu_fixes_slice_end();
             if (interp_bridge_lle_took_wai()) s_wai_halted = true;
             if (approach && !s_wai_halted) finish_nmi_approach(frame_end);
             auto_joypad_begin();

@@ -1,6 +1,6 @@
 # `$4212` Read at the Access, and Its Open Bus
 
-**Status:** fixed in our frame driver (`src/soe_frame_driver.c`: `edge_step`, `finish_4212_read`). snesrecomp itself still
+**Status:** fixed in our frame driver (`src/soe_frame_driver.c`: `edge_step`) and `src/soe_ppu_fixes.c` (`soe_ppu_fixes_nmi_entry`, bits 1-5). snesrecomp itself still
 has both differences.
 
 ## What MesenCE does
@@ -22,7 +22,7 @@ read starts ([auto-joypad-read.md](auto-joypad-read.md)).
 - A slice stops 20 clocks before line 0 and before V=225. The beam goes to the edge and waits there for the CPU
   (`snes_beam_hold`), so a read in those clocks sees the far side. At V=225 the beam takes one more step, so that its
   automatic read runs, and the driver clears the busy bit it set: `auto_joypad_begin` sets it at the NMI.
-- Before an NMI's frame is pushed, `finish_4212_read` sets bit 1 in A and clears Z, when the last instruction was
+- Before an NMI's frame is pushed, `soe_ppu_fixes_nmi_entry` sets bit 1 in A and clears Z, when the last instruction was
   `LDA $4212` or its `BPL`/`BMI`. The game tests only bits 0, 6 and 7, so nothing else sees bits 1-5.
 
 ## Limits

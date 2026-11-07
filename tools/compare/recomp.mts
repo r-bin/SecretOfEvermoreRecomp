@@ -24,7 +24,7 @@ export interface RecompJob {
     stride?: number;
     dumpAt?: number;
     replay?: string | null;
-    /** Rewrite the picture's fades by MesenCE's rounding (SOE_COMPARE_FADE). */
+    /** Scale brightness by MesenCE's rule, truncated (SOE_COMPARE_FADE). */
     fade?: boolean;
     /** Sample as each NMI is taken (SOE_COMPARE_AT=nmi); the key is the NMI's number since power-on. */
     atNmi?: boolean;

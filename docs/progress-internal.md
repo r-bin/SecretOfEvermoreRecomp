@@ -1,13 +1,23 @@
-# Progress in Detail
+# Progress on the Local Replays
 
-What stood behind the replay table of 2026-11-04/05: how each replay started, what differed, native share, speed, bound C,
-what it took. These were the replays of that time (`01-no-inputs-4m.evsmv`, `02-newgame-boy-available.evsmv`, `04`-`06`
-MesenCE movies with save states); they are now local, outside git. The committed replays and their results:
-[progress.md](progress.md), [testing.md](testing.md).
+[progress.md](progress.md) reports only replays anyone can reproduce: MesenCE movies recorded from power-on with zeroed RAM, input
+and settings alone, committed in `tools/compare/replays/`. This file reports the others. They start from a save state or carry
+battery RAM, so they hold memory from the ROM and stay out of git (`tools/compare/replays/local/`); nobody but their owner can run
+them, and no public claim or upstream PR rests on them. They matter anyway: played by hand from mid-game, they reached code the
+committed replays never do, and most fixes of 2026-11-04 came from them (below).
+
+| Replay | Starts from | Why it cannot be committed |
+|---|---|---|
+| `01-no-inputs-4m.evsmv` | power-on, everscript-vscode's movie format | none; superseded by the committed `01-no-inputs-1-loop.mmo` |
+| `02-newgame-boy-available.evsmv` | power-on with a save file | battery RAM (`# sram:`) |
+| `04-newgame-flowers.mmo` | a reset of a running console | a save state |
+| `05-flowers-from-state.mmo`, `06-flowers-raptors.mmo` | a mid-game save state | a save state |
+| `03-complete-run-7h.evsmv` | power-on, 7 hours | does not stay in sync with MesenCE: never a parity or native-share test |
+
+Measured 2026-11-04/05 unless a section says otherwise; the native share, speed and bound C sections are the measurements behind
+[progress.md](progress.md) as well.
 
 ## The replays
-
-`03-complete-run-7h` is not a sync replay: it does not stay in sync with MesenCE, so it is not measured here.
 
 **04 is the first recording made in MesenCE and the first with short presses.** It starts from a save state at the
 reset vector, a reset of a running console with random power-on memory. The recomp takes over WRAM, SRAM, FastROM, the whole

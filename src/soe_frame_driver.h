@@ -24,6 +24,12 @@ uint64_t soe_frame_driver_hard_deadline(void);
 bool soe_frame_driver_irq_possible(void);
 void soe_frame_driver_settle_refresh(void);
 
+/* For soe_ppu_fixes.c: where this field's line 225 began, the DRAM refresh points from there up to a clock, and the
+ * last instruction the CPU started (0: none recorded in this slice). */
+uint64_t soe_frame_driver_line0(void);
+uint64_t soe_frame_driver_refresh_points_upto(uint64_t clock);
+uint32_t soe_frame_driver_last_pc(void);
+
 /* game_rtl.c: the WRAM and SRAM a compare run starts with (SOE_COMPARE_WRAM, _SRAM), before the first instruction. */
 void soe_compare_start_memory(void);
 /* game_rtl.c: a replay's input for the field at this beam clock (SOE_COMPARE_PADS); `first`: where the first poll is. */

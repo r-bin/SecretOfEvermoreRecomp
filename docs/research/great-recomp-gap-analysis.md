@@ -168,7 +168,7 @@ every speed-up can be checked against it. We have never measured. Bus-exact comp
 (`SNESRECOMP_EXACT_BUS=1`) and per-access timing cost speed, and we chose them deliberately.
 
 **How:** measure FPS uncapped on 01 and 02 with `SDL_VIDEO_DRIVER=dummy`, per build mode, and
-record the numbers in [progress-details.md](../progress-details.md). Only if a target machine falls short, add a
+record the numbers in [progress-internal.md](../progress-internal.md). Only if a target machine falls short, add a
 faster mode that stays optional, the way MMX does. The accurate build stays the default
 reference (the same rule as "preserve, not improve" for reconstructed C).
 
@@ -197,7 +197,7 @@ people can read and mod at the source level, not just play.
 | 4 | Settle `LICENSE`, merge to `main`, player README, first tagged setup pack | §2.3 | a public release a stranger can install |
 | 5 | Session replay recording and a reporting section | §2.5 | a player's report replays in `compare.mts` |
 | 6 | Mod hook layer with "all off = vanilla" in CI; rewind, save-state browser, widescreen, 5-status fix | §2.6, §2.7 | each mod's own test; sync replays unchanged with mods off |
-| 7 | FPS per build mode | §2.8 | numbers in [progress-details.md](../progress-details.md). **Done 2026-11-03:** native 500 / 390 frames/s; the PPU renderer dominates |
+| 7 | FPS per build mode | §2.8 | numbers in [progress-internal.md](../progress-internal.md). **Done 2026-11-03:** native 500 / 390 frames/s; the PPU renderer dominates |
 | 8 | First proven `hle_func` binding; names A/B | §2.9 | sync replays unchanged; normalized C identical. **Done 2026-11-03:** the RNG bound ([progress.md](../progress.md), "Bound C"); names A/B by hand ([game-rtl.md](../game-rtl.md) §4a) |
 | 9 | Co-op, then netplay | §2.6 | after 3 and 6 |
 

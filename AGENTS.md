@@ -31,7 +31,8 @@ These rules apply to every AI agent working in this repository.
 | Where | What |
 |---|---|
 | `src/game_rtl.c` | our glue: config hook, save states, the compare harness (`SOE_COMPARE_*`) |
-| `src/soe_frame_driver.c` | frame and interrupt timing: the rules MesenCE has and snesrecomp's beam driver lacks |
+| `src/soe_frame_driver.c` | frame and interrupt timing: the rules MesenCE has and snesrecomp's beam driver lacks; hardware only, no game (upstream candidate, `docs/pr/06-frame-driver.md`) |
+| `src/soe_ppu_fixes.c` | PPU and register behaviour snesrecomp lacks, applied through its hooks, for DMA (open bus, writes during rendering) |
 | `src/soe_bindings.c`, `src/bound-c/` | routines run as reconstructed C (`hle` lines in `recomp/seed-exclusions.txt`; proof rules in `docs/game-rtl.md` §4b) |
 | `src/soe_mesen_state.c` | a MesenCE save state as a run's start (`SOE_COMPARE_MESEN_STATE`) |
 | `recomp/` | seeds (`bank*.cfg`), `seed-exclusions.txt`, `symbols.toml` |

@@ -1,6 +1,6 @@
 # VRAM Writes During Rendering
 
-**Status:** fixed for DMA in our frame driver (`charge_dma`, `vram_dma_write`). snesrecomp still stores them (`TODO: vram access
+**Status:** fixed for DMA in our glue (`src/soe_ppu_fixes.c`: `charge_dma`, `vram_dma_write`). snesrecomp still stores them (`TODO: vram access
 during rendering`).
 
 ## What MesenCE does

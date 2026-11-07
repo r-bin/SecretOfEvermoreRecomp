@@ -6,7 +6,7 @@
 //       [--full] [--picture] [--sound] [--out file.md] [--record file] [--reference file]
 //   --full: every RAM at every key, on to the end, with each region's result; --picture and --sound add those
 //   --interpreted: the recomp all-interpreted
-//   --fade: the recomp's fades rewritten by MesenCE's rounding, to see what else differs in the picture
+//   --fade: the recomp scales brightness by MesenCE's rule, to see what else differs in the picture
 //   --record: keep the reference's hashes in a file; --reference: compare with that file, no MesenCE needed
 //   backend: mesen | recomp (exe: build/ by default); no ROM after '=' means the clean ROM (--rom, SNESRECOMP_ROM,
 //   a known name at the repo root, rom.cfg)

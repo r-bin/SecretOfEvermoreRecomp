@@ -1,28 +1,37 @@
 # Fades Round Differently
 
-**Status:** open, in snesrecomp's renderer. The only known difference in the picture.
-
-**2026-11-07, the committed replays:** the picture differs at 289 of 8,592 keys of 01 and 948 of 23,756 of 02, by 8 of 255
-where MesenCE has 0 (01 from key 365). `--fade` does not remove them: with it 309 and 972 keys differ. So either the rewrite
-models the rounding wrongly for these frames, or some of them are not this rounding. Not traced yet.
+**Status:** explained. Two brightness rules, snesrecomp's and MesenCE's; a compare run can switch the recomp to MesenCE's
+(`--fade`), and then the picture of both committed replays is identical at every NMI. Play keeps snesrecomp's rule.
 
 ## What happens
-Below full brightness a pixel differs from MesenCE's by up to 8 of 255 per channel. MesenCE scales the 5-bit colour and
-then widens it to 8 bits (`SnesPpu::ApplyBrightness`); snesrecomp's legacy renderer widens first and then scales
-(`ppu_legacy.c`, `((c << 3) | (c >> 2)) * brightness / 15`). At brightness 10, colour 1 is 0 on MesenCE and 5 here.
-Dark colours are therefore a little brighter here during fades and in dimmed scenes.
+Below full brightness (INIDISP `$2100` bits 0-3 under 15) a colour component `c` (5 bits) is scaled by the brightness `l`:
 
-## Measured
-`compare --full --picture` on all five replays: the picture differs only below brightness 15. With `--fade`, which rewrites
-the recomp's pixels by MesenCE's rule before hashing (`SOE_COMPARE_FADE`, compare runs only, nothing changes in play), see
-[../progress-details.md](../progress-details.md), "Picture and sound".
+| | Rule | Colour 1 at brightness 10 |
+|---|---|---|
+| snesrecomp since `81d410f2` (2026-11-04, in our pin) | `round(c * l / 15)`, then widened to 8 bits: bsnes's light table | 1 → 8 |
+| MesenCE 2.2.1 (`SnesPpu::ApplyBrightness`) | `c * l / 15`, truncated, then widened | 0 → 0 |
 
-With `--fade` the picture matches at every key of all five replays but one. That key is a different thing: key 2992 of
-replay 05, the last of a fade to black, differs in rows 0-24 alone, MesenCE 8 where the recomp has 0, and key 2993 matches.
-MesenCE drew those rows at brightness 1 and the rest at 0; the recomp has 0 everywhere, so a brightness write during the
-frame reached rows already past. Why those rows were not yet drawn here has not been traced.
+So during fades and in dimmed scenes some pixels are one 5-bit step (8 of 255) brighter here. Which rule the console follows is not
+settled here: the two reference emulators disagree, and the hardware scales in its analog stage. It is not a recompilation error:
+WRAM, VRAM, CGRAM and OAM, everything the PPU draws from, are identical at every NMI.
 
-## What would fix it
-The order of the two steps in the renderer, in snesrecomp (for upstream). The glue could rewrite each finished frame
-with the same table as `SOE_COMPARE_FADE`, but brightness can change between lines, so that is only exact when it does
-not.
+Before `81d410f2`, snesrecomp widened to 8 bits first and then scaled; this file described that until 2026-11-07, and the old `--fade`
+rewrite modelled it. Against the new rounding that rewrite was wrong, which is why it made more keys differ, not fewer.
+
+## Measured (2026-11-07)
+`node tools/compare/full.mts`, every NMI of the committed replays:
+
+| Picture | Replay 01 (8,592 NMIs) | Replay 02 (23,756 NMIs) |
+|---|---|---|
+| snesrecomp's rule | 289 differ | 948 differ |
+| `--fade`: MesenCE's rule | **0** | **0** |
+
+## How `--fade` works
+`SOE_COMPARE_FADE` sets `g_ppu_brightness_truncate`, a switch in snesrecomp's `ppu_brightness_level` (the framework patch,
+[../pr/05-brightness-rule.md](../pr/05-brightness-rule.md)), before the first frame. Every renderer path then scales as MesenCE does.
+Nothing is rewritten after drawing, so a brightness change in the middle of a frame is drawn as it happens.
+
+## Still open
+A local replay from a save state (key 2992 of the 2026-11-05 replay 05) differed in rows 0-24 at the end of a fade to black: MesenCE
+drew them at brightness 1, the recomp at 0. Measured with the old rewrite; not run again with the new switch
+([../progress-internal.md](../progress-internal.md)).

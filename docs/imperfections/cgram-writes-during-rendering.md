@@ -1,6 +1,6 @@
 # CGRAM Writes During Rendering
 
-**Status:** fixed for DMA in our frame driver (`charge_dma`, `cgram_dma_finish`), with colour 0 as the target (Limits).
+**Status:** fixed for DMA in our glue (`src/soe_ppu_fixes.c`: `charge_dma`, `soe_ppu_fixes_slice_end`), with colour 0 as the target (Limits).
 
 ## What MesenCE does
 `SnesPpu::Write` `$2122`: outside vblank, forced blank and H-blank (`CanAccessCgram`: H<88, H>=1096), a write goes to the colour
@@ -18,7 +18,7 @@ outside the window on MesenCE, all with colour 0 as the PPU's colour. Ours clear
 ## Fix
 `snes_set_master_clock_charge_hook` runs before a `$420B` transfer: our hook (the framework's two lines, plus this) keeps CGRAM when
 a channel to `$2122` fits the charge. The hook is not told the channels and other channels keep old sizes, so the fit is on the
-clocks. When the slice ends, `cgram_dma_finish` walks the bytes: the first lands 24 clocks after the 8-clock alignment, then 8
+clocks. When the slice ends, `soe_ppu_fixes_slice_end` walks the bytes: the first lands 24 clocks after the 8-clock alignment, then 8
 each, 40 more at a refresh point. Measured: that offset is the only one of 16, 20, 24, 28 that is exact.
 
 Bit 7: the driver clears it from all of CGRAM at every NMI. Rendering and `$213B` already ignore it.

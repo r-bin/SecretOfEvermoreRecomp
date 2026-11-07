@@ -14,6 +14,8 @@ Upstream: https://github.com/RetroPortingToolKit/snesrecomp. Measured 2026-11-07
 | 2 | [02-ppu-reads-during-rendering.md](02-ppu-reads-during-rendering.md) | not opened | draft | 1 | Game-neutral test, then open |
 | 3 | [03-bus-exact-compiled-code.md](03-bus-exact-compiled-code.md) | not opened | draft, **blocked** on a decision | 1 | Decide against [#250](https://github.com/RetroPortingToolKit/snesrecomp/pull/250)/[#251](https://github.com/RetroPortingToolKit/snesrecomp/pull/251) |
 | 4 | [04-compiled-resume.md](04-compiled-resume.md) | not opened | draft | 3 | Follows 3 |
+| 5 | [05-brightness-rule.md](05-brightness-rule.md) | not opened | draft | — | Ask upstream whether a parity switch is welcome |
+| 6 | [06-frame-driver.md](06-frame-driver.md) | not opened | draft, no branch yet | 1 | Port `src/soe_frame_driver.c` once #241 is merged |
 
 **Why each one, and the doubts:**
 
@@ -23,16 +25,18 @@ Upstream: https://github.com/RetroPortingToolKit/snesrecomp. Measured 2026-11-07
 | 2 | Yes, from NMI 5998 (replay 01 only) | Checked against one game's reads; one CGRAM case not modelled |
 | 3 | Compiled code only, from NMI 320 | **#250/#251 may replace it**, untested |
 | 4 | **No.** Only the native share, 16.31 % → 99.70 % | Speed gain not measured; built on 3, so it moves with 3; can be dropped |
+| 5 | **No.** The picture only: 289 (01) and 948 (02) NMIs differ without it, none with it | A switch for parity with one emulator; upstream chose bsnes's rule on purpose |
+| 6 | Yes, from NMI 5 (the late NMI); today supplied by our glue | Large; the fitted 20-clock leads must go first; no game-neutral test yet |
 
 State values: draft, open, conflicts, merged, closed. Update this table when a state changes, and the file's Status line with it.
 
-The framework side of all four is `framework/snesrecomp.patch` in this repository: the tree of the local snesrecomp branch
+The framework side of all of them is `framework/snesrecomp.patch` in this repository: the tree of the local snesrecomp branch
 `pr-stack-on-main` against main ([../framework.md](../framework.md)). A reviewer needs only this repository.
 
 ## What was tested
 
 The whole stack on current main (`pr-stack-on-main`, `eb2b5e88`: main + #241 + the later commits + the PB fix
-([04](04-compiled-resume.md)) + test stubs for PRs 2-4). Against MesenCE 2.2.1 at every NMI from power-on, nothing copied in or
+([04](04-compiled-resume.md)) + test stubs for PRs 2-4; `8b525c5c` adds PR 5, off by default, so the memory results stand). Against MesenCE 2.2.1 at every NMI from power-on, nothing copied in or
 masked, native and all-interpreted alike ([../progress.md](../progress.md)):
 
 | Replay | NMIs | WRAM, VRAM, CGRAM, OAM, SRAM |
@@ -127,6 +131,9 @@ constant fitted to this game.
 ## Our own code that could follow
 
 `src/soe_frame_driver.c` holds game-neutral hardware rules that snesrecomp's `beam_frame_driver.c` lacks: late NMI, the interrupt
-sequence's cost, NMI recognition, line 240's short field, refresh position, the auto-joypad window, CPU start at clock 186
-([../upstream-access-timing.md](../research/upstream-access-timing.md) part F). They are not changes to snesrecomp, so they have no file here.
-They matter anyway: until they move, nobody but this port gets the full result, and #241's hooks have no caller inside snesrecomp.
+sequence's cost, NMI recognition, line 240's short field, refresh position, the auto-joypad window, CPU start at clock 186. Since
+2026-11-07 it holds nothing else: [06-frame-driver.md](06-frame-driver.md) lists each rule with its evidence and what must change
+before it can go upstream. Until it does, nobody but this port gets the full result, and #241's hooks have no caller inside snesrecomp.
+
+`src/soe_ppu_fixes.c` changes what the framework's PPU and registers do from outside, for DMA only (open bus, 15-bit CGRAM, writes
+during rendering). Each belongs in `ppu.c` or `snes.c` as its own change, listed in the same file.

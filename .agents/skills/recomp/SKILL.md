@@ -15,7 +15,7 @@ glue), `headless-exploration.md` (driving the game from a script), `debugging.md
 ```sh
 bash tools/regen.sh --rom <rom>                      # ROM -> src/gen/ (~2-3 min); the log must say `28 bank(s) emitted`
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSOE_TEST_ROM=<rom> && cmake --build build -j
-ctest --test-dir build --output-on-failure           # ~90 s: tool tests, reset, save state, both replays
+ctest --test-dir build --output-on-failure           # 4-6 min: tool tests, reset, save state, both replays
 ```
 
 - Headless: `build/SecretOfEvermoreSNESRecomp --no-launcher --script s.txt <rom>` with `SNESRECOMP_DUMP_DIR`. Copy `build/`

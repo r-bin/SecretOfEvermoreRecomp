@@ -25,7 +25,7 @@ end are background, dated and not kept current.
 | [bugs-and-todos.md](bugs-and-todos.md) | Open and solved bugs, each with its root cause and lesson |
 | [roadmap.md](roadmap.md) | The open work, in working order |
 | [cdl-and-seeds.md](cdl-and-seeds.md) | How good the recording behind the seeds is, and why only the seeds are committed |
-| [progress-details.md](progress-details.md) | The measurements behind progress.md: native share, speed, banks, bound C |
+| [progress-internal.md](progress-internal.md) | The local replays (save states, battery RAM: not in git) and the measurements behind progress.md: native share, speed, banks, bound C |
 
 ## Pipeline
 

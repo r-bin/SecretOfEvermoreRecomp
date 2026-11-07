@@ -186,6 +186,9 @@ static void CmpInit(void) {
     }
     /* Against MesenCE: its 4th MB is file page $200000 over and over (a loop in BaseCartridge counts pages in bytes);
      * a cartridge's is the 3rd MB, as ours. $80:D113 reads there (docs/imperfections/mesen-rom-mirror.md). */
+    /* SOE_COMPARE_FADE: brightness scaled as MesenCE scales it (truncated, not rounded as snesrecomp does), so the picture
+     * shows what else differs (docs/imperfections/fade-rounding.md). Before the first frame: the renderer caches it. */
+    if (getenv("SOE_COMPARE_FADE")) g_ppu_brightness_truncate = 1;
     Cart *cart = g_snes->cart;
     if (getenv("SOE_COMPARE_MESEN_ROM_MIRROR") && cart->romSize == 0x400000)
         for (uint32_t o = 0x300000; o < 0x400000; o += 0x1000) memcpy(cart->rom + o, cart->rom + 0x200000, 0x1000);
@@ -250,26 +253,12 @@ enum { CMP_PICTURE_BYTES = 256 * 224 * 4 };
 static size_t CmpPicture(uint8_t *out) {
     Ppu *ppu = g_snes->ppu;
     const size_t left = (size_t)ppu->extraLeftRight * 4;
-    /* SOE_COMPARE_FADE: our renderer scales the 8-bit colour by the brightness, MesenCE the 5-bit one; this rewrites a
-     * pixel by MesenCE's rule, so a run can tell that rounding from any other difference
-     * (docs/imperfections/fade-rounding.md). */
-    static uint8_t table[256];
-    const uint8_t *fade = NULL;
-    const unsigned bright = PPU_brightness(ppu);
-    if (getenv("SOE_COMPARE_FADE") && bright > 0 && bright < 15) {
-        for (int c = 31; c >= 0; c--) {
-            const unsigned c8 = (unsigned)(c << 3 | c >> 2), m5 = (unsigned)c * bright / 15;
-            table[c8 * bright / 15] = (uint8_t)(m5 << 3 | m5 >> 2);
-        }
-        fade = table;
-    }
     for (int y = 0; y < 224; y++) {
         const uint8_t *row = ppu->renderBuffer ? ppu->renderBuffer + (size_t)y * ppu->renderPitch + left : NULL;
         for (int x = 0; x < 256; x++) {
             uint8_t *o = out + ((size_t)y * 256 + (size_t)x) * 4;
             if (row) memcpy(o, row + (size_t)x * 4, 3); else memset(o, 0, 3);
             o[3] = 0;
-            if (fade) for (int c = 0; c < 3; c++) o[c] = fade[o[c]];
         }
     }
     return CMP_PICTURE_BYTES;

@@ -99,7 +99,7 @@ Verify an exclusion took: the address has only `NULL` variants in `dispatch_v2.c
 | MesenCE files | everscript-vscode's `out/recomp/asar/mesen/` |
 | Our glue / hooks | `src/game_rtl.c`, `src/main.c` (`after_config`), `src/soe_frame_driver.c` |
 | Seed generation, exclusions | everscript-vscode's `src/platform/cdl/recomp-seeds.ts`; `recomp/seed-exclusions.txt` here |
-| Helpers | `tools/`: `compare/` (and its `probes/`), `check-obj-tiles.js`, `bisect.js`, `verify-intro.js`; optional in everscript-vscode: `tools/recomp/room-nav.js`, `s9x-run.js` |
+| Helpers | `tools/`: `compare/` (and its `probes/`), `check-obj-tiles.js`, `bisect.js`; optional in everscript-vscode: `tools/recomp/room-nav.js`, `s9x-run.js` |
 | Clean ROM | yours, outside the repo (`SNESRECOMP_ROM`; SHA-256 in `rom_identity.txt`) |
 | Game facts | everscript-vscode's `src/games/evermore/localizations/knowledge/{ram,rom}/`, MCP `soe://` (`rom/assets/maps/<room>/scripts/`, `characters/`) |
 | Runner switches | `grep -rhoE 'getenv\("SNESRECOMP_[A-Z0-9_]+' snesrecomp/runner/src` |

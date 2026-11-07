@@ -45,7 +45,8 @@ ctest --test-dir build --output-on-failure
 ```
 
 The replay tests check the recomp against stored MesenCE runs, so MesenCE is not needed. To compare against MesenCE
-itself, and for what each test proves: [docs/testing.md](docs/testing.md).
+itself (the 2.2.1 release, nesdev-org/MesenCE commit `20ba206c`), and for what each test proves:
+[docs/testing.md](docs/testing.md).
 
 ## Run
 
@@ -61,7 +62,7 @@ beside the executable and survive rebuilds.
 
 | Path | What |
 |---|---|
-| `src/` | Our glue: `game_rtl.c` (hooks, save states, compare harness), `soe_frame_driver.c` (frame and interrupt timing), `soe_bindings.c` (routines run as C), `main.c` |
+| `src/` | Our glue: `game_rtl.c` (hooks, save states, compare harness), `soe_frame_driver.c` (frame and interrupt timing), `soe_ppu_fixes.c` (PPU and register behaviour the framework lacks), `soe_bindings.c` (routines run as C), `main.c` |
 | `src/bound-c/` | Reconstructed C of the bound routines, imported from [everscript-vscode](https://github.com/r-bin/everscript-vscode) |
 | `src/gen/` | Generated C, never committed |
 | `recomp/` | Analysis input: `bank*.cfg` (seeds), `seed-exclusions.txt`, `symbols.toml` |

@@ -27,7 +27,7 @@ Comparing everything, MesenCE against the recomp:
 | `--full` | every RAM (WRAM, VRAM, CGRAM, OAM, SRAM, ARAM, S-DSP registers) at every key, on to the end, each region's result in the report |
 | `--picture` | adds the rendered picture: the 224 lines before each NMI |
 | `--sound` | adds the S-DSP's whole state: output samples, voices, envelopes, BRR buffers, echo |
-| `--fade` | with `--picture`: the recomp's pixels rewritten by MesenCE's brightness rounding, to see what else differs (`docs/imperfections/fade-rounding.md`) |
+| `--fade` | with `--picture`: the recomp scales brightness by MesenCE's rule (truncated, not rounded; `g_ppu_brightness_truncate`), to see what else differs (`docs/imperfections/fade-rounding.md`) |
 | `--interpreted` | the recomp all-interpreted, for the reference column of a native build |
 | `node tools/compare/full.mts` | all sync replays with all of the above, one after the other; reports in `out/compare/full/`. `--only 01,06`, `--no-picture`, `--no-sound`, `--interpreted`, `--fade` |
 
@@ -141,6 +141,13 @@ time them with `spc.cycle / spc.clockRatio`.
 
 `spc-trace.mts <rom> <replay> <K> [n] [context]` compares the SPC700's instruction stream from NMI K for n NMIs: in sync the
 recomp's cycles read 1 above MesenCE's (where each logs). Bisect K to find where sound parts.
+
+`dsp-reads.mts <rom> <replay> <K> [n] [context]` compares the SPC700's reads of the S-DSP (`$F3`: cycle, register, value) from NMI K
+for n NMIs. It sees what `spc-trace.mts` cannot: a value the driver moves with `MOV dp,dp`, past a and y. The recomp side needs
+`SNESRECOMP_DSP_LOG` (set by the probe), which logs every read from power-on, so a late K takes a while.
+
+A probe's Lua `print` lines reach `onLine` only when they do not start with the harness's own prefixes (`H `, `N `, `P `, `X `, `D `,
+`DONE `, in `mesen.mts`): a probe that printed `D ...` got no lines at all.
 
 ## Limits
 

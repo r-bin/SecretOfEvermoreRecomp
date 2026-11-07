@@ -2938,7 +2938,7 @@ index a1b4119c..ecf09b81 100644
      if (s_lle_unwind_active)   /* yield unwound through this nested frame */
          return (RecompReturn)RECOMP_RETURN_LLE_UNWIND_BASE;
 diff --git a/runner/src/snes/ppu.c b/runner/src/snes/ppu.c
-index 3648d55d..0dfc9bfa 100644
+index 3648d55d..10c1db6a 100644
 --- a/runner/src/snes/ppu.c
 +++ b/runner/src/snes/ppu.c
 @@ -22,6 +22,14 @@ void ppu_setGuestScope(bool active) {s_guest_scope=active;}
@@ -3131,6 +3131,37 @@ index 3648d55d..0dfc9bfa 100644
        }
        ppu->cgramSecondWrite = !ppu->cgramSecondWrite;
        return ret;
+@@ -3286,6 +3420,7 @@ uint8_t ppu_read(Ppu* ppu, uint8_t adr) {
+  *                                   the field ended, so the guest resumes
+  *                                   with the register file it last wrote */
+ int g_ppu_scanout_latch_bypass = 0;
++int g_ppu_brightness_truncate = 0;
+ 
+ static PpuVramWriteLogHook s_vram_write_log_hook;
+ 
+diff --git a/runner/src/snes/ppu_brightness.h b/runner/src/snes/ppu_brightness.h
+index 626041b4..8140f8b3 100644
+--- a/runner/src/snes/ppu_brightness.h
++++ b/runner/src/snes/ppu_brightness.h
+@@ -7,9 +7,16 @@
+  * Hardware scales in the 5-bit domain with rounding, then expands to 8 bits
+  * (bsnes lightTable: round(c * l / 15), then (c << 3) | (c >> 2)). Expanding
+  * first and truncating left fades a few levels off. The GLSL path in
+- * desktop/hd_gpu.c computes the same expression. */
++ * desktop/hd_gpu.c computes the same expression.
++ *
++ * g_ppu_brightness_truncate: scale with truncation instead, as MesenCE does
++ * (SnesPpu::ApplyBrightness: c * l / 15), so a parity run against it can tell
++ * the brightness rule from any other difference in the picture. Set it before
++ * the first frame (the optimized renderer caches its table per brightness);
++ * the GLSL path does not follow it. */
++extern int g_ppu_brightness_truncate;
+ static inline uint8_t ppu_brightness_level(unsigned c, unsigned l) {
+-  unsigned v = (2u * c * l + 15u) / 30u;
++  unsigned v = g_ppu_brightness_truncate ? c * l / 15u : (2u * c * l + 15u) / 30u;
+   return (uint8_t)((v << 3) | (v >> 2));
+ }
+ 
 diff --git a/runner/src/snes/snes.c b/runner/src/snes/snes.c
 index 88f789ba..b7d5f315 100644
 --- a/runner/src/snes/snes.c
@@ -3837,6 +3868,34 @@ index 821c3b5d..4b216ed1 100644
      apu->ram[0x0100] ^= 0xFFu;
      check(snes_state_digest_apu_of(apu) != base, "APU RAM is included");
      apu->ram[0x0100] ^= 0xFFu;
+diff --git a/tests/ppu/ppu_brightness_test.c b/tests/ppu/ppu_brightness_test.c
+index abc7f409..f3582c08 100644
+--- a/tests/ppu/ppu_brightness_test.c
++++ b/tests/ppu/ppu_brightness_test.c
+@@ -95,6 +95,23 @@ int main(void) {
+                      f ? "optimized" : "compatibility", kCases[i].c, kCases[i].l, kCases[i].want, got);
+             failures += check(got == kCases[i].want, msg);
+         }
++    /* MesenCE's rule, for parity runs: truncated in the 5-bit domain. */
++    static const struct { unsigned c, l; int want; } kTruncated[] = {
++        {  1, 10,   0 },   /* 1*10/15 = 0 (rounded: 1 -> 8) */
++        {  8,  1,   0 },   /* 8/15 = 0 (rounded: 8) */
++        { 31,  7, 115 },   /* 217/15 = 14 -> 115 either way */
++        { 31, 15, 255 },
++    };
++    g_ppu_brightness_truncate = 1;
++    for (size_t f = 0; f < 2; f++)
++        for (size_t i = 0; i < sizeof kTruncated / sizeof kTruncated[0]; i++) {
++            char msg[112];
++            int got = red_at(ppu, kTruncated[i].c, kTruncated[i].l, kFlags[f]);
++            snprintf(msg, sizeof msg, "%s renderer, truncated: colour %u at brightness %u -> %d (got %d)",
++                     f ? "optimized" : "compatibility", kTruncated[i].c, kTruncated[i].l, kTruncated[i].want, got);
++            failures += check(got == kTruncated[i].want, msg);
++        }
++    g_ppu_brightness_truncate = 0;
+     /* Raster jobs: every 5-bit component at every level. */
+     static SnesRenderColorCache cache;
+     for (unsigned l = 0; l < 16; l++) {
 diff --git a/tests/run_c_tests.sh b/tests/run_c_tests.sh
 index 224066ef..c4de1e5a 100644
 --- a/tests/run_c_tests.sh
