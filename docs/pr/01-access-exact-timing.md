@@ -38,9 +38,9 @@ What changes:
 
 Every part is required: each one turned off alone makes the attract replay part from MesenCE (table in the comment below).
 
-Result, with the later PRs of this series, on current main: WRAM, VRAM, CGRAM, OAM and SRAM identical to MesenCE at every frame of
-five replays, 71,055 frames, interpreted and compiled. With this PR alone, interpreted: identical through frame 5997 of the attract
-replay; the next PR covers the rest.
+Result, with the later PRs of this series, on current main: WRAM, VRAM, CGRAM, OAM and SRAM identical to MesenCE at every NMI of
+two replays from power-on (32,348 NMIs), interpreted and compiled, with nothing copied in or masked. With this PR alone,
+interpreted: identical through NMI 5997 of the attract replay; the next PR covers the rest.
 
 Limits and doubts:
 - `RTL_MASTER_PER_SEC` is the NTSC master clock, PAL is not handled. DMA's end alignment assumes 6-clock code.
@@ -59,29 +59,32 @@ Answers `mstan`'s request and `pogoflow`'s two questions. Fill the heads in afte
 Sorry for the wait. Here is the recipe; ROMs and generated C stay out of it.
 
 - **ROM:** Secret of Evermore (USA), headerless, SHA-256 `17c864a76d498feb6479eee8e7d6807b951c66225033228622bb66754baab1db`.
-- **Consumer:** https://github.com/r-bin/SecretOfEvermoreRecomp at `<head>`, snesrecomp at `<pr-stack-on-main head>`.
-- **Tools:** https://github.com/r-bin/everscript-vscode at `<head>`.
-- **MesenCE:** 2.2.1, https://github.com/r-bin/MesenCE, headless with `--testrunner --snes.ramPowerOnState=AllZeros --snes.disableFrameSkipping=true`.
-- **Input:** none. Power-on, 14,424 frames, no button pressed. The five-line replay file is in the recipe.
-- **Commands and expected output:** `docs/pr/README.md`, section Reproduce, in the consumer repository.
+- **Consumer:** https://github.com/r-bin/SecretOfEvermoreRecomp at `<head>`. It builds and tests on its own; this PR and the
+  later ones are its `framework/snesrecomp.patch` on main `816bc5ac`, applied by `tools/regen.sh`.
+- **MesenCE:** the 2.2.1 release (nesdev-org/MesenCE tag `2.2.1`, `20ba206c`), default settings, run headless with
+  `--testrunner --snes.ramPowerOnState=AllZeros --snes.disableFrameSkipping=true`.
+- **Input:** `tools/compare/replays/01-no-inputs-1-loop.mmo`, a MesenCE 2.2.1 movie from power-on with no button pressed
+  (8,592 NMIs); `02-new-game-to-flowers.mmo` plays a new game (23,756 NMIs). Input and settings only.
+- **Comparison:** WRAM, VRAM, CGRAM and OAM hashed at every NMI on both sides from power-on. Nothing is copied from MesenCE into
+  the recomp and no byte is masked.
+- **Commands and expected output:** `docs/testing.md` and `docs/pr/README.md` (section Reproduce) in the consumer repository.
 
-Not compared: frames before 120 (the RNG is copied from MesenCE at 115) and the WRAM bytes `$02-$0F`, `$10E-$116`, `$1FEE`, `$1FF4`.
-The two replays that start from a MesenCE state copy nothing and compare every frame.
-
-Each part turned off alone, attract replay, first frame WRAM differs from MesenCE:
+Each part turned off alone, first NMI where WRAM parts from MesenCE (attract replay / new game; native and interpreted alike):
 
 | Off | Parts at |
 |---|---|
-| master-clock timeline | 319 |
-| SPC access cycles, DMA alignment | 320 |
-| host access clock | 362 |
-| per-clock S-DSP, timer phase | 1492 |
-| timer access cycle | 2468 |
-| `$F3` access cycle | 2757 |
-| `g_snes_dma_charged` | 3876 |
-| line-0 HDMA wait | 4978 |
-| H/V flip-flops, empty `$420B` is free | 5998 |
-| latch position, `$2137` open bus | 11987 |
+| empty `$420B` is free, DMA end alignment, latch position, `$2137` open bus | 1 / 1 |
+| master-clock timeline, port hold, port drain, SPC reset delay | 2 / 2 |
+| SPC access cycles | 11 / 11 |
+| DMA alignment | 26 / 26 |
+| hardware cycle map, queue order, write lead | 320 / 320 |
+| host access clock | 362 / 362 |
+| per-clock S-DSP, timer phase | 1492 / 578 |
+| timer access cycle | 2464 / 578 |
+| `$F3` access cycle | 2757 / 4372 |
+| `g_snes_dma_charged` | 3876 / 3221 |
+| line-0 HDMA wait | 4978 / in sync |
+| H/V flip-flops | 5998 / in sync |
 
 @pogoflow on your two points: the overshoot is gone with #258 and `3856deb1`. The input delay is here too: a CPU write at half-cycle
 `h` is seen by SPC accesses from `h + 2` on (`rtl_apu_write_target`).
@@ -91,31 +94,35 @@ I'm removing the parts no replay needs and rebasing on main.
 
 ## Required
 
-Replay 01, on current main. Native and interpreted part at the same frame.
+Each change turned off alone, on the committed replays from power-on, measured 2026-11-07: the first NMI where WRAM parts from
+MesenCE. Native and interpreted part at the same NMI in every row.
 
-| Change | Switch | Parts at |
-|---|---|---|
-| Master-clock APU timeline | `SNESRECOMP_APU_MASTER_CLOCK=0` | 319 |
-| SPC port accesses on their own cycle | `SNESRECOMP_SPC_ACCESS_CYCLES=0` | 320 |
-| — access numbers mapped to hardware cycles | `ABL_HW_CYCLE` | 320 |
-| — hold the opcode that would touch a port too early | `ABL_HOLD` | 320 |
-| — a port read takes the writes due by its cycle | `ABL_DRAIN_TO` | 320 |
-| — port queue stays in time order | `ABL_QUEUE_ORDER` | 320 |
-| — SPC starts 3 cycles after reset | `ABL_RESET3` | 320 |
-| A write lands at the end of its bus cycle | `ABL_WRITE_LEAD` | 320 |
-| General DMA alignment | `SNESRECOMP_DMA_ALIGN=0` | 320 |
-| — end alignment | `SNESRECOMP_DMA_END_SPEED=0` | 320 |
-| Host access clock (`RtlSetCpuAccessClockHook`) | `ABL_ACCESS_HOOK` | 362 |
-| S-DSP per clock | `SNESRECOMP_DSP_PER_CLOCK=0` | 1492 |
-| SPC timer phase | `SNESRECOMP_SPC_TIMER_PHASE=0` | 1492 |
-| Timer accesses on their cycle | `ABL_TIMERS_TO` | 2468 |
-| `$F3` accesses on their cycle | `ABL_DSP_TO` | 2757 |
-| `g_snes_dma_charged` | `ABL_DMA_CHARGED` | 3876 |
-| DMA waits behind the line-0 HDMA init | `ABL_HDMA_INIT` | 4978 |
-| Latch leaves the H/V flip-flops alone | `ABL_HV_TOGGLE` | 5998 |
-| Empty `$420B` costs nothing | `ABL_DMA_ZERO` | 5998 (VRAM) |
-| Latch position at the access's clock | `ABL_HV_HOOK` | 11987 |
-| `$2137` reads open bus | `ABL_OPENBUS2137` | 11987 |
+| Change | Switch | Replay 01 | Replay 02 |
+|---|---|---|---|
+| Master-clock APU timeline | `SNESRECOMP_APU_MASTER_CLOCK=0` | 2 | 2 |
+| SPC port accesses on their own cycle | `SNESRECOMP_SPC_ACCESS_CYCLES=0` | 11 | 11 |
+| — access numbers mapped to hardware cycles | `ABL_HW_CYCLE` | 320 | 320 |
+| — hold the opcode that would touch a port too early | `ABL_HOLD` | 2 | 2 |
+| — a port read takes the writes due by its cycle | `ABL_DRAIN_TO` | 2 | 2 |
+| — port queue stays in time order | `ABL_QUEUE_ORDER` | 320 | 320 |
+| — SPC starts 3 cycles after reset | `ABL_RESET3` | 2 | 2 |
+| A write lands at the end of its bus cycle | `ABL_WRITE_LEAD` | 320 | 320 |
+| General DMA alignment | `SNESRECOMP_DMA_ALIGN=0` | 26 | 26 |
+| — end alignment | `SNESRECOMP_DMA_END_SPEED=0` | 1 | 1 |
+| Host access clock (`RtlSetCpuAccessClockHook`) | `ABL_ACCESS_HOOK` | 362 | 362 |
+| S-DSP per clock | `SNESRECOMP_DSP_PER_CLOCK=0` | 1492 | 578 |
+| SPC timer phase | `SNESRECOMP_SPC_TIMER_PHASE=0` | 1492 | 578 |
+| Timer accesses on their cycle | `ABL_TIMERS_TO` | 2464 | 578 |
+| `$F3` accesses on their cycle | `ABL_DSP_TO` | 2757 | 4372 |
+| `g_snes_dma_charged` | `ABL_DMA_CHARGED` | 3876 | 3221 |
+| DMA waits behind the line-0 HDMA init | `ABL_HDMA_INIT` | 4978 | in sync |
+| Latch leaves the H/V flip-flops alone | `ABL_HV_TOGGLE` | 5998 | in sync |
+| Empty `$420B` costs nothing | `ABL_DMA_ZERO` | 1 | 1 |
+| Latch position at the access's clock | `ABL_HV_HOOK` | 1 | 1 |
+| `$2137` reads open bus | `ABL_OPENBUS2137` | 1 | 1 |
+
+Replay 01 needs every row. The parts at NMI 1 are the reset code's RNG seed, read from the H/V latch: it is compared from
+power-on now, so a change there shows at once.
 
 An access's own port lead stays too, as the exception in [README.md](README.md#not-proposed). Everything else in the PR's commits goes.
 
@@ -124,7 +131,7 @@ An access's own port lead stays too, as the exception in [README.md](README.md#n
 All of it is hardware behaviour, but four things are not clean yet:
 
 - **Fitted constant: `dma_lead = 30`.** That is a FastROM `STA abs`. Fix: `interp_bridge_access_lead(0x420b, 20) + 10`, the write's real
-  clock plus the rest of its bus cycle and the next fetch. Tested (`ABL_DMA_LEAD_DYN`): identical on all five replays, both modes.
+  clock plus the rest of its bus cycle and the next fetch. Tested (`ABL_DMA_LEAD_DYN`): identical on both committed replays, both modes.
 - **`dma_end_speed = 6`** assumes the next opcode comes from FastROM. A SlowROM game needs 8. Not fixed, not testable with this game.
 - **NTSC only.** `RTL_MASTER_PER_SEC` and the SPC rate have no PAL case.
 - **No caller inside snesrecomp.** `RtlApuUseMasterClock`, `RtlSetCpuAccessClockHook` and `g_snes_dma_charged` are used only by our
@@ -138,7 +145,6 @@ and Super Metroid on the PR with no regression. The master-clock timeline is opt
 
 ## Reproduce
 
-Replay 01 reproduces all of it. Setup: [README.md](README.md#reproduce), steps 1-6. Then, per row above, the switch in step 7. Rows named
-`ABL_*` need [ablation-gates.patch](ablation-gates.patch).
-
-With this PR alone (no PR 2), replay 01 parts at 5998, as its body says: that is `SNESRECOMP_PPU_RENDER_READS=0` on the full stack.
+Replay 01 reproduces all of it. Setup and the command: [README.md](README.md#reproduce). Then each row's switch on the same
+command; rows named `ABL_*` need [ablation-gates.patch](ablation-gates.patch). All rows at once: `tools/compare/probes/ablate.mts`
+(README.md, "All of it at once").

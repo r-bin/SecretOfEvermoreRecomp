@@ -7,7 +7,8 @@ Commit: `3b73e98c` (`abeba9ab` on `pr-stack-on-main`, one conflict with `mstan`'
 ## To do before opening
 
 1. Add a game-neutral test: a PPU harness that reads `$2138` and `$213B` at chosen H/V positions, in `tests/ppu/`.
-2. Open it stacked on #241.
+2. Carry the test stub, `7359f4f6` on `pr-stack-on-main` (`g_ppu_beam_hook` in `tests/dma/hdma_timing_test.c`).
+3. Open it stacked on #241.
 
 ## PR title
 
@@ -44,13 +45,15 @@ Depends on #241.
 
 ## Required
 
-Replay 01, on current main. Native and interpreted part at the same frame.
+Each turned off alone on the committed replays (2026-11-07): the first NMI where WRAM parts. Native and interpreted alike.
 
-| Change | Switch | Parts at |
-|---|---|---|
-| The whole change | `SNESRECOMP_PPU_RENDER_READS=0` | 5998 |
-| OAM rule alone | `ABL_RENDER_OAM` | 5998 |
-| CGRAM rule alone | `ABL_RENDER_CGRAM` | 5998 |
+| Change | Switch | Replay 01 | Replay 02 |
+|---|---|---|---|
+| The whole change | `SNESRECOMP_PPU_RENDER_READS=0` | 5998 | in sync |
+| OAM rule alone | `ABL_RENDER_OAM` | 5998 | in sync |
+| CGRAM rule alone | `ABL_RENDER_CGRAM` | 5998 | in sync |
+
+Only the attract demo reads OAM and CGRAM during rendering (its RNG seed at NMI 5998); the new game does not.
 
 ## Not game specific?
 

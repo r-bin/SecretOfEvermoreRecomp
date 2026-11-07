@@ -11,7 +11,7 @@ by `rages4calm` add `--instruction-blocks --region-paced`: one block per instruc
 helpers. That is nearly the same contract as our `recompiler/v2/bus_exact.py`. Two ways on:
 
 - **Build on #250/#251 (recommended).** Try their flags for this game; send only what is missing. Upstream gets one mechanism, not two.
-- **Send ours.** It is proven on five replays. It would compete with a PR already in review.
+- **Send ours.** It is proven on the replays of 2026-11-05 and on both committed replays. It would compete with a PR already in review.
 
 Not tested yet: whether their flags keep Secret of Evermore in sync, and what would be missing. Our resume ([PR 4](04-compiled-resume.md))
 hangs off `bus_exact.py`, so it would have to move too. Their docs mention MMIO and bank-boundary cases that return to the interpreter;
@@ -23,8 +23,8 @@ how often that happens here decides whether PR 4 still reaches its native share.
 2. Make the generator switches part of the output's identity. On main, `v2_emit` reuses published output without looking at
    `SNESRECOMP_EXACT_BUS` or `SNESRECOMP_AOT_RESUME`: a regenerate with the switch changed prints `0 bank(s) emitted, 28 reused` and
    leaves the old code in place. #250 does this for its flags, in `tools/generation_recipe.py`.
-3. Add a stub for `g_aot_access_prefix` to `tests/v2/test_rdnmi_ownership.py`, which no longer links. The stub for `g_ppu_beam_hook`
-   belongs to [PR 2](02-ppu-reads-during-rendering.md).
+3. Carry the test stub, `666e9f60` on `pr-stack-on-main` (done 2026-11-07: `g_aot_access_prefix` in
+   `tests/dma/hdma_timing_test.c`, which `tests/v2/test_rdnmi_ownership.py` links).
 4. Check read-modify-write and word accesses that straddle regions. This game has none.
 
 ## PR title
@@ -63,12 +63,12 @@ Depends on #241.
 
 ## Required
 
-Replay 01, on current main, native. The interpreter does not use this code.
+Native; the interpreter does not use this code. First NMI where WRAM parts:
 
-| Change | Off | Parts at |
-|---|---|---|
-| The whole change | regenerate with `SNESRECOMP_EXACT_BUS=0 SNESRECOMP_AOT_RESUME=0` | 320 |
-| Per-instruction hook in compiled code | `ABL_PC_HOOK_AOT` | 334 with resume, 6840 without |
+| Change | Off | Replay 01 | Replay 02 |
+|---|---|---|---|
+| The whole change | regenerate with `SNESRECOMP_EXACT_BUS=0 SNESRECOMP_AOT_RESUME=0` | 320 (the old replay 01, 2026-11-05; needs a regeneration, not rerun) | not run |
+| Per-instruction hook in compiled code | `ABL_PC_HOOK_AOT` | 334 with resume, 6840 without | 334 with resume, 1979 without |
 
 ## Not game specific?
 

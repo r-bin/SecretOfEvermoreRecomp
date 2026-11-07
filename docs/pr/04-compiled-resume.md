@@ -11,10 +11,10 @@ size of the change upstream, this PR is the one to drop.
 ## To do before opening
 
 1. Move `$4212`'s check to #247's `snes_set_cpu_read_clocked` scope. Our test of `g_aot_access_prefix` does the same job; upstream's
-   way is the one to keep. Simply having no polling tick for compiled code is identical on all five replays (`ABL_TICK_UPSTREAM`).
+   way is the one to keep. Simply having no polling tick for compiled code was identical on the five replays of 2026-11-05 (`ABL_TICK_UPSTREAM`).
 2. Take out the outermost beam sync ([Not proposed](README.md#not-proposed)).
-3. Add stubs to the fixtures that no longer link: `tests/v2/test_host_interrupt_flags.py` (`interp_bridge_aot_rti`),
-   `test_interp_bridge_contract.py` (`cpu_aot_resume_maybe`, `cpu_dispatch_resume_paired`). Add a resume test to `tests/v2/`.
+3. Carry the test stubs, `eb2b5e88` on `pr-stack-on-main` (done 2026-11-07: `interp_bridge_aot_rti` in the shared harness of
+   `tests/v2/test_hle_func_seam.py`, the resume symbols in `tests/interp816/bridge_test.c`). Add a resume test to `tests/v2/`.
 4. Squash the three commits.
 
 ## PR title
@@ -34,7 +34,7 @@ S and return frame). `SNESRECOMP_AOT_RESUME=0` at run time turns it off. Off by 
 
 Native share on that replay: 99.70 %.
 
-This only helps the native share. It fixes no game behaviour and no sync: with resume off, the same five replays stay identical to
+This only helps the native share. It fixes no game behaviour and no sync: with resume off, both committed replays stay identical to
 MesenCE, just mostly interpreted. If that is not worth this much code in the runtime, it is fine to leave it out.
 
 What keeps the tiers alike:
@@ -44,7 +44,7 @@ What keeps the tiers alike:
 - The JSL envelope restores PB after a normal return even with an unwind pending. #248 keeps the live PB for a suspended continuation;
   with resume the flag can still be set when a resumed callee returns, and the caller then ran on in the callee's bank.
 
-Result: Secret of Evermore identical to MesenCE on five replays, 71,055 frames, with and without resume. Without the PB line the attract
+Result: Secret of Evermore identical to MesenCE on two replays from power-on, 32,348 NMIs, with and without resume. Without the PB line the attract
 replay parts at NMI 2938. Recipe: https://github.com/r-bin/SecretOfEvermoreRecomp/blob/<head>/docs/pr/README.md#reproduce
 
 Doubts:
@@ -59,19 +59,23 @@ Depends on #<PR 3>.
 
 Replay 01, on current main, native. The interpreter does not run any of this.
 
-| Change | Off | Result |
-|---|---|---|
-| Resume itself | `SNESRECOMP_AOT_RESUME=0` | Stays in sync on all five replays; native share falls to 16.31 % |
-| Compiled RTI yields at the popped PC | `ABL_RTI_YIELD` | Parts at 120 |
-| Beam sync before register reads | `ABL_BEAM_READS` | Parts at 319 |
-| No `$4212` polling tick | `ABL_TICK4212` | Parts at 319 |
-| PB restored after a normal return | `73d951bc` left out | Parts at 2938, 6 clocks short |
+On the committed replays (2026-11-07), native; first NMI where WRAM parts:
 
-The middle three are needed only with resume: with `SNESRECOMP_AOT_RESUME=0` each of them stays in sync. That is why they are here and
-not in PR 3, and why the compiled-interrupt commit is no PR of its own.
+| Change | Off | Replay 01 | Replay 02 |
+|---|---|---|---|
+| Resume itself | `SNESRECOMP_AOT_RESUME=0` | in sync (native share 16.31 % on the old replay 01) | in sync |
+| Compiled RTI yields at the popped PC | `ABL_RTI_YIELD` | 2 | 2 |
+| Beam sync before register reads | `ABL_BEAM_READS` | 3 | 3 |
+| No `$4212` polling tick | `ABL_TICK4212` | 2 | 2 |
+| PB restored after a normal return | `73d951bc` left out | 2938 on the old replay 01, 6 clocks short (needs a rebuild, not rerun) | not run |
+
+With `SNESRECOMP_AOT_RESUME=0`, RTI yield and beam sync stay in sync on both replays: they are needed only with resume, which is
+why they are here and not in PR 3, and why the compiled-interrupt commit is no PR of its own. The `$4212` tick is not quite that:
+without resume it is unseen on 01 but parts 02 at NMI 19685, so compiled code needs it with or without resume. It may belong in
+PR 3.
 
 The PB fix was found while rebasing: on our pin the old epilogue restored PB always, and #248 changed that. A resume entry setting PB
-from its target turned out not to be needed (`ABL_RESUME_PB`, all five replays), so it is not in the fix.
+from its target turned out not to be needed (`ABL_RESUME_PB`, the five replays of 2026-11-05), so it is not in the fix.
 
 Also in `25d2f42f`, not tested alone: a 16-bit access charges its second byte at its own region's speed, and the operand's last byte is
 on the data bus before an access. Both are generator changes with no switch. They need a regenerate to test, or they move to PR 3.
