@@ -2,6 +2,10 @@
 
 **Status:** open, in snesrecomp's renderer. The only known difference in the picture.
 
+**2026-11-07, the committed replays:** the picture differs at 289 of 8,592 keys of 01 and 948 of 23,756 of 02, by 8 of 255
+where MesenCE has 0 (01 from key 365). `--fade` does not remove them: with it 309 and 972 keys differ. So either the rewrite
+models the rounding wrongly for these frames, or some of them are not this rounding. Not traced yet.
+
 ## What happens
 Below full brightness a pixel differs from MesenCE's by up to 8 of 255 per channel. MesenCE scales the 5-bit colour and
 then widens it to 8 bits (`SnesPpu::ApplyBrightness`); snesrecomp's legacy renderer widens first and then scales

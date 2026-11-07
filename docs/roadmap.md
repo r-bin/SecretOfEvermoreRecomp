@@ -11,7 +11,7 @@ Key: 🔴 blocks the next stage · 🟡 open gap · 🟢 later or optional · �
 | Area | State |
 |---|---|
 | Accuracy | The committed replays 01 and 02 match MesenCE 2.2.1 in WRAM, VRAM, CGRAM and OAM at every NMI from power-on, native and interpreted, nothing copied or masked |
-| Picture and sound | See [progress.md](progress.md): picture identical but for fade rounding; S-DSP state but for a power-on default and a voice's end flag a clock early |
+| Picture and sound | See [progress.md](progress.md): the picture differs during fades; the S-DSP state by a power-on default and a voice's end flag a clock early (on 02 for a stretch, also in ARAM) |
 | Tests | `ctest`: two tool tests, reset, save state, and both replays against stored MesenCE runs ([testing.md](testing.md)) |
 | Framework | Upstream snesrecomp plus `framework/snesrecomp.patch`; four PRs prepared, one open ([pr/README.md](pr/README.md)) |
 | What the proof leaves out | The audio sample stream, and all but about 9 minutes of play |
