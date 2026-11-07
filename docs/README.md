@@ -56,13 +56,13 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j
 *(Player data in `build/saves/`, `build/config.ini` and `build/keybinds.ini` survive rebuilds.)*
 
 ### New seeds from a new CDL
-In an everscript-vscode checkout next to this one (it finds `../SecretOfEvermoreRecomp`; else
-`--repo` or `SOE_RECOMP`):
+Build and test need no other checkout. To take in new seeds, bound C or names from everscript-vscode
+([setup.md](setup.md) §4):
 ```sh
-npm run recomp               # export, byte-identical Asar rebuild, seeds into recomp/, regen + build here
-npm run recomp -- --no-build # only write recomp/bank*.cfg (reads recomp/seed-exclusions.txt)
+npm run recomp               # in everscript-vscode: export into its out/recomp/ (reads recomp/seed-exclusions.txt here)
+node tools/import.mts         # here: copies seeds, src/bound-c/ and imported/annotations.tsv (--from <checkout>)
 ```
-Commit the changed `recomp/bank*.cfg` here.
+Then regen, build and commit the changed `recomp/bank*.cfg` and `src/bound-c/` here.
 
 ### Lockstep against snes9x
 `node tools/compare/compare.mts` runs this repository's `build/` game against MesenCE ([testing.md](testing.md)).
@@ -75,7 +75,7 @@ Commit the changed `recomp/bank*.cfg` here.
  everscript-vscode (npm run recomp)            this repository
  ┌────────────────────────────────────┐        ┌────────────────────────────────────┐
  │ clean ROM + CDL library + names    │        │ recomp/bank*.cfg   seeds (committed)│
- │ -> Asar disassembly, byte-identical│ seeds  │ recomp/seed-exclusions.txt         │
+ │ -> Asar disassembly, byte-identical│ import │ recomp/seed-exclusions.txt         │
  │    rebuild, Mesen2 labels          │ ─────▶ │ src/game_rtl.c     our glue        │
  │ -> recomp seeds (func roots, exit  │ ◀───── │ tools/regen.sh     ROM -> src/gen/ │
  │    widths, dispatch, data regions) │ exclu- │ CMake              -> build/       │

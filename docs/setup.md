@@ -61,7 +61,7 @@ there); what reaches this repository is `recomp/bank*.cfg`.
 | **CMake** | $\ge 3.20$ | configures the host C project |
 | **C compiler** | C11 | AppleClang (macOS), GCC (Linux), MSVC (Windows) |
 | **Node.js** | $\ge 20$ | `tools/*.js` (bisection, intro check, OBJ tile check) |
-| everscript-vscode | sibling checkout | only to make new seeds: its `npm run recomp` (Asar for the byte-identical rebuild) |
+| everscript-vscode | any checkout | only to import new seeds, bound C or names: its `npm run recomp` (Asar for the byte-identical rebuild), then `tools/import.mts` here |
 
 ```sh
 git submodule update --init --recursive
@@ -85,26 +85,33 @@ cmake --build build -j
 
 ---
 
-## 4. New Seeds (`npm run recomp` in everscript-vscode)
+## 4. New Seeds (`npm run recomp` there, `tools/import.mts` here)
 
-The seeds change when the CDL grows or an exclusion is added. In everscript-vscode, with this
-repository as a sibling (`../SecretOfEvermoreRecomp`; else `--repo` or `SOE_RECOMP`):
+This repository builds and tests with no other checkout. What it takes from everscript-vscode is copied in by
+one tool, and only when you run it: the seeds change when the CDL grows or an exclusion is added, the bound C
+when a routine there changes, the names when its maps grow.
 
 ```sh
-npm run recomp                 # everything below, then regen + build here
-npm run recomp -- --no-build   # stop after writing recomp/bank*.cfg
-npm run recomp -- --no-recomp  # only the Asar export and rebuild (~2 s)
+# in everscript-vscode (finds this repository as ../SecretOfEvermoreRecomp; else --repo or SOE_RECOMP):
+npm run recomp                 # export + byte-identical rebuild into its out/recomp/; writes nothing here
+# here (finds the plugin as ../everscript-vscode; else --from or EVERSCRIPT):
+node tools/import.mts          # seeds -> recomp/, its reconstructed-c -> src/bound-c/, names -> imported/
+bash tools/regen.sh            # then build, and commit recomp/bank*.cfg and src/bound-c/
 ```
+
+`imported/annotations.tsv` is text from your ROM: it stays out of git (`.gitignore`). The export reads two
+things from this repository: `recomp/seed-exclusions.txt`, and the last generation's `src/gen/program_manifest.json`
+for `symbol` names, so after the first regen of new seeds, export and import once more.
 
 1. **Inputs:** the clean ROM, the CDL library, curated names and RAM entries, ROM asset regions,
    and this repository's `recomp/seed-exclusions.txt`.
 2. **Asar export** (`out/recomp/asar/` there): `banks/*.asm` with names and comments, `ram.asm`,
    `structs.h`, `functions.json`, Mesen2 `labels.mlb` + `rom.cdl`, and the seeds.
 3. **Byte-identical rebuild:** Asar assembles the export; one differing byte stops the run.
-4. **Seeds into this repository:** `recomp/bank8x..9x.cfg` replaced; `recomp/bank00.cfg` keeps its
-   own text and gets one `data_region` block between the `everscript data regions` markers.
-5. **Regen + build** here (skipped with `--no-build`), then `out/recomp/REPORT.md` there:
-   coverage, names, native vs interpreted variants, the next steps.
+4. **Report:** `out/recomp/REPORT.md` there: coverage, names, the next steps.
+5. **Import here** (`tools/import.mts`): `recomp/bank8x..9x.cfg` replaced; `recomp/bank00.cfg` keeps its
+   own text and gets one `data_region` block between the `everscript data regions` markers; `src/bound-c/`
+   rewritten from the list `SOE_BOUND_C` in `CMakeLists.txt` and every header; `imported/annotations.tsv`.
 
 ### `recomp/seed-exclusions.txt`
 One line per directive the export must not emit, each a bug in [bugs-and-todos.md](bugs-and-todos.md):

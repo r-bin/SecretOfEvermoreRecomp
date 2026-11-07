@@ -109,14 +109,13 @@ echo "== Generating src/gen =="
 
 # Comments from everscript-vscode's ROM and WRAM maps: before each compiled instruction its assembly with
 # names, before each function its routine (docs/game-rtl.md, "Names in the generated C"). Only comment lines
-# are added. The table comes from `npm run recomp` there; without it the C stays as generated.
-EVERSCRIPT="${EVERSCRIPT:-$ROOT/../everscript-vscode}"
-ANNOTATIONS="$EVERSCRIPT/out/recomp/asar/recomp/annotations.tsv"
-if [ -f "$ANNOTATIONS" ] && [ -f "$EVERSCRIPT/dist/platform/snes/hirom.js" ] && command -v node >/dev/null 2>&1; then
+# are added. The table comes in with tools/import.mts; without it the C stays as generated.
+ANNOTATIONS="$ROOT/imported/annotations.tsv"
+if [ -f "$ANNOTATIONS" ] && command -v node >/dev/null 2>&1; then
   echo "== Annotating src/gen from $ANNOTATIONS =="
-  node "$EVERSCRIPT/tools/recomp/annotate.mts" src/gen "$ANNOTATIONS"
+  node "$SCRIPT_DIR/annotate.mts" src/gen "$ANNOTATIONS"
 else
-  echo "== No annotations (run npm run recomp -- --no-build in $EVERSCRIPT for names in the C) =="
+  echo "== No annotations (node tools/import.mts brings the names for the C) =="
 fi
 
 echo

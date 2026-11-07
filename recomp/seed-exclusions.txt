@@ -1,5 +1,5 @@
 # Seed directives the everscript CDL export must not emit. everscript-vscode's `npm run recomp`
-# reads this file when it writes recomp/bank*.cfg; each entry is a bug in docs/bugs-and-todos.md.
+# reads this file when it writes the seeds that tools/import.mts brings into recomp/bank*.cfg; each entry is a bug in docs/bugs-and-todos.md.
 #   func <pc24> <reason>       no root `func` line, and `force_lle`: kept interpreted for every caller
 #   dispatch <pc24> <reason>   no `indirect_dispatch` at this jump site
 #   hle <pc24> <c_function> [body=<pc24>] <reason>   `hle_func`: the routine at this address runs our glue's C

@@ -95,7 +95,7 @@ Verify an exclusion took: the address has only `NULL` variants in `dispatch_v2.c
 |---|---|
 | Built game, saves, config | `build/` (`saves/`, `config.ini`, `keybinds.ini`) |
 | Seeds, generated C | `recomp/bank*.cfg` (committed); `src/gen/` (never commit; `dispatch_v2.c` = compiled entries); runner sources `snesrecomp/runner/src/` |
-| Seed export logs, report | everscript-vscode's `out/recomp/recomp-host.log`, `out/recomp/REPORT.md` |
+| Seed export report, import | everscript-vscode's `out/recomp/REPORT.md`; `tools/import.mts` here (`imported/annotations.tsv`) |
 | Disassembly with our names and comments | everscript-vscode's `out/recomp/asar/banks/bank_XX.asm` (bus `$8x`/`$Cx` → file `bank_Cx`), `functions.json` |
 | MesenCE files | everscript-vscode's `out/recomp/asar/mesen/` |
 | Our glue / hooks | `src/game_rtl.c`, `src/main.c` (`after_config`), `src/soe_frame_driver.c` |

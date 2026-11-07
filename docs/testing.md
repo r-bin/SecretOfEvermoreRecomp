@@ -10,6 +10,7 @@ Everything here runs from this repository alone. Your ROM stays yours: pass its 
 | Test | Needs | What it proves |
 |---|---|---|
 | `compare_units` | node | the compare tool's logic, on synthetic data |
+| `import_units` | node | `tools/import.mts` (seeds, bound C) and `tools/annotate.mts`, on synthetic folders |
 | `reset_equals_boot` | ROM | a reset brings the game back as power-on does |
 | `save_state_resume` | ROM | a save state resumes the run |
 | `replay_01_recorded` | ROM, node | replay 01 equals the stored MesenCE run: WRAM, VRAM, CGRAM, OAM at every 60th NMI |

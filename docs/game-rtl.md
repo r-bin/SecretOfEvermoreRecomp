@@ -152,16 +152,16 @@ needs is inside them, and both come from everscript-vscode's ROM and WRAM maps:
   copies, entries into the middle of a routine) get `symbol` lines from the same export: the known name, a bank
   suffix for a copy (`wait_for_nmi_00`), or `<routine>_<pc16>` inside a routine (`lz_copy_loop_9a76`).
   `symbol` adds no roots. The export reads the entries from the last generation's `src/gen/program_manifest.json`,
-  so one `npm run recomp` after a generation names them. 2026-11-03: address-only names (`bank_8C_9A76`) went from
+  so one export and import after a generation names them. 2026-11-03: address-only names (`bank_8C_9A76`) went from
   4,532 of 5,510 to 15; with names mapped back, all 315 bank files are identical (one exception:
   [bugs-and-todos.md](bugs-and-todos.md) §3.6).
-- **Comments.** `tools/regen.sh` runs everscript-vscode's `tools/recomp/annotate.mts`: before each function the
+- **Comments.** `tools/regen.sh` runs `tools/annotate.mts`: before each function the
   routine and its note, before each instruction the instruction as the Asar export writes it, with the WRAM
   addresses it touched and their names:
   `/* evs: $80:883F  dec.w $0343  ; [$7E0343 joypad_repeat_timer, $7E0344] */`. Only comment lines are added.
-  The table (`out/recomp/asar/recomp/annotations.tsv`) is made from the user's ROM and stays in everscript-vscode's
-  `out/`. A name missing here is a gap in the maps: fix it in everscript-vscode's knowledge entries, then rerun
-  `npm run recomp`.
+  The table is made by everscript-vscode's export from the user's ROM; `tools/import.mts` copies it to
+  `imported/annotations.tsv`, which git ignores. A name missing here is a gap in the maps: fix it in
+  everscript-vscode's knowledge entries, then rerun `npm run recomp` there and the import here.
 
 ## 4b. Routines Bound to Reconstructed C
 
@@ -232,7 +232,7 @@ SOE_PC_COUNTS=<file>` writes how often each PC ran.
 | **Scaffold files** (`CMakeLists.txt`, `src/main.c`, `src/host_contract.c`, `tools/regen.sh`, CI, packaging) | the scaffold's `LICENSE` | rendered once by snesrecomp's `tools/new_project/setup_project.sh` (the first commit), edited here since |
 | **Our glue** (`src/game_rtl.c`, `tools/*.js`) | MIT | this repository |
 | **Our frame driver** (`src/soe_frame_driver.c`) | derived from snesrecomp's `beam_frame_driver.c`: PolyForm Noncommercial | this repository |
-| **Seeds** (`recomp/*.cfg`, `recomp/seed-exclusions.txt`) | ours, no ROM bytes | written by everscript-vscode's export, committed here |
+| **Seeds** (`recomp/*.cfg`, `recomp/seed-exclusions.txt`) | ours, no ROM bytes | written by everscript-vscode's export, imported (`tools/import.mts`) and committed here |
 | **Generated C** (`src/gen/`) | derived from the ROM | never committed: `.gitignore`; everyone regenerates from their own ROM |
 
 ### Changes to the framework

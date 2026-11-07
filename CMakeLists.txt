@@ -49,8 +49,8 @@ add_executable(SecretOfEvermoreSNESRecomp
     src/gen_stubs.c
 )
 
-# Routines replaced with reconstructed C (src/soe_bindings.c, docs/game-rtl.md 4b). src/bound-c/ is an exported copy:
-# everscript-vscode's reconstructed-c is the source, its `npm run recomp` refreshes the copy. Point SOE_RECONSTRUCTED_C
+# Routines replaced with reconstructed C (src/soe_bindings.c, docs/game-rtl.md 4b). src/bound-c/ is an imported copy:
+# everscript-vscode's reconstructed-c is the source, tools/import.mts refreshes the copy. Point SOE_RECONSTRUCTED_C
 # at that folder to try C before exporting it.
 set(SOE_RECONSTRUCTED_C "${CMAKE_SOURCE_DIR}/src/bound-c" CACHE PATH "Folder with the bound routines' C and include/")
 set(SOE_BOUND_C 80/80859B_random_number_generator.c 8F/8FA914_update_entity_plane.c 90/909DE8_eval_tile_collision.c
@@ -71,6 +71,7 @@ enable_testing()
 find_program(SOE_NODE node)
 if(SOE_NODE)
     add_test(NAME compare_units COMMAND ${SOE_NODE} ${CMAKE_SOURCE_DIR}/tests/compare-units.test.mts)
+    add_test(NAME import_units COMMAND ${SOE_NODE} ${CMAKE_SOURCE_DIR}/tests/import.test.mts)
 endif()
 set(SOE_TEST_ROM "" CACHE FILEPATH "Your own ROM, for the ROM-backed ctest tests (empty: none run)")
 if(SOE_TEST_ROM)

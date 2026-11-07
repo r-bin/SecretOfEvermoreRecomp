@@ -60,9 +60,9 @@ both from ever being committed.
 Our frame driver (`src/soe_frame_driver.c`) and the
 glue (`src/game_rtl.c`) hold everything this game needs ([docs/game-rtl.md](docs/game-rtl.md)).
 
-New seeds (a bigger CDL, a new exclusion in `recomp/seed-exclusions.txt`) come from
-everscript-vscode: `npm run recomp` in a sibling checkout writes `recomp/bank*.cfg` here
-([docs/setup.md](docs/setup.md) §4).
+This repository builds alone. New seeds (a bigger CDL, a new exclusion in `recomp/seed-exclusions.txt`), bound C and
+names for the generated C come from everscript-vscode: `npm run recomp` there, then `node tools/import.mts` here
+copies them in ([docs/setup.md](docs/setup.md) §4).
 
 ## Test
 
@@ -103,7 +103,7 @@ than mis-executing ten frames in.
 | `src/gen/` | Generated C. Never committed — regenerate locally |
 | `snesrecomp/` | Framework submodule, public upstream (owns `lib/recomp-net`, `lib/retcomm-rbengine`) |
 | `framework/` | `snesrecomp.patch`: our framework changes, applied by `tools/regen.sh` |
-| `src/bound-c/` | Reconstructed C of the bound routines, exported from everscript-vscode |
+| `src/bound-c/` | Reconstructed C of the bound routines, imported from everscript-vscode (`tools/import.mts`) |
 | `tools/` | `regen.sh` — the ROM → C pipeline; `compare/` — MesenCE against the recomp; `bisect.js`, `verify-intro.js`, `check-obj-tiles.js` |
 | `tests/` | `ctest` tests and the stored reference run |
 | `scripts/` | `package_release.sh` — player-facing zip |

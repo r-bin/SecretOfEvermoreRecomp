@@ -18,16 +18,17 @@ Headless: `build/SecretOfEvermoreSNESRecomp --no-launcher --script s.txt <rom>` 
 Copy `build/` to a scratch folder before experimenting: `saves/`, `config.ini` belong to the user.
 Upstream's `v2_emit` reuses `src/gen` without looking at `SNESRECOMP_EXACT_BUS` / `SNESRECOMP_AOT_RESUME`, so `regen.sh` deletes
 `src/gen` first; the log must say `28 bank(s) emitted`.
-New seeds: `npm run recomp` in the sibling everscript-vscode checkout (writes `recomp/bank*.cfg` here).
+New seeds, bound C, names: `npm run recomp` in an everscript-vscode checkout (writes nothing here), then
+`node tools/import.mts [--from <checkout>]` here. Nothing else may reach into another checkout.
 
 ## Ownership
 - Ours: `src/game_rtl.c`, the `after_config` line in `src/main.c`, `tools/`, `docs/`,
   `recomp/seed-exclusions.txt`. The seeds `recomp/bank8x..9x.cfg` and the data-region block of
-  `recomp/bank00.cfg` are written by everscript-vscode's export: change them there (or through the exclusions
-  file), never by hand.
+  `recomp/bank00.cfg` come from everscript-vscode's export through `tools/import.mts`: change them there (or through
+  the exclusions file), never by hand.
 - `snesrecomp/` is a submodule on public upstream plus `framework/snesrecomp.patch`, applied by `regen.sh`
   (`docs/framework.md`). Never edit it here; game timing lives in our frame driver `src/soe_frame_driver.c`.
-- `src/bound-c/` is exported from everscript-vscode's `reconstructed-c`: never edit it here.
+- `src/bound-c/` is imported from everscript-vscode's `reconstructed-c`: never edit it here.
 - `src/gen/` is derived from the ROM: never commit it. No ROM bytes, dumps or screenshots in git.
 
 ## Bugs

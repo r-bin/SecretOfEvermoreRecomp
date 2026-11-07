@@ -10,9 +10,10 @@ These rules apply to every AI agent working in this repository.
    Our framework changes are one file, `framework/snesrecomp.patch`, applied by `tools/regen.sh` (`docs/framework.md`).
    This repository names no other snesrecomp repository. What the port needs otherwise is in our glue (our own frame
    driver `src/soe_frame_driver.c` replaces the framework's).
-3. **Seeds and bound C come from everscript-vscode.** `recomp/bank8x..9x.cfg`, the data-region block in
-   `recomp/bank00.cfg` and `src/bound-c/` are written by its `npm run recomp` (sibling checkout). Change them through
-   `recomp/seed-exclusions.txt` and a new export, never by hand. Build and test need nothing but this repository.
+3. **Seeds and bound C come from everscript-vscode, by import.** `recomp/bank8x..9x.cfg`, the data-region block in
+   `recomp/bank00.cfg` and `src/bound-c/` are copied in by `tools/import.mts` after its `npm run recomp`. Change them
+   through `recomp/seed-exclusions.txt` and a new export + import, never by hand. Build and test need nothing but this
+   repository (and its submodules): no tool, CMake file or script here may read another checkout, except the import.
 4. **Write down what you learn.** Every bug gets its root cause, fix and lesson in
    `docs/bugs-and-todos.md` in the same commit. Game facts (addresses, routines, RAM) belong in
    everscript-vscode's knowledge entries, not here.
@@ -33,7 +34,7 @@ These rules apply to every AI agent working in this repository.
 | `src/main.c` | the scaffold's host descriptor, plus our `after_config` line |
 | `tests/` | `ctest` tests (`docs/testing.md`): `compare_units` with node only, the others with `-DSOE_TEST_ROM=...` |
 | `recomp/` | seeds (`bank*.cfg`), `seed-exclusions.txt`, `symbols.toml` |
-| `tools/` | `regen.sh` (ROM -> C), `compare/` (MesenCE against the recomp, replays, probes), `bisect.js`, `verify-intro.js`, `check-obj-tiles.js` |
+| `tools/` | `regen.sh` (ROM -> C), `import.mts` (from everscript-vscode), `annotate.mts`, `compare/` (MesenCE against the recomp, replays, probes), `bisect.js`, `verify-intro.js`, `check-obj-tiles.js` |
 | `docs/` | `README.md` (status, map), setup, glue, debugging, headless exploration, bugs and roadmap, research |
 
 ## Skills

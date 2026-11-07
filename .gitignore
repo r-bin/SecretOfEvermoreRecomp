@@ -2,6 +2,9 @@
 /src/gen/
 /recomp/funcs.h
 
+# Imported from everscript-vscode but derived from the ROM (tools/import.mts): names for the generated C
+/imported/
+
 # The ROM itself, in every form. Players supply their own.
 *.sfc
 *.smc
