@@ -23,5 +23,6 @@ and VRAM, CGRAM and OAM (`SOE_COMPARE_MESEN_APU`, `soe_mesen_state_load_apu`), a
 The state sits between two SPC700 opcodes (`spc.opStep` 0): the next one starts a cycle later here, or NMI 320 parts by 310,050 clocks.
 
 ## Left
-`SOE_MMO_FRESH=1` still powers both sides on, for a lockstep run that is not the recording. The RNG is still copied at key 115,
-so keys before 120 are not compared. The state's PPU registers and latches are not taken over: nothing has needed them.
+`SOE_MMO_FRESH=1` still powers both sides on with the movie's WRAM and SRAM, for a lockstep run that is not the recording.
+Since 2026-11-07 nothing is copied into the recomp in any run, and every key counts. The state's PPU registers and latches are
+not taken over: nothing has needed them.

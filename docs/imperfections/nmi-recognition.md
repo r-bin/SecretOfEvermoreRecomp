@@ -38,7 +38,7 @@ Per-NMI clocks and interrupted addresses (`SOE_COMPARE_NMI_LOG` against MesenCE'
 MesenCE runs a general DMA started by a `$420B` write in the next instruction's first cycle, and the edge detector
 looks after the transfer. snesrecomp charges the transfer to the write. So when the last instruction of the
 approach started a DMA, its clocks do not count as a cycle of that instruction (`g_snes_dma_charged`, a running
-total in snesrecomp's `snes.c` on branch `spc-access-cycles`, read before and after it). Found at NMI 3876 of the
+total in snesrecomp's `snes.c` in PR 1, read before and after it). Found at NMI 3876 of the
 attract replay: `STA $420B` at `$8C:B040`, then `REP #$20`; MesenCE takes the NMI after the `REP`.
 
 ## Refresh inside the interrupt sequence (2026-10-31)

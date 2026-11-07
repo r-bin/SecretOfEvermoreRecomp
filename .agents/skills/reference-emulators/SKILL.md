@@ -8,9 +8,9 @@ applyTo: "**"
 
 | Emulator | Trust | Control | Role |
 |---|---|---|---|
-| **MesenCE** (`/Applications/Mesen.app`, fork `r-bin/MesenCE`) | trusted | good: `--testRunner <script.lua> <rom>` headless, Lua memory access, debugger, `mesen2-mcp` | **the reference for every WRAM comparison** |
-| **ares** (`~/romhacking/emulators/ares-v148/ares.app`) | precision reference | least: GUI debugger; CLI picks system, settings, a save-state slot | probing by hand: a disputed frame |
-| **snes9x 2005** (everscript-vscode's core) | **not trusted** | full: node, ~10,000 fps, write breakpoints, CDL | probing: where to look, who writes what. Never the reference |
+| **MesenCE 2.2.1** (the release, `nesdev-org/MesenCE` tag `2.2.1`; `/Applications/Mesen.app` or `$MESEN`) | trusted | good: `--testRunner <script.lua> <rom>` headless, Lua memory access, debugger, `mesen2-mcp` | **the reference for every WRAM comparison** |
+| **ares** (v148) | precision reference | least: GUI debugger; CLI picks system, settings, a save-state slot | probing by hand: a disputed frame |
+| **snes9x 2005** (optional: everscript-vscode's core) | **not trusted** | full: node, ~10,000 fps, write breakpoints, CDL | probing: where to look, who writes what. Never the reference |
 
 ## Rules
 0. Two builds on the **same** host (native against interpreter, hooks against none) is a differential
@@ -19,8 +19,8 @@ applyTo: "**"
    from snes9x proves nothing.
 2. Use snes9x to find the frame, the writer, the routine; confirm the finding on MesenCE.
 3. When MesenCE's answer itself is in doubt (timing, PPU, DMA), check that frame in ares by hand.
-4. After the first few hundred frames, compare at game events (`$7E0100`, room change, fight end),
-   never at equal frame numbers.
+4. MesenCE and the recomp are compared at every NMI from power-on (`tools/compare`); against any other emulator,
+   compare at game events (`$7E0100`, room change, fight end), never at equal frame numbers.
 5. Name the emulator behind every result in `docs/bugs-and-todos.md`.
 
 ## Traps

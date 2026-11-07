@@ -9,7 +9,7 @@
 // Nothing here runs the plugin's code. The seeds read our recomp/seed-exclusions.txt and src/gen/program_manifest.json
 // on the plugin's side, so run its `npm run recomp` after a regen here and import again (docs/setup.md §4).
 //
-//   node tools/import.mts [--from <everscript-vscode checkout>]     (default: EVERSCRIPT, else ../everscript-vscode)
+//   node tools/import.mts --from <everscript-vscode checkout>     (or EVERSCRIPT=<checkout>; no default)
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -67,12 +67,13 @@ function describe(plugin: string): string {
 
 function main() {
     const argv = process.argv.slice(2);
-    let from = process.env.EVERSCRIPT || join(ROOT, '..', 'everscript-vscode');
+    let from = process.env.EVERSCRIPT || '';
     for (let i = 0; i < argv.length; i++) {
         if (argv[i] === '--from') from = argv[++i];
         else if (argv[i] === '-h' || argv[i] === '--help') { console.log('node tools/import.mts [--from <everscript-vscode checkout>]'); return; }
         else { console.error('import: unknown argument ' + argv[i]); process.exit(2); }
     }
+    if (!from) { console.error('import: name the everscript-vscode checkout: --from <path> or EVERSCRIPT=<path>'); process.exit(2); }
     const plugin = resolve(from);
     const seedDir = join(plugin, EXPORT, 'cfg');
     if (!existsSync(join(plugin, 'reconstructed-c')) || !existsSync(join(plugin, 'package.json'))) {

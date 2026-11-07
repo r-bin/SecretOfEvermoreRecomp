@@ -1,6 +1,6 @@
 # S-DSP Timing
 
-**Status:** fixed in snesrecomp on branch `spc-access-cycles`: the S-DSP runs per clock
+**Status:** fixed in PR 1: the S-DSP runs per clock
 (`runner/src/snes/dsp_clock.c`, `SNESRECOMP_DSP_PER_CLOCK=0` for the old per-sample model in `dsp.c`).
 
 ## What MesenCE does

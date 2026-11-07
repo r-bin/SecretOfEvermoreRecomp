@@ -2,14 +2,14 @@
 
 **Status:** prototype of A, C, D1 and part of E on snesrecomp branch `spc-access-cycles` (this repo's branch
 `snesrecomp-spc-access-cycles` pins it); owner's experiment for an upstream PR, `develop` keeps the pinned framework
-([../AGENTS.md](../AGENTS.md) rule 2). It holds no Evermore facts: every rule below is SNES hardware, so every game on
+([../AGENTS.md](../../AGENTS.md) rule 2). It holds no Evermore facts: every rule below is SNES hardware, so every game on
 snesrecomp gains from it. Results and what is left: [Prototype](#prototype-2026-10-31).
 
-The pull requests this became, and what is left of it: [pr/README.md](pr/README.md).
+The pull requests this became, and what is left of it: [pr/README.md](../pr/README.md).
 
 ## Goal
 WRAM identical to MesenCE at every NMI, for the whole run, native build included. Today we have that through NMI
-key 319 of `01-no-inputs-4m.evsmv`, then 97.9–99.98 % ([imperfections/README.md](imperfections/README.md)).
+key 319 of `01-no-inputs-4m.evsmv`, then 97.9–99.98 % ([imperfections/README.md](../imperfections/README.md)).
 
 ## The one principle
 > Every bus access happens at its own master clock. Before an access to state that another chip shares, that
@@ -20,10 +20,10 @@ but not at the moment of an access. Every open imperfection is this one coarsene
 
 | Open imperfection | Coarse unit today | Part below |
 |---|---|---|
-| [apu-port-handshake.md](imperfections/apu-port-handshake.md) (the first difference left) | SPC700 instruction: all port accesses on its first cycle | C, D |
-| [compiled-cycle-charges.md](imperfections/compiled-cycle-charges.md) | compiled block: one constant, every cycle at code speed | B |
-| [dma-overhead.md](imperfections/dma-overhead.md) | whole DMA charged at once, no alignment | E |
-| [host-frames-and-fields.md](imperfections/host-frames-and-fields.md) | host frame runs past several V=225 inside a DMA | E |
+| [apu-port-handshake.md](../imperfections/apu-port-handshake.md) (the first difference left) | SPC700 instruction: all port accesses on its first cycle | C, D |
+| [compiled-cycle-charges.md](../imperfections/compiled-cycle-charges.md) | compiled block: one constant, every cycle at code speed | B |
+| [dma-overhead.md](../imperfections/dma-overhead.md) | whole DMA charged at once, no alignment | E |
+| [host-frames-and-fields.md](../imperfections/host-frames-and-fields.md) | host frame runs past several V=225 inside a DMA | E |
 
 The fixed ones (late NMI, interrupt cost, refresh, short line 240, auto-joypad window, NMI recognition, SPC
 rate, start clock 186) are in our frame driver `src/soe_frame_driver.c`. They are game-neutral and belong
@@ -79,7 +79,7 @@ Move what our `src/soe_frame_driver.c` does into `beam_frame_driver.c`, unchange
 it is enabled inside vblank, the 8-cycle interrupt sequence charged, NMI recognised after the first instruction
 with a cycle from V=225 + 6 clocks, line 240 1360 clocks every other non-interlaced field, refresh at its fixed
 H, auto-joypad busy from MesenCE's point, CPU start at clock 186, SPC rate as in A. Each has its evidence in its
-own [imperfections/](imperfections/README.md) file.
+own [imperfections/](../imperfections/README.md) file.
 
 ## Cost
 Not measured. Expected: interpreter unchanged; compiled code adds work only at I/O accesses and block ends; the
@@ -97,9 +97,9 @@ should also gain a game-neutral test: a small homebrew ROM that polls `$2140`, `
 tight loops, checked against MesenCE.
 
 ## Out of scope
-- Correctness of compiled code (pushed-address returns, [imperfections/README.md](imperfections/README.md) "Open
+- Correctness of compiled code (pushed-address returns, [imperfections/README.md](../imperfections/README.md) "Open
   risk"): not timing.
-- Rendering (Mode 4, [bugs-and-todos.md](bugs-and-todos.md) §3): does not touch WRAM.
+- Rendering (Mode 4, [bugs-and-todos.md](../bugs-and-todos.md) §3): does not touch WRAM.
 
 ## Prototype (2026-10-31)
 On snesrecomp branch `spc-access-cycles`; switches in the code, off switches as env vars for A/B runs:
@@ -115,7 +115,7 @@ On snesrecomp branch `spc-access-cycles`; switches in the code, off switches as 
 Measured on `01-no-inputs-4m.evsmv`, all interpreted, against MesenCE 2.2.1: the SPC's port writes land on
 MesenCE's cycles; every NMI 2–319 is exact; the load after NMI 319 matches for 12,748 port accesses. Per-key WRAM
 still parts at 320 (native and interpreted; develop too), so the replay does not sync yet. Details and the numbers:
-[imperfections/README.md](imperfections/README.md).
+[imperfections/README.md](../imperfections/README.md).
 
 Second round (2026-10-31): exact per-access clocks from the interpreter (writes at the end of their bus cycle),
 SPC timers on their cycle, `$4212` H-blank at the read's clock, and three S-DSP fixes (key-on delay, ENDX point,

@@ -4,41 +4,43 @@ These rules apply to every AI agent working in this repository.
 
 ## Standing rules
 
-1. **Legal first.** No ROM or ROM bytes, no generated C (`src/gen/`), no dumps, screenshots or
-   extracted assets in git. Everyone regenerates from their own ROM.
-2. **Never edit the framework.** `snesrecomp/` and `recomp-ui/` are pinned public submodules (`framework_pins.txt`).
-   Our framework changes are one file, `framework/snesrecomp.patch`, applied by `tools/regen.sh` (`docs/framework.md`).
-   This repository names no other snesrecomp repository. What the port needs otherwise is in our glue (our own frame
-   driver `src/soe_frame_driver.c` replaces the framework's).
-3. **Seeds and bound C come from everscript-vscode, by import.** `recomp/bank8x..9x.cfg`, the data-region block in
-   `recomp/bank00.cfg` and `src/bound-c/` are copied in by `tools/import.mts` after its `npm run recomp`. Change them
-   through `recomp/seed-exclusions.txt` and a new export + import, never by hand. Build and test need nothing but this
-   repository (and its submodules): no tool, CMake file or script here may read another checkout, except the import.
-4. **Write down what you learn.** Every bug gets its root cause, fix and lesson in
-   `docs/bugs-and-todos.md` in the same commit. Game facts (addresses, routines, RAM) belong in
-   everscript-vscode's knowledge entries, not here.
-5. **MesenCE is the reference.** WRAM comparisons are against MesenCE; snes9x is a probe and is never
-   treated as accurate; ares settles disputes by hand (`docs/reference-emulators.md`).
-6. **A picture is not a running game.** Verify headless (`docs/headless-exploration.md`): the room
-   id, `$7E0B19` advancing, a screenshot that matches the game.
-7. **Branches.** Work on `develop`; `main` holds releases. Several agents may share this checkout:
-   stage only your own files, never `git add -A`.
+1. **Legal first.** No ROM or ROM bytes, no generated C (`src/gen/`), no dumps, screenshots or extracted assets in git.
+   A committed replay holds input and settings only (`compare_units` checks it). Everyone regenerates from their own ROM.
+2. **Never edit the framework by hand.** `snesrecomp/` and `recomp-ui/` are pinned public submodules (`framework_pins.txt`).
+   Our framework changes are one file, `framework/snesrecomp.patch`, applied by `tools/regen.sh`; each goes upstream as a
+   PR ([docs/pr/README.md](docs/pr/README.md)). Game timing lives in our glue, mostly `src/soe_frame_driver.c`.
+3. **This repository stands alone.** Build and test read nothing outside it and its submodules. Seeds, the
+   data-region block in `recomp/bank00.cfg` and `src/bound-c/` come from everscript-vscode only through
+   `tools/import.mts --from <checkout>`: change them there (or through `recomp/seed-exclusions.txt`), never by hand.
+4. **MesenCE 2.2.1 is the reference.** "Correct" means identical to MesenCE at every NMI from power-on, every byte, nothing
+   copied in or masked ([docs/testing.md](docs/testing.md)). snes9x is a probe and never decides; ares settles disputes by
+   hand ([docs/reference-emulators.md](docs/reference-emulators.md)).
+5. **Replay 01 is mandatory.** Every change passes `ctest` (both replays against the stored MesenCE runs) and, before a
+   commit that changes timing, replay 01 against MesenCE itself. A change that alters what both do records the
+   references again (testing.md).
+6. **Write down what you learn.** A bug gets its root cause, fix and lesson in `docs/bugs-and-todos.md`, a difference from
+   MesenCE a file in `docs/imperfections/`, in the same commit. Game facts (addresses, routines, RAM) belong in
+   everscript-vscode's knowledge entries.
+7. **A picture is not a running game.** Verify headless ([docs/headless-exploration.md](docs/headless-exploration.md)):
+   the room id, `$7E0B19` advancing, a picture that matches the game.
+8. **Branches and the shared checkout.** Work on `develop`; `main` holds releases. Several agents may share this checkout:
+   stage only your own files by path, never `git add -A` or `git commit -a`.
 
 ## Where things are
 
 | Where | What |
 |---|---|
-| `src/game_rtl.c` | our glue: frame driver, renderer hook, save states, compare hashes |
-| `src/soe_bindings.c`, `src/bound-c/` | routines run as reconstructed C, exported from everscript-vscode (`hle` lines in `recomp/seed-exclusions.txt`; proof rules in `docs/game-rtl.md` §4b) |
-| `src/soe_mesen_state.c` | a MesenCE save state as a run's start (`SOE_COMPARE_MESEN_STATE`; `docs/imperfections/mesen-state.md`) |
-| `src/main.c` | the scaffold's host descriptor, plus our `after_config` line |
-| `tests/` | `ctest` tests (`docs/testing.md`): `compare_units` with node only, the others with `-DSOE_TEST_ROM=...` |
+| `src/game_rtl.c` | our glue: config hook, save states, the compare harness (`SOE_COMPARE_*`) |
+| `src/soe_frame_driver.c` | frame and interrupt timing: the rules MesenCE has and snesrecomp's beam driver lacks |
+| `src/soe_bindings.c`, `src/bound-c/` | routines run as reconstructed C (`hle` lines in `recomp/seed-exclusions.txt`; proof rules in `docs/game-rtl.md` §4b) |
+| `src/soe_mesen_state.c` | a MesenCE save state as a run's start (`SOE_COMPARE_MESEN_STATE`) |
 | `recomp/` | seeds (`bank*.cfg`), `seed-exclusions.txt`, `symbols.toml` |
-| `tools/` | `regen.sh` (ROM -> C), `import.mts` (from everscript-vscode), `annotate.mts`, `compare/` (MesenCE against the recomp, replays, probes), `bisect.js`, `verify-intro.js`, `check-obj-tiles.js` |
-| `docs/` | `README.md` (status, map), setup, glue, debugging, headless exploration, bugs and roadmap, research |
+| `tests/` | ctest scripts and `recorded/` (stored MesenCE runs, CRCs only) |
+| `tools/` | `regen.sh` (ROM to C), `compare/` (MesenCE against the recomp, replays, probes), `import.mts`, `bisect.js` |
+| `docs/` | [docs/README.md](docs/README.md): guides, the PR tracker, research notes |
 
 ## Skills
 
 `.agents/skills/<name>/SKILL.md` (Claude Code reads them through `.claude/skills`):
-`recomp` (build, ownership, seeds), `recomp-debugging` (reproduce, compare, classify, fix),
+`recomp` (build, test, ownership, seeds), `recomp-debugging` (reproduce, compare, classify, fix),
 `reference-emulators` (MesenCE decides, ares by hand, snes9x only probes).

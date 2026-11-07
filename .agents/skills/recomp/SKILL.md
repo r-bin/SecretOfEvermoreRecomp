@@ -1,53 +1,57 @@
 ---
 name: recomp
-description: Use when building, running or testing the Secret of Evermore recompilation: regen and build, the seeds from everscript-vscode, our glue, the framework pin, headless runs.
+description: Use when building, running or testing the Secret of Evermore recompilation: regen and build, the tests and replays, the seeds from everscript-vscode, our glue, the framework patch, headless runs.
 applyTo: "**"
 ---
 
 # Skill: the SoE recomp
 
-Docs: `docs/README.md` (status, map), `setup.md` (build, new seeds), `headless-exploration.md`
-(driving the game from a script), `debugging.md` (modes, dumps, bisection), `bugs-and-todos.md`
-(open and solved bugs, each with its lesson), `game-rtl.md` (our glue). Read the bug table before a
-new hunt: the same failure classes repeat.
+Docs: `docs/README.md` (map), `setup.md` (build, new seeds), `testing.md` (tests, replays, MesenCE), `game-rtl.md` (our
+glue), `headless-exploration.md` (driving the game from a script), `debugging.md` (modes, dumps, bisection),
+`bugs-and-todos.md` (each solved bug with its lesson: read it before a new hunt, the same failure classes repeat).
 
 ## Commands
-`SNESRECOMP_ROM=<rom> bash tools/regen.sh` (ROM -> `src/gen/`, ~2-3 min), then
-`cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j` -> `build/SecretOfEvermoreSNESRecomp`.
-Headless: `build/SecretOfEvermoreSNESRecomp --no-launcher --script s.txt <rom>` with `SNESRECOMP_DUMP_DIR`.
-Copy `build/` to a scratch folder before experimenting: `saves/`, `config.ini` belong to the user.
-Upstream's `v2_emit` reuses `src/gen` without looking at `SNESRECOMP_EXACT_BUS` / `SNESRECOMP_AOT_RESUME`, so `regen.sh` deletes
-`src/gen` first; the log must say `28 bank(s) emitted`.
-New seeds, bound C, names: `npm run recomp` in an everscript-vscode checkout (writes nothing here), then
-`node tools/import.mts [--from <checkout>]` here. Nothing else may reach into another checkout.
+
+```sh
+bash tools/regen.sh --rom <rom>                      # ROM -> src/gen/ (~2-3 min); the log must say `28 bank(s) emitted`
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSOE_TEST_ROM=<rom> && cmake --build build -j
+ctest --test-dir build --output-on-failure           # ~90 s: tool tests, reset, save state, both replays
+```
+
+- Headless: `build/SecretOfEvermoreSNESRecomp --no-launcher --script s.txt <rom>` with `SNESRECOMP_DUMP_DIR`. Copy `build/`
+  to a scratch folder before experimenting: `saves/`, `config.ini` belong to the user.
+- `regen.sh` deletes `src/gen` first: upstream's emitter reuses it without looking at `SNESRECOMP_EXACT_BUS` /
+  `SNESRECOMP_AOT_RESUME`.
+- New seeds, bound C, names: `npm run recomp` in an everscript-vscode checkout (writes nothing here), then
+  `node tools/import.mts --from <checkout>`. Nothing else reads another checkout.
+- No `timeout` on macOS: bound a long run with `perl -e 'alarm 900; exec @ARGV' <command>`.
+
+## Which replays to run
+
+The committed replays are MesenCE movies from power-on (`tools/compare/replays/`, testing.md):
+- **`01-no-inputs-1-loop.mmo` is mandatory** for every change: `ctest` (against the stored run), and against MesenCE itself
+  before committing a timing change (`compare.mts mesen recomp ... --verbose`, about 2 minutes). Native against
+  interpreted needs no MesenCE: `tools/compare/probes/native-vs-interp.mts`.
+- `02-new-game-to-flowers.mmo` runs in `ctest` too; against MesenCE it takes about 5 minutes. Run it before a commit that
+  touches input, the field or sound.
+- Replays in `replays/local/` are extra: run them when it costs nothing, from a copy of the executable, and never block a
+  commit on them. A full-game recording does not sync: never use it for parity or native share.
+- A replay becomes mandatory only once it is known to contain one specific action, and then for changes to that action.
 
 ## Ownership
-- Ours: `src/game_rtl.c`, the `after_config` line in `src/main.c`, `tools/`, `docs/`,
-  `recomp/seed-exclusions.txt`. The seeds `recomp/bank8x..9x.cfg` and the data-region block of
-  `recomp/bank00.cfg` come from everscript-vscode's export through `tools/import.mts`: change them there (or through
-  the exclusions file), never by hand.
-- `snesrecomp/` is a submodule on public upstream plus `framework/snesrecomp.patch`, applied by `regen.sh`
-  (`docs/framework.md`). Never edit it here; game timing lives in our frame driver `src/soe_frame_driver.c`.
-- `src/bound-c/` is imported from everscript-vscode's `reconstructed-c`: never edit it here.
+
+- Ours: `src/` (but `src/gen/` and `src/bound-c/`), `tools/`, `tests/`, `docs/`, `recomp/seed-exclusions.txt`,
+  `recomp/symbols.toml`, `framework/snesrecomp.patch`.
+- Imported, never edited here: `recomp/bank8x..9x.cfg`, the data-region block of `recomp/bank00.cfg`, `src/bound-c/`.
+- `snesrecomp/` is upstream plus `framework/snesrecomp.patch`; to change the patch, work on a framework branch and
+  regenerate the patch (`docs/framework.md`). `docs/pr/` holds each change as an upstream PR.
 - `src/gen/` is derived from the ROM: never commit it. No ROM bytes, dumps or screenshots in git.
 
 ## Bugs
-Reproducing, comparing against snes9x / Mesen2, classifying and fixing a recomp bug, and where
-every file lives: **`recomp-debugging` skill**. Its trap list is the short version of
-`docs/bugs-and-todos.md` §2.
+
+Reproducing, comparing, classifying and fixing a recomp bug: **`recomp-debugging` skill**.
 
 ## Finishing
-Add the bug with its lesson to `docs/bugs-and-todos.md`; game facts (addresses, routines) go to
-everscript-vscode's knowledge entries. Work on `develop`; `main` only takes releases. Commit only your files.
 
-## Which replays to run
-`01-no-inputs-4m` (no buttons pressed) is the one mandatory replay: it is the baseline for a change, and what the C share and
-native share are worked on. The others (02, 04, 05, 06) are random scenarios, recorded as played: only a fraction of their
-content adds to 01, and they were not made to exercise any one action. So:
-- Mandatory for a change: 01, native against interpreted (`tools/compare/probes/native-vs-interp.mts`, about a minute, no
-  MesenCE), then against MesenCE before a commit.
-- The other replays are verbose: more testing helps, so run them when it costs nothing, but never wait on them, block a build
-  on them or hold a commit for them. Run them from a copy of the executable, so a build can go on beside them.
-- A replay becomes mandatory only once it is known to contain one specific action, and then for changes to that action. A short
-  recording made for one action is worth more than a long one that happens to pass it.
-- Never run `03-complete-run-7h` for parity or native share: it does not sync.
+The bug with its lesson in `docs/bugs-and-todos.md`, a difference from MesenCE in `docs/imperfections/`; game facts go to
+everscript-vscode's knowledge entries. Work on `develop`; `main` only takes releases. Commit only your files, by path.

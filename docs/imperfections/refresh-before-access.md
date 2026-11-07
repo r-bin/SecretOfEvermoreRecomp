@@ -1,6 +1,6 @@
 # A Refresh Stall Before a Port Access
 
-**Status:** fixed on branch `snesrecomp-spc-access-cycles` (our `src/soe_frame_driver.c`, `access_clock`, through the
+**Status:** fixed with PR 1 (our `src/soe_frame_driver.c`, `access_clock`, through the
 framework hook `RtlSetCpuAccessClockHook`). Not applicable on `develop` (its APU clock has no access point).
 
 ## What hardware does (MesenCE)

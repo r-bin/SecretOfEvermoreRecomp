@@ -1,68 +1,40 @@
 # Secret of Evermore Recomp
 
-A native recompilation of **Secret of Evermore** (USA), built on
+A native recompilation of **Secret of Evermore** (SNES, USA), built on
 [snesrecomp](https://github.com/RetroPortingToolKit/snesrecomp).
 
-Everything needed to build and test is here. The seeds and the reconstructed C were exported from
-[everscript-vscode](https://github.com/r-bin/everscript-vscode), which records the running game (CDL); you only need
-it to make new seeds.
-
-
-
-> **You must legally own a copy of the game.** No ROM data is distributed with
-> this project, in the repository or in any release. The recompiled C is
-> generated locally from your own copy and is never committed.
+> **You must own the game.** No ROM data is distributed with this project, in the repository or in any release. The C code
+> is generated on your machine from your own copy and is never committed.
 
 ## Status
 
-Five replays, about 17.5 minutes of distinct play from power-on into Prehistoria, run identically to MesenCE at every
-frame: all memory, and the picture but for fade rounding. 99.9 % of what they execute runs natively, and six routines
-run as reconstructed C. The whole game has not been proven, and no release exists yet. Per replay:
-[docs/progress.md](docs/progress.md); the bug history: [docs/bugs-and-todos.md](docs/bugs-and-todos.md).
+Two replays, about 9 minutes of play from power-on to Prehistoria, run identically to MesenCE 2.2.1: WRAM, VRAM, CGRAM
+and OAM are equal at every NMI from power-on, with nothing copied in or masked. Almost all of what they execute runs as
+compiled code, and 14 routines run as reconstructed C. The whole game has not been proven, and there is no release yet.
+Per replay and memory region: [docs/progress.md](docs/progress.md).
 
-These results need changes to snesrecomp that are not upstream yet; they are in `framework/snesrecomp.patch`, which
-`tools/regen.sh` applies ([docs/framework.md](docs/framework.md)).
-
-## ROM identity
-
-| | |
-|---|---|
-| File | `rom.sfc` |
-| Publisher | — |
-| Developer | — |
-| Year | — |
-| Mapping | hirom |
-| Region | USA (North America) |
-| Coprocessor | none |
-| CRC32 | `a5c0045e` |
-| SHA-256 | `17c864a76d498feb6479eee8e7d6807b951c66225033228622bb66754baab1db` |
-
-`tools/regen.sh` refuses to run against anything else, so a mismatched
-revision fails immediately instead of producing subtly wrong output.
+The results need changes to snesrecomp that are not upstream yet. They are one file, `framework/snesrecomp.patch`, which
+`tools/regen.sh` applies, and they are on their way upstream as pull requests ([docs/pr/README.md](docs/pr/README.md)).
 
 ## Build
 
+Needs Python 3.9+, Rust (cargo), CMake 3.20+, a C11 compiler, and node 23.6+ for the tests.
+
 ```sh
-git submodule update --init --recursive
-bash tools/regen.sh --rom /path/to/rom.sfc
+git clone --recursive https://github.com/r-bin/SecretOfEvermoreRecomp && cd SecretOfEvermoreRecomp
+bash tools/regen.sh --rom /path/to/rom.sfc      # verifies the ROM, applies the framework patch, generates src/gen/
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 ```
 
-The ROM does not have to live in the repository — keeping it on your own
-drive is the better habit, and `SNESRECOMP_ROM` sets the path once for a
-shell. Without either, `tools/regen.sh` finds `rom.sfc` at the repo root,
-then the path the setup wizard recorded in `rom.cfg`; `.gitignore` blocks
-both from ever being committed.
+`tools/regen.sh` refuses any ROM but the one below. Instead of `--rom` you can set `SNESRECOMP_ROM`. Re-run it after
+anything under `recomp/` changes. Details and troubleshooting: [docs/setup.md](docs/setup.md).
 
-`tools/regen.sh` verifies the ROM, generates `src/gen/*.c`, and re-syncs
-`recomp/funcs.h`. Re-run it whenever you change anything under `recomp/`.
-Our frame driver (`src/soe_frame_driver.c`) and the
-glue (`src/game_rtl.c`) hold everything this game needs ([docs/game-rtl.md](docs/game-rtl.md)).
-
-This repository builds alone. New seeds (a bigger CDL, a new exclusion in `recomp/seed-exclusions.txt`), bound C and
-names for the generated C come from everscript-vscode: `npm run recomp` there, then `node tools/import.mts` here
-copies them in ([docs/setup.md](docs/setup.md) §4).
+| ROM | |
+|---|---|
+| Title | Secret of Evermore (USA), headerless, HiROM, 3 MB |
+| CRC32 | `a5c0045e` |
+| SHA-256 | `17c864a76d498feb6479eee8e7d6807b951c66225033228622bb66754baab1db` |
 
 ## Test
 
@@ -72,71 +44,39 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 ```
 
-Needs node 23.6 or later. Without `-DSOE_TEST_ROM` only `compare_units` runs. The tests check the game against a stored
-MesenCE run, so MesenCE is not required; [docs/testing.md](docs/testing.md) says what each one proves and how to compare
-against MesenCE itself.
+The replay tests check the recomp against stored MesenCE runs, so MesenCE is not needed. To compare against MesenCE
+itself, and for what each test proves: [docs/testing.md](docs/testing.md).
 
 ## Run
 
 ```sh
-./build/SecretOfEvermoreSNESRecomp                     # launcher picks the ROM
-./build/SecretOfEvermoreSNESRecomp /path/to/rom.sfc # or name it and skip the launcher
+./build/SecretOfEvermoreSNESRecomp                    # the launcher picks the ROM
+./build/SecretOfEvermoreSNESRecomp /path/to/rom.sfc   # or name it
 ```
 
-With no ROM on the command line the build opens the recomp-ui launcher: a ROM
-picker with a verification badge, plus display / audio / input settings. Your
-choice is cached in `rom.cfg` beside the executable, so the next launch opens
-on it and "Skip launcher on boot" makes it immediate. If the launcher is not
-built in (`--no-recomp-ui`), the host falls back to a native file picker.
-
-Either way the ROM is checked against the digests above before anything boots
-— a dump that could not have produced this build is refused at the door rather
-than mis-executing ten frames in.
+The launcher checks the ROM against the digests above before anything boots. Saves, `config.ini` and `keybinds.ini` live
+beside the executable and survive rebuilds.
 
 ## Layout
 
-| Path | What lives there |
+| Path | What |
 |---|---|
-| `recomp/` | Analysis input: `bank*.cfg` (seeds), `seed-exclusions.txt`, `symbols.toml`, generated `funcs.h` |
-| `rom_identity.txt` | ROM digests — read by the build, `tools/regen.sh` and CI |
-| `src/` | Host code: `game_rtl.c` (our glue), `main.c` |
-| `src/gen/` | Generated C. Never committed — regenerate locally |
-| `snesrecomp/` | Framework submodule, public upstream (owns `lib/recomp-net`, `lib/retcomm-rbengine`) |
-| `framework/` | `snesrecomp.patch`: our framework changes, applied by `tools/regen.sh` |
-| `src/bound-c/` | Reconstructed C of the bound routines, imported from everscript-vscode (`tools/import.mts`) |
-| `tools/` | `regen.sh` — the ROM → C pipeline; `compare/` — MesenCE against the recomp; `bisect.js`, `verify-intro.js`, `check-obj-tiles.js` |
-| `tests/` | `ctest` tests and the stored reference run |
-| `scripts/` | `package_release.sh` — player-facing zip |
-| `framework_pins.txt` | Exact framework commits this project was scaffolded against |
-| `docs/` | Status, setup, glue, debugging, headless exploration, bugs and roadmap, research |
+| `src/` | Our glue: `game_rtl.c` (hooks, save states, compare harness), `soe_frame_driver.c` (frame and interrupt timing), `soe_bindings.c` (routines run as C), `main.c` |
+| `src/bound-c/` | Reconstructed C of the bound routines, imported from [everscript-vscode](https://github.com/r-bin/everscript-vscode) |
+| `src/gen/` | Generated C, never committed |
+| `recomp/` | Analysis input: `bank*.cfg` (seeds), `seed-exclusions.txt`, `symbols.toml` |
+| `framework/snesrecomp.patch` | Our snesrecomp changes, applied by `tools/regen.sh` ([docs/framework.md](docs/framework.md)) |
+| `snesrecomp/`, `recomp-ui/` | Submodules at the commits in `framework_pins.txt` |
+| `tools/` | `regen.sh` (ROM to C), `compare/` (MesenCE against the recomp), `import.mts` (new seeds and C), debugging helpers |
+| `tests/` | ctest scripts and the stored MesenCE runs |
+| `docs/` | Status, setup, testing, debugging, the framework PRs: [docs/README.md](docs/README.md) |
 
-## Porting from here
-
-The scaffold stops where the game-specific work starts. In rough order:
-
-1. **Make it boot.** `src/game_rtl.c` holds the frame driver. It starts on
-   the framework's beam-aligned driver (`snesrecomp/runner/src/beam_frame_driver.h`):
-   one frame per PPU field, interrupts taken where the beam latches them,
-   the field rasterized from the raster journal. A title whose main loop it
-   does not fit replaces those calls with its own driver.
-2. **Name things.** Add entries to `recomp/symbols.toml` as you identify
-   routines, then re-run `tools/regen.sh`. Set `emit = true` to promote one
-   into ahead-of-time analysis; leave it false to keep it interpreted.
-   Regen synchronizes the marked blocks in each bank cfg, creating missing
-   configs. Only proven variants become AOT code. See `recomp/README.md`.
-3. **Resolve dispatch misses.** After every run, deal with unresolved
-   indirect targets before anything else — they are the reason a port
-   diverges, and they are cheap to fix early.
-4. **Never synthesise a result** to get past uncovered code, and never edit
-   `src/gen/` by hand. Fix the config or the framework and regenerate.
-
-## Multiplayer
-
-Single player.
+The seeds and the bound C come from everscript-vscode, which records the running game. Build and test need nothing but
+this repository; only new seeds need an everscript-vscode checkout ([docs/setup.md](docs/setup.md) §4).
 
 ## License
 
-This project's own source is under the license in `LICENSE` (PolyForm Noncommercial 1.0.0). The scaffold and
-`src/soe_frame_driver.c` derive from snesrecomp under the same terms. The framework, and
-`framework/snesrecomp.patch` as changes to it, carry its own terms — see `snesrecomp/LICENSE` and
-`snesrecomp/THIRD_PARTY_ATTRIBUTION.md`. Neither covers the game data, which is not distributed here.
+This project's own source is under PolyForm Noncommercial 1.0.0 (`LICENSE`). The scaffold and `src/soe_frame_driver.c`
+derive from snesrecomp under the same terms. snesrecomp, and `framework/snesrecomp.patch` as changes to it, carry
+snesrecomp's terms: `snesrecomp/LICENSE`, `snesrecomp/THIRD_PARTY_ATTRIBUTION.md`. Neither covers the game, which is not
+distributed here.

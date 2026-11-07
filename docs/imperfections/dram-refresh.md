@@ -31,7 +31,7 @@ before and runs the handler as an ordinary slice from its vector (`interp_bridge
 refresh point as deadline), so it stops there and goes on in the field's refresh-cut slices; its `$4212` reads then
 land on MesenCE's clocks. IRQ handlers still run whole.
 
-## Correction (2026-10-31, branch `snesrecomp-spc-access-cycles`)
+## Correction (2026-10-31, with PR 1)
 MesenCE's refresh point is not a fixed H=538: `memoryManager.dramRefreshPosition` is 538 − (the line's start & 7),
 and lines are 1364 clocks (4 mod 8), so it alternates between 538 and 534 line by line. In the fields whose short
 line our driver takes at V=225 (short-scanline.md), MesenCE's lines 225–240 start 4 clocks after the beam's; from

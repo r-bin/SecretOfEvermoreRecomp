@@ -1,6 +1,6 @@
 # DMA Start and End Overhead
 
-**Status:** fixed in snesrecomp on branch `spc-access-cycles` (`runner/src/snes/snes.c`, `$420B`;
+**Status:** fixed in PR 1 (`runner/src/snes/snes.c`, `$420B`;
 `SNESRECOMP_DMA_ALIGN=0` restores the old charge). Open on `develop` (the framework's flat charge).
 
 ## What hardware does (MesenCE)
@@ -28,7 +28,7 @@ start, and a pending DMA waits behind both (`ProcessPendingTransfers` checks the
 event from the cycle before the `$420B` write up to the next opcode fetch moves the DMA's start one cycle (6 clocks)
 later, one up to the DMA's own cycle two. The CPU runs its next instruction's cycles in the meantime, so only the
 start alignment changes: one DMA of the attract replay's frame 4975 (H=22 of line 0) was 6 clocks shorter on
-MesenCE, and every NMI after it 6 clocks later. snesrecomp's `$420B` rule (branch `spc-access-cycles`) takes it from
+MesenCE, and every NMI after it 6 clocks later. snesrecomp's `$420B` rule (PR 1) takes it from
 the beam's line.
 
 ## Limits

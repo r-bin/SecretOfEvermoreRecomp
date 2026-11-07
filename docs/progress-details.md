@@ -1,7 +1,9 @@
 # Progress in Detail
 
-What stands behind the table in [progress.md](progress.md): how each replay starts, what differs, native share, speed, bound C,
-what it took and how to measure.
+What stood behind the replay table of 2026-11-04/05: how each replay started, what differed, native share, speed, bound C,
+what it took. These were the replays of that time (`01-no-inputs-4m.evsmv`, `02-newgame-boy-available.evsmv`, `04`-`06`
+MesenCE movies with save states); they are now local, outside git. The committed replays and their results:
+[progress.md](progress.md), [testing.md](testing.md).
 
 ## The replays
 
@@ -13,7 +15,7 @@ SPC700 and S-DSP and the state of the controller ([imperfections/mmo-reset-start
 every NMI has MesenCE's clock.
 
 **05 starts from a MesenCE save state mid-game, taken over whole** (`src/soe_mesen_state.c`,
-[imperfections/mesen-state.md](imperfections/mesen-state.md)). It needs no RNG copy and every key counts from 1. 06 starts the same way.
+[imperfections/mesen-state.md](imperfections/mesen-state.md)). Every key counts from 1. 06 starts the same way.
 
 All are WRAM-identical native and all-interpreted at every key. What the two recordings found, and 01 and 02 never reached:
 the D flag on interrupts (bugs-and-todos.md §2), a frame that starts past line 0 after a long DMA
@@ -24,7 +26,8 @@ the D flag on interrupts (bugs-and-todos.md §2), a frame that starts past line 
 [imperfections/vram-writes-during-rendering.md](imperfections/vram-writes-during-rendering.md)) and MesenCE's own ROM mirror
 ([imperfections/mesen-rom-mirror.md](imperfections/mesen-rom-mirror.md)).
 
-Frames before 120 are not compared: the RNG is copied in from MesenCE at 115. Native and interpreted runs of one
+Then, frames before 120 were not compared: the RNG was copied in from MesenCE at 115 (dropped on 2026-11-07: nothing needs
+it any more). Native and interpreted runs of one
 build have every NMI on the same master clock and WRAM identical at every key from 1 on, both replays to their end
 (`tools/compare/probes/native-vs-interp.mts`).
 
@@ -79,7 +82,7 @@ and 96.7 %, traps 99.56 and 99.75 %, seed widths and tables 99.97 and 99.99 %.
 change: the seeds had given `$8C:EA43` an exit width the CDL never saw at a call site, and one jump table 98
 garbage entries (`docs/bugs-and-todos.md`, "408 interpreter-only variants"); `I_NMI` is compiled.
 
-**Compiled resume** (snesrecomp `aot-resume`, generated with `SNESRECOMP_AOT_RESUME=1`, which our `tools/regen.sh`
+**Compiled resume** (PR 4, generated with `SNESRECOMP_AOT_RESUME=1`, which our `tools/regen.sh`
 sets). Before it, each CPU slice (it ends at every line's refresh point) left the code it stopped in to the
 interpreter, and that code and its callers stayed interpreted until the next call bounced. Now every instruction of a
 compiled variant is also an entry (a switch in its prologue, `g_aot_resume_table` in `dispatch_v2.c`), and the
@@ -200,23 +203,23 @@ without them interpreted parts at 319 and native at NMI 1):
 MesenCE's positions (also inside the NMI handler), the auto-joypad busy window, the short scanline and the beam
 alignment after a long DMA ([imperfections/README.md](imperfections/README.md) has one file each).
 
-**Still open:** the snesrecomp changes are not upstream yet ([upstream-access-timing.md](upstream-access-timing.md));
+**Still open:** the snesrecomp changes are not upstream yet ([upstream-access-timing.md](research/upstream-access-timing.md));
 native share below 100 % (the list above: interpreter-only variants).
 
 ## How to measure
 
-In everscript-vscode, with the recomp built:
+Here, with the recomp built ([testing.md](testing.md)):
 
 ```sh
-node tools/compare/compare.mts rom.smc --backend mesen,recomp \
-  --replay tools/compare/replays/<replay>.evsmv --regions wram --verbose --keep-going
+node tools/compare/compare.mts mesen recomp <rom> \
+  --replay tools/compare/replays/<replay>.mmo --regions wram --verbose --keep-going
 ```
 
-That is the native column (`.evsmv` or `.mmo`; `SOE_MMO_FRESH=1` for a movie's lockstep run); the native share is `tools/compare/probes/tier-stats.mts <rom> <replay> <to>`. Headless
+That is the native column (`.mmo` or `.evsmv`; `SOE_MMO_FRESH=1` for a movie's lockstep run); the native share is `tools/compare/probes/tier-stats.mts <rom> <replay> <to>`. Headless
 with no display or audio device (a locked Mac: the GL swap blocks, CoreAudio fails), run them with
 `SDL_VIDEO_DRIVER=dummy SDL_AUDIO_DRIVER=disk SDL_AUDIO_DISK_OUTPUT_FILE=/dev/null`; the instruction counts are the
 same as with real devices. For the interpreted one, run it with the environment from
 `tools/compare/probes/interp.mts` (`allInterpretedEnv`). MesenCE's testrunner stops after 100 s of wall time unless
 told otherwise; `tools/compare/mesen.mts` passes `--timeout=3600` since 2026-11-03 (earlier measurements of 01 ended
-between keys 10,100 and 11,000 for that reason). History and lessons: [replay-sync.md](replay-sync.md),
-[mesence-parity-lessons.md](mesence-parity-lessons.md).
+between keys 10,100 and 11,000 for that reason). History and lessons: [replay-sync.md](research/replay-sync.md),
+[mesence-parity-lessons.md](research/mesence-parity-lessons.md).

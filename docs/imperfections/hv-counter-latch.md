@@ -1,7 +1,7 @@
 # H/V Counter Latch (`$2137`, `$213C`, `$213D`)
 
-**Status:** fixed in snesrecomp on branch `spc-access-cycles` (`runner/src/snes/ppu.c` `$2137`, `snes.c`
-`snes_latch_position`), 2026-10-31; `$2138`/`$213B` reads during rendering fixed on branch `ppu-render-reads`
+**Status:** fixed in PR 1 (`runner/src/snes/ppu.c` `$2137`, `snes.c`
+`snes_latch_position`), 2026-10-31; `$2138`/`$213B` reads during rendering fixed in PR 2
 (`ppu.c` `ppu_renderOamAddress`, `ppu_renderCgramAddress`), 2026-11-02.
 
 ## What hardware does (MesenCE)
@@ -38,7 +38,7 @@ line 0, in vblank and in forced blank). Measured at NMI 5997 of the attract repl
 CGRAM MesenCE `$00`, ours `$83`. The routine mixes them into the RNG seed (`$7E0133–013A`), so WRAM parted at key
 5998 although every NMI through 6358 landed on MesenCE's clock.
 
-**Fix** (snesrecomp branch `ppu-render-reads`, `ppu.c` `ppu_renderOamAddress` / `ppu_renderCgramAddress`, the beam
+**Fix** (snesrecomp PR 2, `ppu.c` `ppu_renderOamAddress` / `ppu_renderCgramAddress`, the beam
 from `snes.c` `g_ppu_beam_hook`; off: `SNESRECOMP_PPU_RENDER_READS=0`):
 - OAM up to H clock 1020: sprite `(first + (dot + 1) / 2) & 127`, `first` the priority-rotation start.
 - OAM after: the time phase, rebuilt from OAM on demand: the sprites in range for this line (at most 32) walked

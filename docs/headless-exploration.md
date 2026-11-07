@@ -19,7 +19,7 @@ Headless scripts are the runner's `--script` files (commands in [debugging.md §
 | Start from the player's progress | Continue the in-game save (`saves/save.srm`) from the title: `wait 700`, `press start 2`, `wait 400`, `press start 2`, `wait 150` opens the load list with the first save **already selected**; `press b 4`, `wait 60`, `press b 4` (select, confirm), `wait 500`. Pressing down first selects an empty slot. |
 | A save state of a moment | There is no `savestate` script command. Set `Autosave = 1` in `config.ini`: the host loads slot 0 on start and **saves slot 0 on exit**, so a script that ends in `quit` leaves `saves/save0.sav`. Copy it aside and set `Autosave = 0` again, or every later run starts from it. |
 | Start every run from that moment | `loadstate 0` as the first line. States carry the CPU and resume PC, so this works on frame 0. |
-| Same thing on snes9x | everscript-vscode: `node tools/recomp/s9x-run.js <rom> <save.srm> <script> <outdir>`: same commands; start with the title sequence above (it ignores `loadstate`). |
+| Same thing on snes9x (optional) | everscript-vscode: `node tools/recomp/s9x-run.js <rom> <save.srm> <script> <outdir>`: same commands; start with the title sequence above (it ignores `loadstate`). |
 
 A run from a state is **deterministic**: the same script gives byte-identical dumps. Keep that
 property when narrowing a bug down (§5).
@@ -37,7 +37,9 @@ All from a `dump` (`<tag>.wram.bin`, 128 KB, offset = address − `$7E0000`):
 | `$7E0F86` / `$0F88` | room origin in 16-px cells (also bytes 0/1 of the room's data blob) |
 | `$7E0100` | NMI frame counter; `$7E0B19` field frame counter. If `$0100` rises but `$0B19` does not, the game logic is frozen. |
 
-## 3. Where Can I Go? (everscript-vscode's `tools/recomp/room-nav.js`)
+## 3. Where Can I Go? (optional: everscript-vscode's `tools/recomp/room-nav.js`)
+
+Run in an everscript-vscode checkout; it reads the room data from your ROM.
 
 ```sh
 node tools/recomp/room-nav.js out/rom.sfc 25            # table: triggers with destinations, enemy spawns

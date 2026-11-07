@@ -26,7 +26,7 @@ rare fights, menus and deaths. The replays are now worth more as regression test
 |---|---|---|
 | `rom.cdl`, `rom.ext` | one flag byte per ROM byte (code, data, widths), no ROM bytes | no: nothing here reads them; the seeds carry what the recomp needs |
 | value streams (`wram-values.bin`, `io-values.bin`, `regs.bin`, `word-ranges.bin`, `script-xrefs.bin`, ...) | values the game produced while running | no: derived from the game's data |
-| replays (`.evsmv`) | controller input, with the SRAM they started from | no: the SRAM holds save data |
+| replays (`.evsmv`) | controller input, with the SRAM they started from | no: the SRAM holds save data. The test replays are MesenCE movies from power-on, input only ([testing.md](testing.md)) |
 | **the seeds** (`recomp/bank*.cfg`) | function roots, register widths, dispatch tables, data regions, our names | **yes**: no ROM bytes, reproducible from the CDL |
 
 The library and its replays are kept as everscript recording bundles (zips), outside any

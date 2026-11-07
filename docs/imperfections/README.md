@@ -1,13 +1,12 @@
-# Imperfections: Where the Recomp Differs from MesenCE
+# Imperfections: Where the Recomp Differed from MesenCE
 
-The recomp is compared with MesenCE, the reference ([../reference-emulators.md](../reference-emulators.md)),
-through `tools/compare` (`--backend mesen,recomp`). Each file below is one known way the
-recomp differs: what it is, how it was measured, and how it was fixed or what would fix it. The owner's
-rule: **snesrecomp is not changed**; we work only in the files that adjust the game (glue `src/`, our frame
-driver `src/soe_frame_driver.c`, seeds `recomp/`, tools). What snesrecomp itself should change is written down
-here for upstream; all open ones together as one proposal: [../upstream-access-timing.md](../upstream-access-timing.md).
+Each file is one way the recomp differed from MesenCE 2.2.1, the reference ([../reference-emulators.md](../reference-emulators.md)):
+what it is, how it was measured, and how it was fixed or what would fix it. A fix is in one of two places: our glue
+(`src/`, mostly the frame driver `src/soe_frame_driver.c`), or `framework/snesrecomp.patch`, whose changes go upstream as
+pull requests ([../pr/README.md](../pr/README.md)). With all of them, the committed replays match MesenCE at every NMI
+([../testing.md](../testing.md)).
 
-Ordered as found, measured on `01-no-inputs-4m.evsmv` (all against MesenCE 2.2.1):
+Ordered as found. "Fixed in PR n" means in the framework patch, as pull request n of [../pr/README.md](../pr/README.md).
 
 | Imperfection | Where | Effect | Status |
 |---|---|---|---|
@@ -20,16 +19,16 @@ Ordered as found, measured on `01-no-inputs-4m.evsmv` (all against MesenCE 2.2.1
 | [spc-clock-rate.md](spc-clock-rate.md) | snesrecomp APU constant | SPC700 0.16 % fast | corrected in our frame driver |
 | [auto-joypad-read.md](auto-joypad-read.md) | snesrecomp beam | `$4212` bit 0 busy from V=225, not from MesenCE's 256-clock point: the NMI handler's wait up to 9 passes short | fixed in our frame driver |
 | [nmi-recognition.md](nmi-recognition.md) | snesrecomp frame driver | NMI taken after the first instruction past V=225, not after the first with a cycle from V=225+6 | fixed in our frame driver |
-| [apu-port-handshake.md](apu-port-handshake.md) | snesrecomp SPC700 model | SPC instructions do their port accesses on their first cycle: 55 % of sound-port handshakes take one poll pass more or fewer | **open on develop: the first difference left;** mostly fixed in snesrecomp on branch `spc-access-cycles` |
-| [dma-overhead.md](dma-overhead.md) | snesrecomp DMA | start/end alignment 2–8 clocks off per DMA; an empty `$420B` write costs 12 | open on develop; fixed in snesrecomp on branch `spc-access-cycles` (rule measured) |
-| [refresh-before-access.md](refresh-before-access.md) | our frame driver | a refresh stall inside an instruction came after its port access | fixed on branch `snesrecomp-spc-access-cycles` |
-| [port-word-writes.md](port-word-writes.md) | snesrecomp port writes | a 16-bit port write lands both bytes at once, high first | fixed on branch `spc-access-cycles` (per-byte clocks, queue in time order) |
-| [dsp-timing.md](dsp-timing.md) | snesrecomp S-DSP | per-sample DSP: key-on, ENDX and envelope steps off; directory reads not at their clock | fixed on branch `spc-access-cycles` (per-clock S-DSP, timer phase) |
-| [compiled-cycle-charges.md](compiled-cycle-charges.md) | snesrecomp recompiler | compiled code billed at code speed, charged before its accesses, deadline per block: native exact only to NMI 1 | fixed on branch `aot-bus-exact` (2026-11-03): native identical to MesenCE at every key of both replays |
-| [hv-counter-latch.md](hv-counter-latch.md) | snesrecomp PPU | `$2137` latched always, reset the `$213C/$213D` flip-flops, read 0; `$2138`/`$213B` during rendering read the CPU's address | fixed on branch `spc-access-cycles` (latch) and `ppu-render-reads` (reads during rendering, 2026-11-02): the attract replay is identical at every key |
+| [apu-port-handshake.md](apu-port-handshake.md) | snesrecomp SPC700 model | SPC instructions do their port accesses on their first cycle: 55 % of sound-port handshakes take one poll pass more or fewer | fixed in PR 1 |
+| [dma-overhead.md](dma-overhead.md) | snesrecomp DMA | start/end alignment 2–8 clocks off per DMA; an empty `$420B` write costs 12 | fixed in PR 1 (rule measured) |
+| [refresh-before-access.md](refresh-before-access.md) | our frame driver | a refresh stall inside an instruction came after its port access | fixed in our frame driver |
+| [port-word-writes.md](port-word-writes.md) | snesrecomp port writes | a 16-bit port write lands both bytes at once, high first | fixed in PR 1 (per-byte clocks, queue in time order) |
+| [dsp-timing.md](dsp-timing.md) | snesrecomp S-DSP | per-sample DSP: key-on, ENDX and envelope steps off; directory reads not at their clock | fixed in PR 1 (per-clock S-DSP, timer phase) |
+| [compiled-cycle-charges.md](compiled-cycle-charges.md) | snesrecomp recompiler | compiled code billed at code speed, charged before its accesses, deadline per block: native exact only to NMI 1 | fixed in PR 3 |
+| [hv-counter-latch.md](hv-counter-latch.md) | snesrecomp PPU | `$2137` latched always, reset the `$213C/$213D` flip-flops, read 0; `$2138`/`$213B` during rendering read the CPU's address | fixed in PR 1 (latch) and PR 2 (reads during rendering) |
 | [host-frames-and-fields.md](host-frames-and-fields.md) | snesrecomp frame driver | a long DMA packs several fields into one host frame: replay input lands late | open for replays with input |
-| [mesen-state.md](mesen-state.md) | the comparison | a MesenCE save state as the start of a run, taken over whole | works: replay 05 identical to its end |
-| [mmo-reset-start.md](mmo-reset-start.md) | the comparison | a MesenCE movie's start is a reset of a running console | solved: replay 04 identical to its end |
+| [mesen-state.md](mesen-state.md) | the comparison | a MesenCE save state as the start of a run, taken over whole | works: a local replay from a state identical to its end |
+| [mmo-reset-start.md](mmo-reset-start.md) | the comparison | a MesenCE movie's start is a reset of a running console | solved: a local movie with a reset start identical to its end |
 | [cgram-read-open-bus.md](cgram-read-open-bus.md) | snesrecomp PPU | `$213B` high byte's bit 7 is 0, not the PPU2 open bus | fixed for DMA reads in our frame driver |
 | [vblank-flag-at-access.md](vblank-flag-at-access.md) | snesrecomp registers | `$4212` bit 7 read at the instruction's start, bits 1-5 read 0 | fixed in our frame driver |
 | [vram-writes-during-rendering.md](vram-writes-during-rendering.md) | snesrecomp PPU | VRAM writes outside vblank are stored, not dropped | fixed for DMA in our frame driver |
@@ -39,67 +38,12 @@ Ordered as found, measured on `01-no-inputs-4m.evsmv` (all against MesenCE 2.2.1
 | [mesen-rom-mirror.md](mesen-rom-mirror.md) | MesenCE | its 4th MB is one file page over and over | copied in compare runs only |
 | [cgram-writes-during-rendering.md](cgram-writes-during-rendering.md) | snesrecomp PPU | CGRAM writes during rendering go to the CGRAM address, not the colour being read; bit 7 kept | fixed for DMA in our frame driver, colour 0 as measured |
 
-## Branch `snesrecomp-spc-access-cycles` (2026-10-31)
-snesrecomp changed on its own branch `spc-access-cycles` (the owner's experiment for an upstream PR;
-[../upstream-access-timing.md](../upstream-access-timing.md)): access-exact SPC ports, the master-clock APU timeline,
-MesenCE's DMA rule. With it and the corrected auto-joypad rule ([auto-joypad-read.md](auto-joypad-read.md)), all
-interpreted: every NMI from 2 to 319 has MesenCE's clock and interrupted address (develop: 86 of 328), the boot
-upload's handshakes take MesenCE's number of polls in 212 of 214 (develop: 160), the load after NMI 319 in 63 %
-(develop: 45 %), and its port accesses match MesenCE's one for one through the 12,748th. WRAM still parts at key 320 on both; the native
-build is exact only to NMI 1 (compiled-cycle-charges.md).
-
-### Second round (2026-10-31)
-All interpreted, `01-no-inputs-4m.evsmv` against MesenCE: every NMI from 2 to 1491 exact; all 18,461 handshakes
-of the first load exact; WRAM identical at every NMI key from 120 to 319 and from 322 to 1491 (develop: 120–319).
-Keys 320–321 differ in one stack byte, `$7E1FF5`: the V flag the NMI pushes inside the boot's SRAM checksum
-(`$8D:B478`, `ADC` over battery RAM), from different SRAM contents on the two sides, not from timing: MesenCE
-loaded the owner's save from its Saves folder, the recomp its own `saves/save.srm`. Since then both start from
-cleared SRAM in a compare run (MesenCE through a ROM link of its own name, the recomp through
-`SOE_COMPARE_SAVE_ROOT`), and keys 120–1491 are identical without a gap. From key 1492
-on: the S-DSP ([dsp-timing.md](dsp-timing.md)). `02-newgame-boy-available.evsmv`: identical 120–319, 322–331 and
-335–396. The native build is still exact only to NMI 1 ([compiled-cycle-charges.md](compiled-cycle-charges.md)).
-
-### Third round (2026-10-31)
-S-DSP per clock and the SPC timers' prescaler phase ([dsp-timing.md](dsp-timing.md)), cleared SRAM on both sides.
-All interpreted: `01-no-inputs-4m.evsmv` identical at every NMI key from 120 to 2514 and 2516–3862, 4,773 of
-9,287 keys (51.4 %); `02-newgame-boy-available.evsmv` as before (120–331, 335–396; 274 of 9,227).
-
-### Native (2026-11-03)
-snesrecomp branch `aot-bus-exact` on top: compiled code generated with `SNESRECOMP_EXACT_BUS=1` charges each
-instruction as the interpreter does ([compiled-cycle-charges.md](compiled-cycle-charges.md)), and our driver aligns the
-beam after each slice ([short-scanline.md](short-scanline.md)). Measured to the end of each replay (MesenCE's
-testrunner now runs past its 100 s default): `01-no-inputs-4m.evsmv` and `02-newgame-boy-available.evsmv` identical at
-every NMI key, 120–14424 and 120–17948, native and interpreted alike.
-
-## Measured (2026-10-30, all fixes above)
-
-- All interpreted: every NMI from 2 to 341 lands within ±32 master clocks of MesenCE's (NMI 1: 152 early, the
-  boot upload); runs of NMIs match MesenCE's clock and interrupted address exactly (e.g. 258–320). Native: NMI 1
-  558 early and NMI 25 84,706 late (the boot decompression's late NMI enable, [compiled cycle
-  charges](compiled-cycle-charges.md)), the others within ±30.
-- The framework's interpreter costs every instruction traced (the decompressor; whole frames 200 and 245) exactly
-  as MesenCE does.
-- WRAM identical at every NMI key from 120 to 319, native and all-interpreter alike. From 320 on, the first
-  load's lag frames part, after a sound-upload handshake that takes one poll more. After that, 97.9–99.98 % of
-  WRAM bytes stay equal, at an NMI offset that grows to 6.
-- Per replay and class: [../replay-sync.md](../replay-sync.md).
-
 ## Open risk (not measured as a difference)
 The seed export flags 208 pushed-address returns (`# pushed-address return ...` in `recomp/bank*.cfg`). A
 compiled routine that such a return lands in breaks, as the script scheduler `$8C:CFFD` did
 ([../bugs-and-todos.md](../bugs-and-todos.md) §2); only that one is excluded so far, `$8F:9817` is suspected.
 
 ## How to measure
-```sh
-# in everscript-vscode
-node tools/compare/compare.mts "Secret of Evermore (U) [!].smc" --backend mesen,recomp \
-  --replay tools/compare/replays/01-no-inputs-4m.evsmv --frames 3000 --keep-going --regions wram
-```
-The key is the number of NMIs since power-on (the glue's and the Lua script's running count of `$7E0100`,
-which the attract demo zeroes when it loops), or, for MesenCE against the recomp, the NMI's number. Probes
-(`src/game_rtl.c`): `SOE_COMPARE_PEEK` (bytes and master clock per frame), `SOE_COMPARE_NMI_LOG` (clock and
-interrupted address per NMI: the tool that found most of the above). For one frame, instruction by instruction:
-MesenCE exec callbacks (`MesenJob.lua`) against the all-interpreted recomp's `SNESRECOMP_CYC_WATCH=000000-FFFFFF`
-on stderr (`RecompJob.onStderr`); the SPC side through MesenCE callbacks with `emu.cpuType.spc,
-emu.memType.spcMemory` and `spc.cycle / spc.clockRatio` as the clock (the SPC runs in catch-up batches, so
-`masterClock` is useless there).
+[../testing.md](../testing.md) runs the replays against MesenCE. To find where two runs part, clock by clock: the probes in
+[../../tools/compare/README.md](../../tools/compare/README.md) (each NMI's clock and interrupted address, one frame
+instruction by instruction, the sound-port handshakes).

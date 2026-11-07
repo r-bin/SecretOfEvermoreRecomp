@@ -2,7 +2,7 @@
 
 Four rounds of making the recomp's WRAM identical to MesenCE 2.2.1's at every NMI, on snesrecomp branch
 `spc-access-cycles` (pinned by this repo's branch `snesrecomp-spc-access-cycles`). The fixes and their evidence are
-in [imperfections/](imperfections/README.md) and [upstream-access-timing.md](upstream-access-timing.md); this file
+in [imperfections/](../imperfections/README.md) and [upstream-access-timing.md](upstream-access-timing.md); this file
 keeps what we learned on the way: about snesrecomp, about the method, and about the traps.
 
 ## Result

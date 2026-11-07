@@ -1,6 +1,6 @@
 # Compiled Code Is Billed at Code-Fetch Speed
 
-**Status:** fixed on branch `snesrecomp-spc-access-cycles` (2026-11-03) with snesrecomp branch `aot-bus-exact`:
+**Status:** fixed with PR 1 (2026-11-03) with PR 3:
 generated with `SNESRECOMP_EXACT_BUS=1` (our `tools/regen.sh` sets it), compiled code keeps the interpreter's timing
 instruction for instruction; native runs of both replays are identical to MesenCE at every NMI key
 ([../progress.md](../progress.md)). Open on develop and upstream.

@@ -1,7 +1,7 @@
 # The Automatic Joypad Read's Busy Window
 
 **Status:** fixed in our frame driver (`src/soe_frame_driver.c`, `auto_joypad_begin`), 2026-10-30; the rule
-corrected on branch `snesrecomp-spc-access-cycles` (2026-10-31, below).
+corrected with PR 1 (2026-10-31, below).
 
 ## What hardware does (MesenCE)
 `InternalRegisters::SetAutoJoypadReadClock` runs when a field ends (V=225). The read starts at the first multiple
@@ -27,7 +27,7 @@ MesenCE `$4212` read callbacks in frames 200 and 245 of `01-no-inputs-4m.evsmv`:
 before the computed end and 0 at 8 clocks after it. The one-frame trace diff (MesenCE exec callbacks against
 `SNESRECOMP_CYC_WATCH`) matched the handler instruction for instruction in both frames after the fix.
 
-## Correction (2026-10-31, branch `snesrecomp-spc-access-cycles`)
+## Correction (2026-10-31, with PR 1)
 The rule above was measured on two frames and is wrong in its parts; they cancelled out in most frames. MesenCE's
 `internalRegisters.autoReadClockStart`, read at every NMI from 2 to 330 of `01-no-inputs-4m.evsmv`:
 - every start is 128 past a multiple of 256 (not on the multiple), at least 3 clocks after MesenCE's line 225 began;

@@ -8,7 +8,7 @@ so only that one decides whether the recomp is right.
 |---|---|---|---|
 | **MesenCE** | trusted (cycle-accurate SNES core) | good: headless Lua, memory reads/writes, trace logger, save states, MCP bridge | **the WRAM comparison**: the reference the recomp must match |
 | **ares** | the precision reference | least: a GUI with a debugger; the command line only picks system, settings, fullscreen and a save-state slot | probing by hand: a second opinion on one frame when MesenCE's answer is in doubt |
-| **snes9x 2005** (everscript-vscode's core) | **not trusted**: known timing gaps | full: our own build, headless in node at ~10,000 fps, write breakpoints, CDL recorder | probing: fast experiments, "who writes this address", replays, coverage. Never the reference |
+| **snes9x 2005** (optional: everscript-vscode's core) | **not trusted**: known timing gaps | full: that repository's build, headless in node at ~10,000 fps, write breakpoints, CDL recorder | probing: fast experiments, "who writes this address", replays, coverage. Never the reference |
 
 ## Rules
 
@@ -18,14 +18,17 @@ so only that one decides whether the recomp is right.
    routine), then confirm on MesenCE.
 3. **ares settles disputes, by hand.** When MesenCE and the recomp disagree in a way that looks like
    an emulator question (timing, PPU, DMA), check that frame in ares.
-4. **Compare at game events, not frame numbers,** once the emulators have run a few hundred frames:
-   their timing differs, so align on the NMI counter `$7E0100`, a room change, a fight's end.
+4. **MesenCE is compared at every NMI from power-on**, every byte ([testing.md](testing.md)): the recomp runs clock for
+   clock with it. Any other emulator drifts: compare with it at game events (a room change, a fight's end), never at
+   equal frame numbers.
 5. **Say which emulator** every result came from, in bug reports and in [bugs-and-todos.md](bugs-and-todos.md).
 
 ## How to run each
 
 ### MesenCE
-- Installed as `/Applications/Mesen.app` (MesenCE 2.2.1), built from the `r-bin/MesenCE` fork.
+- The 2.2.1 release: `nesdev-org/MesenCE`, tag `2.2.1`, commit `20ba206c` (the version string names it). The harness looks
+  for `/Applications/Mesen.app` or `$MESEN`, and passes `--snes.ramPowerOnState=AllZeros --snes.disableFrameSkipping=true`;
+  every other setting is the default.
 - Headless: `Mesen --testRunner <script.lua> <rom> --timeout=<seconds>`. The script drives it with
   `emu.addEventCallback(fn, emu.eventType.endFrame)`, reads memory with
   `emu.read(addr, emu.memType.snesWorkRam)`, and stops with `emu.exit()`. Checked 2026-10-30:
@@ -34,23 +37,21 @@ so only that one decides whether the recomp is right.
 - Interactive: the debugger (trace logger, event viewer, memory and PPU viewers). everscript-vscode's
   `npm run recomp` writes `out/recomp/asar/mesen/labels.mlb` and `rom.cdl` for it: our names and
   the recorded code/data split.
-- AI access: `mesen2-mcp` (sibling checkout) bridges an agent to a running Mesen via a Lua script
-  (`lua/mcp_bridge.lua`): memory read/write, input, frame step, save states.
-- Lockstep against the recomp: `tools/compare` (`--backend mesen,recomp`) runs a
-  generated Lua script that hashes per NMI key, like the recomp's `SOE_COMPARE_*` output
-  (`src/game_rtl.c`). Results and the known differences: [imperfections/README.md](imperfections/README.md).
+- Lockstep against the recomp: `tools/compare/compare.mts mesen recomp` runs a generated Lua script that hashes at every
+  NMI, as the recomp's `SOE_COMPARE_*` output does (`src/game_rtl.c`). How to run it: [testing.md](testing.md); the known
+  differences: [imperfections/README.md](imperfections/README.md).
 - Lua traps: the testrunner has no `io` library (dumps go over stdout); memory callbacks on a CPU address
   only see that bank, so register `$00:4200` and `$80:4200`, `$00:0106` and `$7E:0106`.
 
 ### ares
-- `ares.app` (v148). Load the ROM, use its debugger
+- v148. Load the ROM, use its debugger
   (memory, tracer, PPU views) on the frame in question; `--save-state <slot>` opens at a prepared
   state. No scripting, no headless mode.
 
 ### snes9x 2005
-- everscript-vscode's core, before compare moved here: lockstep against snes9x (it drifted after
-  counter ~300, see [bugs-and-todos.md](bugs-and-todos.md) §1.1), `tools/recomp/s9x-run.js` (a
-  recomp headless script on snes9x), write breakpoints in node, the emulator panel.
+- Optional, in everscript-vscode: `tools/recomp/s9x-run.js` runs a recomp headless script on snes9x; write breakpoints in
+  node; the emulator panel. Lockstep against snes9x drifted after NMI ~300 ([bugs-and-todos.md](bugs-and-todos.md) §1.1),
+  which is why MesenCE replaced it.
 
 ### Not used
 - higan (nightly 2020): superseded by ares.

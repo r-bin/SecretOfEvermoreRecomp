@@ -13,7 +13,7 @@ When an anomaly occurs in the recompiled game:
  1. Reproduce Headless  ──►  Run via scripted inputs (eliminate human timing jitter)
            │
            ▼
- 2. Reference Run       ──►  Execute the same frames in snes9x / Mesen2
+ 2. Reference Run       ──►  Play the same input on MesenCE (tools/compare)
            │
            ▼
  3. Native vs Interp    ──►  Rebuild without seeds; run purely in snesrecomp interpreter
@@ -36,20 +36,15 @@ When an anomaly occurs in the recompiled game:
 Which one we trust for what, and the rules for comparing: [reference-emulators.md](reference-emulators.md).
 **Only MesenCE is the reference for WRAM comparisons; snes9x is never treated as accurate.**
 
-### 2.1 snes9x2005-wasm (Embedded Node.js Reference)
-- **Path:** `src/core/emulator/core/snes9x2005-wasm-vanilla/snes9x_2005.js`
-- **Execution:** Runs headless inside Node.js scripts (`tools/compare/`).
-- **Capabilities:**
-  - Instantly accessible from JavaScript via WebAssembly exports (`_startWithRom`, `_mainLoop`, `_saveState`).
-  - Direct WRAM access: 128 KB of WRAM is located at state offset `0x10C14`.
-  - Used for automated, frame-by-frame memory lockstep testing.
-- **Limitation:** not cycle-accurate; drifts in loops with NMI off. **Not trusted:** a probe for
-  finding where to look, never the reference.
+### 2.1 snes9x 2005 (optional, in everscript-vscode)
+- **Where:** everscript-vscode's embedded core (`src/core/emulator/core/snes9x2005-wasm-vanilla/` there), headless in node.
+- **Use:** fast (about 10,000 frames/s), write breakpoints: finding where to look and who writes an address.
+- **Limitation:** not cycle-accurate; drifts in loops with NMI off. **Not trusted:** a probe, never the reference.
 
 ### 2.2 MesenCE (the Reference: WRAM Comparison & Interactive Debugger)
-- **Integration:** The Asar export automatically writes Mesen2 debug files to everscript-vscode's `out/recomp/asar/mesen/`:
-  - `rom.cdl`: Byte-level Code/Data Logger bitfields.
-  - `labels.mlb`: Complete symbol map containing all our curated function and WRAM names.
+- **Version:** the 2.2.1 release ([testing.md](testing.md), "The reference").
+- **Labels (optional):** everscript-vscode's export writes `rom.cdl` and `labels.mlb` (our function and WRAM names) to its
+  `out/recomp/asar/mesen/`, for MesenCE's debugger.
 - **Capabilities:**
   - Cycle-accurate PPU and APU emulation.
   - Interactive trace logger, event viewer, and PPU tile/sprite viewer.
@@ -94,41 +89,27 @@ snesrecomp can be configured to run in multiple diagnostic modes to isolate faul
 
 ## 4. What and How to Compare
 
-### 4.1 Lockstep WRAM Comparison (`tools/compare`)
-Lockstep runs the clean ROM in a reference and in the recompiled binary side by side. MesenCE is the
-reference; snes9x only finds the first differing frame and its writers:
+### 4.1 Lockstep Comparison Against MesenCE (`tools/compare`)
+
+MesenCE and the recomp play the same replay from power-on; at every NMI both hash WRAM, VRAM, CGRAM and OAM (and with
+`--full` every RAM, the picture and the S-DSP state). The first NMI that differs, and its bytes with their WRAM names, are
+the report ([testing.md](testing.md) has the commands and what is compared):
 
 ```sh
-# in everscript-vscode; runs build/ here
-node tools/compare/compare.mts rom.smc --backend mesen,recomp --replay tools/compare/replays/01-no-inputs-4m.evsmv
+node tools/compare/compare.mts mesen recomp /path/to/rom.sfc \
+  --replay tools/compare/replays/01-no-inputs-1-loop.mmo --regions wram,vram,cgram,oam --verbose
 ```
 
-Known differences from MesenCE and how they were measured: [imperfections/README.md](imperfections/README.md).
+- **Aligned on the NMI count, not on host frames.** The key is the number of NMIs since the reset code first writes 0 to
+  `$7E0100`; the attract demo zeroes `$7E0100` every time it loops, so a drop counts as a restart from 0. Both sides
+  sample as each NMI is taken, an instruction boundary on both ([imperfections/sampling-point.md](imperfections/sampling-point.md)).
+- **Nothing is copied or masked.** The game seeds its RNG at reset from the PPU's H/V counters, so a run that is a clock
+  off parts within the first frames: a difference anywhere is a real difference.
+- **Where clocks part:** `SOE_COMPARE_NMI_LOG` adds each NMI's master clock and interrupted address; the probes in
+  `tools/compare/README.md` go down to single instructions.
 
-`tools/compare/README.md` has every option; the report goes to `out/compare/`.
-
-#### Rule 1: Align on the NMI Count, Not on Host Frames
-Different emulators spend different numbers of initial cycles clearing memory and setting up
-the PPU. Align on the NMIs counted since power-on: the increases of `$7E0100` from the 0 the reset code
-writes. `$7E0100` itself is no key: the attract demo zeroes it every time it loops (~6,000 NMIs), so the glue
-(`SOE_COMPARE_*`) and the MesenCE script count a drop as a restart from 0, and the glue ends a run itself
-(`SOE_COMPARE_QUIT_AT`). Against MesenCE both sides sample as each NMI is taken instead
-(`SOE_COMPARE_AT=nmi`, the key is the NMI's number), an instruction boundary on both
-([imperfections/sampling-point.md](imperfections/sampling-point.md)); `SOE_COMPARE_NMI_LOG` adds each NMI's
-master clock and interrupted address, the quickest way to see where the two clocks part.
-
-#### Rule 2: Synchronize the PRNG State ($7E0133..$7E0139)
-The reset routine `$80:8020` seeds Evermore's pseudorandom number generator from the PPU's
-horizontal and vertical beam counters. Because different emulators boot with different beam positions,
-their RNG seeds immediately diverge.
-- `tools/compare` waits for key 115 in the reference (MesenCE or snes9x), reads its 8-byte RNG state
-  (`$7E0133..$7E013A`), and `poke`s it into the recompiled game after the same frame.
-
-#### Rule 3: Mask Non-Deterministic Timing Noise
-Exclude addresses that naturally fluctuate due to sub-frame interrupt timing:
-- Direct Page temporary scratch: `$7E0002..$7E000F`
-- PPU scroll register shadows mid-update: `$7E010E..$7E0115`
-- Hardware interrupt stack return slots: `$7E1FEE`, `$7E1FF4`
+Known differences from MesenCE and how they were measured: [imperfections/README.md](imperfections/README.md). Every
+option: `tools/compare/README.md`; reports go to `out/compare/`.
 
 ---
 
@@ -214,39 +195,3 @@ Within the guilty bank:
 3. Halve the suspect group until the single line causing the regression is isolated.
 
 *(This exact methodology successfully resolved the "Press START" title screen corruption in under 15 minutes).*
-
----
-
-## 7. Interactive `.evs` Script Debugging in the Recomp
-
-While `snes9x2005-wasm` remains the primary fast-loop environment for F5 debugging inside VS Code,
-the recompiled native desktop executable (`snesrecomp`) can also support `.evs` script debugging.
-
-### 7.1 Script VM Opcode Interception
-In Secret of Evermore, `.evs` code does not compile into native 65816 assembly; it is bytecode executed by
-the in-game interpreter at `$8C:D0A6` (`lda [$82]`):
-* `$82..$84`: 24-bit pointer to the current script instruction about to run.
-* `$7E`: Running slot pointer (one of 20 slots at `$7E28FC`, each 0x4F bytes).
-
-In the recompilation host (`src/game_rtl.c`), a native C hook at `$8C:D0A6` can intercept
-every bytecode fetch:
-> **Reconstructed C Decompilation**:
-> Source moved to [`reconstructed-c/80/808020_debugging.c`](https://github.com/r-bin/everscript-vscode/blob/develop/reconstructed-c/80/808020_debugging.c).
-> [View in VFS: soe://rom/code/808020](soe://rom/code/808020?c=1&asm=0)
-
-
-### 7.2 Native Trusted Plugin vs. `.snesmod`
-Because `.snesmod` archives follow a strict data-only security model (no arbitrary shared libraries or executable code),
-a `.snesmod` alone cannot open network sockets or control process execution threads:
-1. **The Engine (Native Trusted Plugin):** Written in C/C++ in `src/`, statically linked into the executable. Runs a local TCP server listening for Debug Adapter Protocol (DAP) messages and synchronizes breakpoints across threads.
-2. **The Front-End (`soe-evs-debugger.snesmod`):** Exposes options in the launcher UI to toggle the debug server, select the TCP listening port, and choose whether to halt execution on game boot.
-
-### 7.3 Workflow Comparison: Recomp vs. snes9x Webview
-
-| Characteristic | `snes9x2005-wasm` Webview | `snesrecomp` Desktop Host |
-|---|---|---|
-| **Best For** | 5-second edit-compile-step iteration loop | Playtesting in 16:9 60fps with active `.snesmod` addons |
-| **Launch Setup** | Zero setup; runs entirely inside VS Code process | Requires building native desktop binary |
-| **Hot Reload** | Instant in-memory ROM re-patching | In-memory patch reloading or restarted executable |
-| **Transport** | Webview `postMessage` | Local TCP socket (e.g. `localhost:54321`) |
-

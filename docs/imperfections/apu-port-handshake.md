@@ -1,7 +1,7 @@
 # APU Port Handshake Timing
 
 **Status:** open on `develop`, in snesrecomp's SPC700 model (`runner/src/snes/apu.c`, `spc.c`); it cannot be fixed
-in our files with the means tried (below). Mostly fixed in snesrecomp on branch `spc-access-cycles` (below).
+in our files with the means tried (below). Mostly fixed in PR 1 (below).
 
 ## What hardware does (MesenCE)
 - The S-SMP runs cycle by cycle (`Spc::ProcessCycle`).
@@ -45,7 +45,7 @@ The first WRAM difference, at NMI key 320, starts in such a handshake: the block
   `$F4–$F7` accesses.
 - Optionally, MesenCE's guest-time rounding (one mapping from power-on, not rebased per host frame).
 
-## Fix on branch `spc-access-cycles` (2026-10-31)
+## Fix in PR 1 (2026-10-31)
 In snesrecomp (`spc.c`, `apu.c`, `common_rtl.c`), with `RtlApuUseMasterClock(true, 20)` in our glue:
 - each SPC bus access gets its own cycle: the core numbers its accesses, corrected where its order is not the
   S-SMP's (`dp,dp` operations read the source before fetching the destination operand; word reads idle a cycle

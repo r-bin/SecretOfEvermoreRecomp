@@ -5,7 +5,7 @@ Needs node 23.6 or later and nothing outside this repository. MesenCE only when 
 ```sh
 node tools/compare/compare.mts mesen recomp "rom.smc"              # compare mesen and recomp on a single ROM
 node tools/compare/compare.mts "rom.smc" --backend mesen,recomp    # same, using --backend
-node tools/compare/compare.mts mesen recomp "rom.smc" --replay tools/compare/replays/01-no-inputs-4m.evsmv
+node tools/compare/compare.mts mesen recomp "rom.smc" --replay tools/compare/replays/01-no-inputs-1-loop.mmo
 node tools/compare/compare.mts recomp:build/a=rom.sfc recomp:build/b=rom.sfc   # hooks against no hooks
 ```
 
@@ -37,8 +37,8 @@ Comparing everything, MesenCE against the recomp:
    streams the hashes back. Nothing is written to disk.
 2. The **key** is the number of NMIs since power-on: the increases of the game's counter `$7E0100` from the 0 the reset code
    writes, a drop counting as a restart from 0 (the attract demo zeroes it when it loops; `nmiKey` in `game.mts`, mirrored in the
-   Mesen Lua and the recomp glue). Mixed runs also copy the reference's RNG `$0133–$013A` into the recomp after the frame the
-   reference reached key 115, compare nothing before that, and ignore the timing-noise bytes in `game.mts`. The report lists them.
+   Mesen Lua and the recomp glue). Every key from power-on is compared and every byte counts: nothing is copied from one
+   backend into the other, nothing is masked.
 3. The default comparison is one hash over all regions (a CRC of the region CRCs). A target stops at its first differing
    checkpoint, unless `--keep-going` is set.
 4. Then, for each target that parted from the reference, both setups run again to that checkpoint and hand over their memory in
@@ -51,9 +51,9 @@ Comparing everything, MesenCE against the recomp:
 | `compare.mts` | the command: setups, scheduling, the detail pass |
 | `diff.mts` | the pure part (tracker, byte diffs); `tests/compare-units.test.mts` |
 | `recomp.mts` | the recomp: a headless script plus the recomp glue's `SOE_COMPARE_*` hashing on fd 3 |
-| `mesen.mts` | the MesenCE child process: headless Lua testrunner, IEEE CRC32 hashing, RNG sync, dumps |
+| `mesen.mts` | the MesenCE child process: headless Lua testrunner, IEEE CRC32 hashing, dumps |
 | `full.mts` | every sync replay with every region, one after the other |
-| `game.mts` | the Evermore facts it aligns on (frame counter, RNG, noise bytes) |
+| `game.mts` | the Evermore fact it aligns on: the frame counter `$7E0100` |
 | `movie.mts`, `replay.mts` | the `.evsmv` and `.mmo` formats; a replay for the backends |
 | `recorded.mts` | a reference run kept in a file |
 | `mesen-state.mts` | `<movie.mmo or state.mss> <out>`: a state's fields, which `SOE_COMPARE_MESEN_STATE=<out>` starts from |
@@ -101,37 +101,37 @@ the target list from the recomp's `src/gen/`) with the framework's per-instructi
 
 ```sh
 # one frame, instruction by instruction, from NMI 200's entry to NMI 201's
-node tools/compare/probes/frame-trace.mts "Secret of Evermore (U) [!].smc" tools/compare/replays/01-no-inputs-4m.evsmv 200
+node tools/compare/probes/frame-trace.mts "Secret of Evermore (U) [!].smc" tools/compare/replays/01-no-inputs-1-loop.mmo 200
 # every sound-port handshake up to NMI 320: same number of polls on both sides?
-node tools/compare/probes/port-handshakes.mts "Secret of Evermore (U) [!].smc" tools/compare/replays/01-no-inputs-4m.evsmv 320
+node tools/compare/probes/port-handshakes.mts "Secret of Evermore (U) [!].smc" tools/compare/replays/01-no-inputs-1-loop.mmo 320
 ```
 
-The recomp's native build against itself all-interpreted (the interpreter matches MesenCE, and this needs no
-MesenCE run past key 115), for a native build generated bus-exact (`tools/regen.sh`):
+The recomp's native build against itself all-interpreted (the interpreter matches MesenCE, so this needs no MesenCE),
+for a native build generated bus-exact (`tools/regen.sh`):
 
 ```sh
 # each NMI's clock and the WRAM hash at every key: the first NMI and key where native and interpreted part
-node tools/compare/probes/native-vs-interp.mts "Secret of Evermore (U) [!].smc" tools/compare/replays/01-no-inputs-4m.evsmv 14424
+node tools/compare/probes/native-vs-interp.mts "Secret of Evermore (U) [!].smc" tools/compare/replays/01-no-inputs-1-loop.mmo 8592
 # instruction by instruction in a master-clock window (from the last NMI both agree on to the first that differs)
-node tools/compare/probes/clock-trace.mts "Secret of Evermore (U) [!].smc" tools/compare/replays/01-no-inputs-4m.evsmv 433 196500920 196858300
+node tools/compare/probes/clock-trace.mts "Secret of Evermore (U) [!].smc" tools/compare/replays/01-no-inputs-1-loop.mmo <nmi> <first clock> <last clock>
 # how much of the replay ran native (instructions per tier) and the busiest interpreted runs
-node tools/compare/probes/tier-stats.mts "Secret of Evermore (U) [!].smc" tools/compare/replays/01-no-inputs-4m.evsmv 14424
+node tools/compare/probes/tier-stats.mts "Secret of Evermore (U) [!].smc" tools/compare/replays/01-no-inputs-1-loop.mmo 8592
 ```
 
 Which framework changes a replay needs (`docs/pr/`): MesenCE runs once, its hashes stay in `out/compare/ablate/`,
 then every variant (a switch off, or another executable) runs alone against them, several at a time, about a minute each:
 
 ```sh
-node tools/compare/probes/ablate.mts tools/compare/replays/01-no-inputs-4m.evsmv variants.json --jobs 6 --out results.json
+node tools/compare/probes/ablate.mts tools/compare/replays/01-no-inputs-1-loop.mmo variants.json --jobs 6 --out results.json
 ```
 
 Against MesenCE, for a key where WRAM parts while the clocks agree:
 
 ```sh
 # every NMI's clock, interrupted address and beam position (H clock, line), MesenCE against the recomp
-node tools/compare/probes/nmi-clocks.mts "Secret of Evermore (U) [!].smc" tools/compare/replays/01-no-inputs-4m.evsmv 11987
-# the PPU/WRAM port reads between NMI K-1 and K (an RNG seed), value and clock, and MesenCE's beam at $2137
-node tools/compare/probes/ppu-reads.mts "Secret of Evermore (U) [!].smc" tools/compare/replays/01-no-inputs-4m.evsmv 11987
+node tools/compare/probes/nmi-clocks.mts "Secret of Evermore (U) [!].smc" tools/compare/replays/01-no-inputs-1-loop.mmo <K>
+# the PPU/WRAM port reads between NMI K-1 and K (the RNG seed's sources), value and clock, and MesenCE's beam at $2137
+node tools/compare/probes/ppu-reads.mts "Secret of Evermore (U) [!].smc" tools/compare/replays/01-no-inputs-1-loop.mmo <K>
 ```
 
 `frame-trace` folds the idle loop `$80:858F` into one entry (its pass count is a phase, not a cost); the last
@@ -154,7 +154,7 @@ recomp's cycles read 1 above MesenCE's (where each logs). Bisect K to find where
   ~150 keys per second.
 - MesenCE's testrunner ends a run after 100 s of wall time by default, wherever it is: `mesen.mts` passes
   `--timeout=3600` (`MESEN_TIMEOUT` sets it). Before 2026-11-03 a long replay stopped at a key that depended on the
-  machine's speed (01 at 10,100-11,000 of its 14,424), with no warning.
+  machine's speed (the old replay 01 at 10,100-11,000 of its 14,424), with no warning.
 - A replay that rewinds (`L` events) is refused.
 - Checkpoints are every 60 keys (~1 s), so the first divergence is known to within that window. The
   write watch covers the whole window.

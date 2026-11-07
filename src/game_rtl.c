@@ -463,7 +463,7 @@ void SoeAfterConfig(void) {
     g_config.new_renderer = false;
     RtlEnableExtendedFrameTiming();
     /* snesrecomp PR #241 (framework/snesrecomp.patch): the SPC700's time is the master clock since power-on (MesenCE's
-     * rate and rounding); the CPU reaches the ports 20 clocks into an absolute CMP/STA (docs/upstream-access-timing.md). */
+     * rate and rounding); the CPU reaches the ports 20 clocks into an absolute CMP/STA (docs/research/upstream-access-timing.md). */
     const char *mc = getenv("SNESRECOMP_APU_MASTER_CLOCK"); /* =0: the framework's old APU timeline, for A/B runs */
     RtlApuUseMasterClock(!(mc && mc[0] == '0'), 20);
     /* SOE_COMPARE_SAVE_ROOT: battery RAM from (and back to) this folder instead of saves/, so a compare run starts

@@ -147,7 +147,7 @@ test('an .evsmv frame line is one column per pad bit, with repeats', () => {
 const REPLAYS = new URL('../tools/compare/replays/', import.meta.url);
 const committed = readdirSync(REPLAYS).filter(f => f.endsWith('.mmo'));
 test('the committed replays are input and settings only, from power-on with zeroed RAM', () => {
-    assert.deepStrictEqual(committed.sort(), ['01-no-inputs-1-loop.mmo', '02-new-game-to-flowers.mmo']);
+    for (const name of ['01-no-inputs-1-loop.mmo', '02-new-game-to-flowers.mmo']) assert.ok(committed.includes(name), name);
     for (const name of committed) {
         const file = readFileSync(new URL(name, REPLAYS));
         assert.deepStrictEqual(zipNames(file).sort(), ['GameSettings.txt', 'Input.txt'], name);

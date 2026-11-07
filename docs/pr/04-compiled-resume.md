@@ -90,8 +90,8 @@ correct. Hosts with block-level timing gain nothing and pay nothing.
 
 Replay 01. Setup: [README.md](README.md#reproduce), steps 1-6. Native share:
 ```sh
-SNESRECOMP_TIER_STATS=1 node tools/compare/probes/tier-stats.mts <rom> tools/compare/replays/01-no-inputs-4m.evsmv 14424
-SNESRECOMP_AOT_RESUME=0 SNESRECOMP_TIER_STATS=1 node tools/compare/probes/tier-stats.mts <rom> tools/compare/replays/01-no-inputs-4m.evsmv 14424
+SNESRECOMP_TIER_STATS=1 node tools/compare/probes/tier-stats.mts <rom> tools/compare/replays/01-no-inputs-1-loop.mmo 8592
+SNESRECOMP_AOT_RESUME=0 SNESRECOMP_TIER_STATS=1 node tools/compare/probes/tier-stats.mts <rom> tools/compare/replays/01-no-inputs-1-loop.mmo 8592
 ```
 Expected: `99.70 % native`, `16.31 % native`. The PB fix: check out `df2384d9`, the commit before it, regenerate and build: step 6 stops at
 `wram differ at counter $0100 = 2938`. The other rows need [ablation-gates.patch](ablation-gates.patch).
