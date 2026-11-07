@@ -1,16 +1,16 @@
 // tools/compare's pure logic (diff.mts): the tracker finds the first diverging checkpoint whatever order the setups
-// report in, skips keys before a sync point, and the byte differences name where two runs part. Replays and recorded
-// references read back as written. Synthetic data; no ROM, no game.
+// report in, and the byte differences name where two runs part. Recorded references read back as written. The committed
+// replays hold input and settings only, nothing from a ROM. No ROM, no game.
 // Run: node tests/compare-units.test.mts
 import assert from 'node:assert';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Tracker, combined, byteDiff, runs, inOrder, ALL_RAM, REGION_SIZE, SOUND_FIELDS, SPC_SIDE } from '../tools/compare/diff.mts';
 import { generateMesenLua } from '../tools/compare/mesen.mts';
 import { parseArgs } from '../tools/compare/compare.mts';
 import { nmiKey } from '../tools/compare/game.mts';
-import { parseEvsmv } from '../tools/compare/movie.mts';
+import { parseEvsmv, parseMesenMovie, zipNames, unzipText } from '../tools/compare/movie.mts';
 import { loadRecorded, saveRecorded } from '../tools/compare/recorded.mts';
 
 const scratch = mkdtempSync(join(tmpdir(), 'compare-units-'));
@@ -49,13 +49,11 @@ test('first divergence with the target first (pending until the reference arrive
     assert.strictEqual(t.results[1].compared, 10);
 });
 
-test('keys up to the sync point are not compared', () => {
-    const t = new Tracker(1, 115);
-    t.addRef(60, [1, 1]); t.addRef(120, [2, 2]);
-    assert.strictEqual(t.addTarget(0, 60, [9, 9]), false);
-    assert.strictEqual(t.addTarget(0, 120, [2, 2]), false);
-    assert.strictEqual(t.results[0].compared, 1);
-    assert.strictEqual(t.results[0].first, null);
+test('every key from power-on is compared', () => {
+    const t = new Tracker(1);
+    t.addRef(0, [1, 1]); t.addRef(1, [2, 2]);
+    assert.strictEqual(t.addTarget(0, 0, [9, 1]), true);
+    assert.strictEqual(t.results[0].first?.key, 0);
 });
 
 test('each region keeps its own result, as runs of keys', () => {
@@ -70,7 +68,7 @@ test('each region keeps its own result, as runs of keys', () => {
 });
 
 test('runs of keys follow the stride', () => {
-    const t = new Tracker(1, -1, 60);
+    const t = new Tracker(1, 60);
     for (const k of [60, 120, 240]) { t.addRef(k, [k]); t.addTarget(0, k, [0]); }
     assert.deepStrictEqual(t.results[0].byRegion[0].runs, [[60, 120], [240, 240]]);
 });
@@ -87,12 +85,12 @@ test('the sound region is one 32-bit value a field', () => {
     assert.strictEqual(REGION_SIZE.sound, 190 * 4);
 });
 
-test('byte diff skips ignored offsets and counts past the cap', () => {
+test('byte diff counts past the cap', () => {
     const a = new Uint8Array(16), b = new Uint8Array(16);
     b[2] = 1; b[3] = 1; b[4] = 1; b[9] = 5;
-    const d = byteDiff(a, b, new Set([3]), 2);
-    assert.strictEqual(d.total, 3);
-    assert.deepStrictEqual(d.diffs.map(x => x.offset), [2, 4]);
+    const d = byteDiff(a, b, 2);
+    assert.strictEqual(d.total, 4);
+    assert.deepStrictEqual(d.diffs.map(x => x.offset), [2, 3]);
     assert.deepStrictEqual(runs([9, 2, 3, 4]), [[2, 4], [9, 9]]);
 });
 
@@ -110,7 +108,6 @@ test('generateMesenLua creates valid script with pad inputs and crc calculations
         to: 120,
         align: 'nmi',
         regions: ['wram', 'vram'],
-        mask: true,
         stride: 60,
     }, '/tmp/dump.bin', pads);
 
@@ -145,17 +142,37 @@ test('an .evsmv frame line is one column per pad bit, with repeats', () => {
     assert.throws(() => parseEvsmv('nothing'), /not an Everscript/);
 });
 
-test('the stored replay 01 is the power-on run with no button pressed', () => {
-    const pads = parseEvsmv(readFileSync(new URL('../tools/compare/replays/01-no-inputs-4m.evsmv', import.meta.url), 'utf8'));
-    assert.strictEqual(pads.length, 14424);
-    assert.ok(pads.every(p => p === 0));
+// A committed movie may hold the input and MesenCE's settings, nothing else: a save state or battery RAM is memory from
+// a ROM. The settings must be the ones compare runs MesenCE with (mesen.mts), so the movie replays as it was recorded.
+const REPLAYS = new URL('../tools/compare/replays/', import.meta.url);
+const committed = readdirSync(REPLAYS).filter(f => f.endsWith('.mmo'));
+test('the committed replays are input and settings only, from power-on with zeroed RAM', () => {
+    assert.deepStrictEqual(committed.sort(), ['01-no-inputs-1-loop.mmo', '02-new-game-to-flowers.mmo']);
+    for (const name of committed) {
+        const file = readFileSync(new URL(name, REPLAYS));
+        assert.deepStrictEqual(zipNames(file).sort(), ['GameSettings.txt', 'Input.txt'], name);
+        const movie = parseMesenMovie(file);
+        assert.strictEqual(movie.start, null, name);
+        const settings = unzipText(file, 'GameSettings.txt');
+        assert.match(settings, /^snes\.ramPowerOnState AllZeros$/m, name);
+        assert.match(settings, /^snes\.enableRandomPowerOnState false$/m, name);
+        assert.match(settings, /^SHA1 79E7738630FFF5699217EF58ECC421BC8FCBCD89$/m, name);
+    }
+});
+
+test('replay 01 presses no button', () => {
+    const movie = parseMesenMovie(readFileSync(new URL('01-no-inputs-1-loop.mmo', REPLAYS)));
+    assert.ok(movie.count > 8000);
+    assert.ok(movie.pads.every(p => p === 0));
 });
 
 test('a recorded reference reads back as written', () => {
     const file = join(scratch, 'sub', 'r.crc');
-    const r = { regions: ['wram', 'vram'] as ('wram' | 'vram')[], rng: Uint8Array.of(1, 2, 255), rngFrame: 116, stride: 60, keys: new Map([[120, [0xDEADBEEF, 1]], [180, [2, 0]]]) };
+    const r = { regions: ['wram', 'vram'] as ('wram' | 'vram')[], stride: 60, keys: new Map([[120, [0xDEADBEEF, 1]], [180, [2, 0]]]) };
     saveRecorded(file, r);
     assert.deepStrictEqual(loadRecorded(file), r);
+    writeFileSync(file, '# rng 0102 115\n# regions wram\n');
+    assert.throws(() => loadRecorded(file), /RNG copied in/);
 });
 
 rmSync(scratch, { recursive: true, force: true });

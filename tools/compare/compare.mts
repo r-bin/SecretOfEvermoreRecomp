@@ -1,6 +1,6 @@
 // Run MesenCE and the recomp side by side, hash their memory every 60 keys (every key with --verbose) and report how long
-// each target stays in sync with the first setup and what differs at the first checkpoint that does not match. Runs that
-// mix backends align on the NMI counter $0100 and copy the RNG in.
+// each target stays in sync with the first setup and what differs at the first checkpoint that does not match. Every key
+// from power-on is compared, every byte: nothing is copied from one backend into the other and nothing is masked.
 //   node tools/compare/compare.mts [backend[:exe]=]<rom> ... [--replay x.evsmv|x.mmo] [--frames N] [--verbose]
 //       [--keep-going] [--aram] [--regions wram,vram,cgram,oam,sram,aram,dsp,sound,picture] [--align frame|nmi]
 //       [--full] [--picture] [--sound] [--out file.md] [--record file] [--reference file]
@@ -15,11 +15,10 @@ import { basename, join, relative, resolve } from 'node:path';
 import { REPO, defaultRom } from './paths.mts';
 import { Tracker, byteDiff, inOrder, ALL_RAM, type Crcs, type Region } from './diff.mts';
 import { runRecomp, defaultExe } from './recomp.mts';
-import { runMesen, defaultMesenExe, askMesenRng } from './mesen.mts';
+import { runMesen, defaultMesenExe } from './mesen.mts';
 import { allInterpretedEnv } from './probes/interp.mts';
 import { loadRecorded, saveRecorded } from './recorded.mts';
 import { report, summaryLine, type Detail, type TargetReport, type RunInfo } from './report.mts';
-import { SYNC_AT, CROSS_NOISE } from './game.mts';
 import { readReplay } from './replay.mts';
 
 const DEFAULT_FRAMES = 8414;     // the 2:20 intro
@@ -97,7 +96,6 @@ const { opts, opt, vanilla, setups } = parseArgs(argv);
 if (opts.interpreted) { const r = setups.find(s => s.backend === 'recomp'); if (r) Object.assign(process.env, allInterpretedEnv(r.exe!)); }
 const replay = opt('replay') ? resolve(opt('replay')!) : null;
 const hasRecomp = setups.some(s => s.backend === 'recomp');
-const mixed = new Set(setups.map(s => s.backend)).size > 1;
 // MesenCE and the recomp both sample as each NMI is taken (an instruction boundary on both).
 const atNmi = true;
 const align = (opt('align') || 'nmi') as 'frame' | 'nmi';
@@ -114,22 +112,10 @@ const recorded = opt('reference') ? loadRecorded(resolve(opt('reference')!)) : n
 if (recorded && recorded.regions.join() !== regions.join()) { console.error(`--reference holds ${recorded.regions.join(',')}: use --regions with that`); process.exit(2); }
 const stride = recorded ? recorded.stride : opts.verbose || opts.full ? 1 : 60;
 const keepGoing = !!(opts['keep-going'] || opts.full);
-const skipThrough = mixed && !fromState ? SYNC_AT + 4 : -1;   // at NMIs the copied RNG shows from key 117
-const ignore: ReadonlySet<number> = mixed ? CROSS_NOISE : new Set();
-
-// The RNG bytes a recomp gets: from the first mesen setup, at counter SYNC_AT.
-const rngFrom = setups.find(s => s.backend === 'mesen');
-let rng: Uint8Array | null = recorded?.rng ?? null;
-let rngFrame = recorded?.rngFrame ?? 115;
-if (!recorded && mixed && rngFrom && !fromState) {
-    const res = await askMesenRng({ rom: rngFrom.rom, exe: rngFrom.exe || undefined, to: SYNC_AT, align: 'nmi', regions, mask: mixed, replay });   // by frame end: the recomp pokes after a frame
-    rng = res.bytes;
-    rngFrame = res.frame;
-}
 
 // --- hash all setups at once, the reference from a recorded run when one is given -------------------------------------------
 const ref = setups[0], targets = setups.slice(1);
-const tracker = new Tracker(targets.length, skipThrough, stride);
+const tracker = new Tracker(targets.length, stride);
 const ended = new Array(targets.length).fill(0);
 const errors: (string | undefined)[] = new Array(targets.length);
 const building = opt('record') ? new Map<number, Crcs>() : null;
@@ -157,11 +143,11 @@ const onRef = (k: number, c: Crcs) => {
 const runs: Promise<unknown>[] = [];
 function start(s: Setup, extra: { stride: number }, onCp: (k: number, c: Crcs) => void, onEnd: (k: number) => void, onErr: (m: string) => void) {
     if (s.backend === 'mesen') {
-        const r = runMesen({ exe: s.exe || undefined, rom: s.rom, to: frames, align, regions, stride: extra.stride, mask: mixed, rng, replay, atNmi }, onCp);
+        const r = runMesen({ exe: s.exe || undefined, rom: s.rom, to: frames, align, regions, stride: extra.stride, replay, atNmi }, onCp);
         runs.push(r.done.then(dump => { onEnd(frames); return dump; }).catch(e => onErr((e as Error).message)));
         return r.kill;
     }
-    const r = runRecomp({ exe: s.exe!, rom: s.rom, to: frames, regions, stride: extra.stride, mask: mixed, rng, replay, rngFrame, atNmi, fade: !!opts.fade }, onCp);
+    const r = runRecomp({ exe: s.exe!, rom: s.rom, to: frames, regions, stride: extra.stride, replay, atNmi, fade: !!opts.fade }, onCp);
     runs.push(r.done.then(dump => { onEnd(frames); return dump; }).catch(e => onErr((e as Error).message)));
     return r.kill;
 }
@@ -177,16 +163,16 @@ targets.forEach((s, i) => {
 if (recorded) for (const [k, c] of recorded.keys) onRef(k, c);
 else refKill = start(ref, { stride }, onRef, () => {}, m => { console.error(`reference: ${m}`); targets.forEach((_, i) => kills[i]()); });
 await Promise.all(runs);
-if (building) saveRecorded(resolve(opt('record')!), { regions, rng, rngFrame, keys: building, stride });
+if (building) saveRecorded(resolve(opt('record')!), { regions, keys: building, stride });
 
 // --- the first divergence of each target, in detail -----------------------------------------------------------------
 async function snapshot(s: Setup, at: number): Promise<Uint8Array[]> {
     if (s.backend === 'mesen') {
-        const dump = await runMesen({ exe: s.exe || undefined, rom: s.rom, to: at, align, regions, dumpAt: at, mask: false, rng, replay, atNmi }, () => {}).done;
+        const dump = await runMesen({ exe: s.exe || undefined, rom: s.rom, to: at, align, regions, dumpAt: at, replay, atNmi }, () => {}).done;
         if (!dump) throw new Error(`Mesen did not reach counter ${at}`);
         return dump;
     }
-    const dump = await runRecomp({ exe: s.exe!, rom: s.rom, to: at, regions, dumpAt: at, mask: false, rng, replay, rngFrame, atNmi, fade: !!opts.fade }, () => {}).done;
+    const dump = await runRecomp({ exe: s.exe!, rom: s.rom, to: at, regions, dumpAt: at, replay, atNmi, fade: !!opts.fade }, () => {}).done;
     if (!dump) throw new Error(`the recomp did not reach counter ${at}`);
     return dump;
 }
@@ -200,7 +186,7 @@ const reports: TargetReport[] = await Promise.all(targets.map(async (s, i): Prom
     try {
         const [a, b] = await Promise.all([snapshot(ref, f.key), snapshot(s, f.key)]);
         const details: Detail[] = f.regions.map(j => {
-            const d = byteDiff(a[j], b[j], regions[j] === 'wram' ? ignore : new Set(), 4096);
+            const d = byteDiff(a[j], b[j], 4096);
             return { region: regions[j], total: d.total, diffs: d.diffs };
         });
         base.details = details;
@@ -211,7 +197,7 @@ const reports: TargetReport[] = await Promise.all(targets.map(async (s, i): Prom
 // --- report ----------------------------------------------------------------------------------------------------------
 const shown = (s: Setup) => ({ ...s, rom: relative(REPO, s.rom) });
 for (const t of reports) t.setup = shown(t.setup as Setup);
-const run: RunInfo = { reference: shown(ref), replay: replay && relative(REPO, replay), frames, align, regions, stride, ignored: [...ignore], skipThrough, keepGoing };
+const run: RunInfo = { reference: shown(ref), replay: replay && relative(REPO, replay), frames, align, regions, stride, keepGoing };
 const md = report(run, reports);
 const out = opt('out') ? resolve(opt('out')!) : join(REPO, 'out', 'compare', setups.map(s => s.label.replace(/[^\w.-]+/g, '_')).join('--').slice(0, 120) + '.md');
 mkdirSync(join(out, '..'), { recursive: true });

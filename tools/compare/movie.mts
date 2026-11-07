@@ -48,6 +48,18 @@ function readZip(buf: Buffer): { name: string; data: Buffer }[] {
     return out;
 }
 
+/** The names of the files in a zip (a movie). */
+export function zipNames(file: Buffer): string[] {
+    return readZip(file).map(f => f.name);
+}
+
+/** One text file of a zip (a movie's GameSettings.txt). */
+export function unzipText(file: Buffer, name: string): string {
+    const f = readZip(file).find(x => x.name === name);
+    if (!f) throw new Error(`no ${name} in the zip`);
+    return f.data.toString('utf8');
+}
+
 /** The state file of a movie, or the file itself when it is a state. */
 export function stateOf(file: Buffer, isMovie: boolean): Buffer | undefined {
     return isMovie ? readZip(file).find(f => f.name === 'SaveState.mss')?.data : file;

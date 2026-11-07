@@ -17,9 +17,11 @@
 /saves/
 /out/
 
-# Replays with a save state or save data hold memory from a ROM: local only
+# Replays with a save state or save data hold memory from a ROM: local only. The movies in tools/compare/replays/ are
+# input and settings only (tests/compare-units.test.mts checks each one).
 /tools/compare/replays/local/
 *.mmo
+!/tools/compare/replays/*.mmo
 *.mss
 
 # Local probe output that names paths on one machine

@@ -5,9 +5,9 @@
  * - late NMI: enabling NMI ($4200 bit 7) while the vblank flag is still set fires it at once (late-nmi.md);
  * - the reset clock and the short scanline: field lengths as MesenCE's (short-scanline.md);
  * - the interrupt sequence's 60 clocks (interrupt-cost.md) and DRAM refresh at H=538 (dram-refresh.md);
- * - the SPC700's clock rate and port access point (spc-clock-rate.md, apu-port-handshake.md); on branch
- *   snesrecomp-spc-access-cycles both come from the framework's master-clock APU timeline instead, fed the port
- *   access clock with the refresh stall in front of it (access_clock);
+ * - the SPC700's clock rate and port access point (spc-clock-rate.md, apu-port-handshake.md): both come from the
+ *   master-clock APU timeline of snesrecomp PR #241 (framework/snesrecomp.patch), fed the port access clock with the
+ *   refresh stall in front of it (access_clock);
  * - the automatic joypad read's busy window (auto-joypad-read.md);
  * - where the field's NMI is recognised (nmi-recognition.md, with soe_last_cycle.c).
  *

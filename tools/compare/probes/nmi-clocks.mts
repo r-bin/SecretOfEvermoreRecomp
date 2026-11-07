@@ -4,16 +4,14 @@
 //
 //   node tools/compare/probes/nmi-clocks.mts <rom> <replay.evsmv> <K> [exe] [from: print every NMI from here]
 import { resolve } from 'node:path';
-import { runMesen, askMesenRng } from '../mesen.mts';
+import { runMesen } from '../mesen.mts';
 import { runRecomp, defaultExe } from '../recomp.mts';
-import { SYNC_AT } from '../game.mts';
 
 const [romArg, replay, ks, exeArg, fromArg] = process.argv.slice(2);
 const FROM = fromArg ? +fromArg : 0;
 if (!ks) { console.error('usage: nmi-clocks.mts <rom> <replay.evsmv> <K> [exe]'); process.exit(2); }
 const rom = resolve(romArg), K = +ks, exe = exeArg ? resolve(exeArg) : defaultExe();
-const base = { rom, align: 'nmi' as const, regions: ['wram' as const], mask: true, replay, to: K, stride: 1_000_000, atNmi: true };
-const { bytes: rng, frame: rngFrame } = await askMesenRng({ ...base, atNmi: false, to: SYNC_AT });
+const base = { rom, align: 'nmi' as const, regions: ['wram' as const], replay, to: K, stride: 1_000_000, atNmi: true };
 const M = new Map<number, [number, number]>(), R = new Map<number, [number, number]>();
 const MB = new Map<number, string>(), RB = new Map<number, string>();
 // The beam at each NMI: MesenCE's H clock and line, the recomp glue's `[nmibeam]` stderr line.
@@ -21,10 +19,10 @@ const lua = `emu.addEventCallback(function() local st = emu.getState(); print(st
 let rest = '';
 process.env.SOE_COMPARE_NMI_BEAM = '1';
 await Promise.all([
-    runMesen({ ...base, rng, lua, onNmi: (k, c, pc) => M.set(k, [c, pc]), onLine: l => {
+    runMesen({ ...base, lua, onNmi: (k, c, pc) => M.set(k, [c, pc]), onLine: l => {
         if (l.startsWith('B ')) { const p = l.split(' '); MB.set(+p[1], p[2] + ' ' + p[3]); }
     } }, () => {}).done,
-    runRecomp({ ...base, exe, rng, rngFrame, onNmi: (k, c, pc) => R.set(k, [c, pc]), onStderr: chunk => {
+    runRecomp({ ...base, exe, onNmi: (k, c, pc) => R.set(k, [c, pc]), onStderr: chunk => {
         const lines = (rest + chunk.toString()).split('\n');
         rest = lines.pop()!;
         for (const l of lines) { const m = /^\[nmibeam\] (\d+) (-?\d+) (\d+)/.exec(l); if (m) RB.set(+m[1], m[2] + ' ' + m[3]); }

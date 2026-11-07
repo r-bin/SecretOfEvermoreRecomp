@@ -29,7 +29,7 @@ if (stats) { process.env.SNESRECOMP_TIER_STATS = '1'; process.env.SOE_BANK_STATS
 let rest = '', last = 0;
 const banks: [number, number][] = [];
 const t0 = performance.now();
-await runRecomp({ exe, rom: resolve(romArg), to, regions: ['wram'], stride: 1_000_000, mask: false, rng: null, replay,
+await runRecomp({ exe, rom: resolve(romArg), to, regions: ['wram'], stride: 1_000_000, replay,
     atNmi: true, onNmi: nmi => { last = nmi; }, onStderr: chunk => {
         const lines = (rest + chunk.toString()).split('\n');
         rest = lines.pop()!;

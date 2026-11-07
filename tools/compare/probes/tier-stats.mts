@@ -11,7 +11,7 @@ if (!replay) { console.error('usage: tier-stats.mts <rom> <replay.evsmv> [to-key
 const to = toArg ? +toArg : 1_000_000, exe = exeArg ? resolve(exeArg) : defaultExe();
 process.env.SNESRECOMP_TIER_STATS = '1';
 let rest = '';
-await runRecomp({ exe, rom: resolve(romArg), to, regions: ['wram'], stride: 1_000_000, mask: false, rng: null, replay,
+await runRecomp({ exe, rom: resolve(romArg), to, regions: ['wram'], stride: 1_000_000, replay,
     atNmi: true, onStderr: chunk => {
         const lines = (rest + chunk.toString()).split('\n');
         rest = lines.pop()!;

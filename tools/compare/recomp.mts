@@ -4,13 +4,9 @@ import { mkdtempSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
-import { createRequire } from 'node:module';
 import { readReplay, type Replay } from './replay.mts';
-import { FRAME_COUNTER, RNG, SYNC_AT, CROSS_NOISE } from './game.mts';
-import { runs, REGION_SIZE, type Region, type Crcs } from './diff.mts';
+import { REGION_SIZE, type Region, type Crcs } from './diff.mts';
 import { REPO } from './paths.mts';
-
-const require = createRequire(import.meta.url);
 
 export const RECOMP_REGIONS: Region[] = ['wram', 'vram', 'cgram', 'oam', 'sram', 'picture', 'aram', 'dsp', 'sound'];
 
@@ -27,11 +23,7 @@ export interface RecompJob {
     regions: Region[];
     stride?: number;
     dumpAt?: number;
-    mask: boolean;
-    /** The reference's RNG bytes at counter SYNC_AT, copied in before anything is compared. */
-    rng: Uint8Array | null;
     replay?: string | null;
-    rngFrame?: number;
     /** Rewrite the picture's fades by MesenCE's rounding (SOE_COMPARE_FADE). */
     fade?: boolean;
     /** Sample as each NMI is taken (SOE_COMPARE_AT=nmi); the key is the NMI's number since power-on. */
@@ -56,14 +48,7 @@ export function runRecomp(job: RecompJob, onCp: (key: number, crcs: Crcs) => voi
     const lines = ['turbo on'];
     let replay: Replay | null = null;
 
-    if (job.replay) {
-        replay = readReplay(job.replay);
-        // The input goes by field (SOE_COMPARE_PADS, below). The script only copies the RNG in: its frame f is MesenCE's
-        // frame f + 1 (the glue's peek and Mesen's endFrame count differ by one at the same NMI key).
-        if (job.rng) lines.push(`wait ${(job.rngFrame ?? 115) - 1}`, `poke ${h(RNG[0])} ${Buffer.from(job.rng).toString('hex')}`);
-    } else {
-        if (job.rng) lines.push(`until16 ${h(FRAME_COUNTER)} == ${h(SYNC_AT)}`, `poke ${h(RNG[0])} ${Buffer.from(job.rng).toString('hex')}`);
-    }
+    if (job.replay) replay = readReplay(job.replay);   // the input goes by field (SOE_COMPARE_PADS, below)
 
     // The key is an NMI count, not the raw $0100 (the attract demo zeroes it), so the glue ends the run itself.
     lines.push(`wait ${job.to * 3 + 2000}`, 'quit');
@@ -92,7 +77,6 @@ export function runRecomp(job: RecompJob, onCp: (key: number, crcs: Crcs) => voi
     if (job.stride) env.SOE_COMPARE_STRIDE = String(job.stride);
     if (job.dumpAt !== undefined) env.SOE_COMPARE_DUMP = String(job.dumpAt);
     if (job.peek?.length) env.SOE_COMPARE_PEEK = job.peek.map(h).join(',');
-    if (job.mask) env.SOE_COMPARE_MASK = runs([...CROSS_NOISE]).map(([a, b]) => a === b ? h(a) : `${h(a)}-${h(b)}`).join(',');
     const child = spawn(job.exe, ['--no-launcher', '--script', join(dir, 'compare.txt'), job.rom], { env, stdio: ['ignore', 'ignore', 'pipe', 'pipe'] });
     let log = '';
     child.stderr!.on('data', (d: Buffer) => { log = (log + d).slice(-4000); job.onStderr?.(d); });

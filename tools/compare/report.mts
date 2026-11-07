@@ -61,8 +61,6 @@ export interface RunInfo {
     align: 'frame' | 'nmi';
     regions: Region[];
     stride: number;
-    ignored: number[];
-    skipThrough: number;
     keepGoing: boolean;
 }
 
@@ -94,8 +92,6 @@ export function report(run: RunInfo, targets: TargetReport[]): string {
     L.push(`- Reference: **${run.reference.label}** (${run.reference.backend}, \`${run.reference.rom}\`)`);
     L.push(`- Input: ${run.replay ? '`' + run.replay + '`' : 'none (power-on, no input)'}; run to ${keyText(run.align, run.frames)}`);
     L.push(`- Aligned on ${run.align === 'frame' ? 'emulated frames' : 'the NMI counter $0100'}; regions ${run.regions.join(', ')}; checked every ${run.stride} key(s)`);
-    if (run.ignored.length) L.push(`- Ignored WRAM bytes (timing noise between backends): ${runs(run.ignored).map(([a, b]) => a === b ? hex(a, 4) : `${hex(a, 4)}-${hex(b, 4)}`).join(', ')}`);
-    if (run.skipThrough >= 0) L.push(`- Not compared up to counter ${run.skipThrough} (the RNG is copied in there)`);
     L.push('');
     for (const t of targets) {
         L.push(`## ${t.setup.label} (${t.setup.backend}, \`${t.setup.rom}\`)`, '', summaryLine(run, t), '');

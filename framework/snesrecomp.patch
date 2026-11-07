@@ -3737,14 +3737,18 @@ index 33d17832..f8e4a80c 100644
      & $executable
      if ($LASTEXITCODE -ne 0) { throw 'Audio delivery regression failed' }
 diff --git a/tests/dma/hdma_timing_test.c b/tests/dma/hdma_timing_test.c
-index c0a1581f..284f7cfa 100644
+index c0a1581f..cfbfe1e2 100644
 --- a/tests/dma/hdma_timing_test.c
 +++ b/tests/dma/hdma_timing_test.c
-@@ -49,10 +49,16 @@ void ppu_rasterRecord(uint16_t reg, uint16_t line, uint8_t val) {
+@@ -49,10 +49,20 @@ void ppu_rasterRecord(uint16_t reg, uint16_t line, uint8_t val) {
  }
  void ppu_rasterFieldBoundary(void) {}
  void ppu_rasterReset(void) {}
 +void (*g_ppu_latch_position_hook)(uint16_t *h_dot, uint16_t *v);
++/* ppu.c's beam hook for register accesses during rendering: ppu.c is not linked here. */
++bool (*g_ppu_beam_hook)(uint16_t adr, uint16_t *h_clock, uint16_t *v);
++/* Bus-exact compiled code's I/O lead (cpu_state.c): no compiled code here. */
++uint32_t g_aot_access_prefix = AOT_NO_ACCESS;
  
  void RtlApuLock(void) {}
  void RtlApuUnlock(void) {}
@@ -3758,16 +3762,32 @@ index c0a1581f..284f7cfa 100644
  uint8_t rtl_apu_port_observers_read(uint16_t adr, uint8_t value) {
      (void)adr;
 diff --git a/tests/interp816/bridge_test.c b/tests/interp816/bridge_test.c
-index b697e05a..d705da2b 100644
+index b697e05a..d8d64bbc 100644
 --- a/tests/interp816/bridge_test.c
 +++ b/tests/interp816/bridge_test.c
-@@ -84,6 +84,9 @@ void ppudma_note_interrupt(int is_nmi) { (void)is_nmi; }
+@@ -84,6 +84,25 @@ void ppudma_note_interrupt(int is_nmi) { (void)is_nmi; }
  uint32_t cpu_region_speed(uint32_t addr24) {
      return (uint32_t)snes_region_speed(addr24, g_memsel);
  }
 +/* Bus-exact compiled code's I/O lead (cpu_state.c): no compiled code here. */
 +uint32_t g_aot_access_prefix = AOT_NO_ACCESS, g_aot_access_wprefix = AOT_NO_ACCESS;
 +int cpu_aot_access_lead(uint16 adr, uint32_t *lead) { (void)adr; (void)lead; return 0; }
++/* Compiled resume (cpu_state.c, common_cpu_infra.c): no compiled code here, so nothing resumes and no frame is live. */
++const unsigned g_aot_resume_count = 0;
++int g_recomp_yield_popped_top;
++int cpu_aot_resume_maybe(uint32 pc24) { (void)pc24; return 0; }
++RecompReturn (*cpu_aot_resume_fn(CpuState *cpu, uint32 pc24))(CpuState *) { (void)cpu; (void)pc24; return NULL; }
++RecompReturn cpu_dispatch_resume_paired(CpuState *cpu, uint32 pc24, uint16 entry_s, uint8 hrv,
++                                        RecompReturn (*fn)(CpuState *)) {
++    (void)cpu; (void)pc24; (void)entry_s; (void)hrv; (void)fn;
++    abort();   /* cpu_aot_resume_maybe never offers a resume */
++}
++int cpu_entry_frame(int slot, uint16_t *entry_s, uint8_t *hrv, int *tail) {
++    (void)slot; (void)entry_s; (void)hrv; (void)tail; return 0;
++}
++/* As common_cpu_infra.h declares it; that header cannot be included here (its g_fail is this file's). */
++typedef struct CpuTailcallContextSave { uint8_t valid; uint16_t entry_s; uint8_t hrv; } CpuTailcallContextSave;
++void cpu_tailcall_context_save(CpuTailcallContextSave *out) { if (out) memset(out, 0, sizeof *out); }
  uint8_t sdd1_read(Sdd1 *sdd1, uint16_t addr) {
      (void)sdd1;
      (void)addr;
@@ -3993,3 +4013,18 @@ index 00000000..73e7726d
 +        env = dict(os.environ, SNESRECOMP_DSP_PER_CLOCK=model)
 +        run = subprocess.run([str(exe)], capture_output=True, text=True, timeout=30, env=env)
 +        assert run.returncode == 0, run.stdout + run.stderr
+diff --git a/tests/v2/test_hle_func_seam.py b/tests/v2/test_hle_func_seam.py
+index 1a3cc2b3..ebb8a2e7 100644
+--- a/tests/v2/test_hle_func_seam.py
++++ b/tests/v2/test_hle_func_seam.py
+@@ -268,6 +268,10 @@ int interp_bridge_return_targets_owner(uint16 a, uint16 b) {
+   (void)a; (void)b; return 0;
+ }
+ int interp_bridge_has_direct_paired_bounce(void) { return 0; }
++/* A compiled RTI under a host-delivered interrupt is the host boundary. */
++RecompReturn interp_bridge_aot_rti(CpuState *cpu, uint32 popped_pc24) {
++  (void)cpu; (void)popped_pc24; return RECOMP_RETURN_NORMAL;
++}
+ int cpu_dispatch_has_entry(CpuState *cpu, uint32 pc24) {
+   (void)cpu; (void)pc24; return 0;
+ }

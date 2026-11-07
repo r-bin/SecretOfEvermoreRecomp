@@ -3,43 +3,41 @@
 // switch turned off or an executable built without a change. A run stops at its first difference in WRAM, VRAM,
 // CGRAM or OAM: from there on the game is another game. The other regions count to the end.
 //
-//   node tools/compare/probes/ablate.mts <replay> <variants.json> [--jobs 4] [--out results.json] [--fresh]
+//   node tools/compare/probes/ablate.mts <replay> <variants.json> [--rom x.sfc] [--jobs 4] [--out results.json] [--fresh]
 // variants.json: [{ "name": "no per-clock DSP", "env": { "SNESRECOMP_DSP_PER_CLOCK": "0" }, "exe": "path", "interpreted": true }]
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { basename, join, resolve } from 'node:path';
-import { runMesen, askMesenRng } from '../mesen.mts';
+import { runMesen } from '../mesen.mts';
 import { runRecomp, defaultExe } from '../recomp.mts';
-import { SYNC_AT } from '../game.mts';
 import { readReplay } from '../replay.mts';
 import type { Region } from '../diff.mts';
 import { allInterpretedEnv } from './interp.mts';
-import { REPO } from '../paths.mts';
+import { REPO, defaultRom } from '../paths.mts';
 
 const REGIONS: Region[] = ['wram', 'vram', 'cgram', 'oam', 'sram', 'picture', 'aram', 'dsp', 'sound'];
 const SYNC = 4;                 // the first four regions decide whether the run is still the same game
 const STALL_MS = 120_000;       // no key for this long: the game stopped (a sound handshake that never ends, a crash)
 
 interface Variant { name: string; env?: Record<string, string>; exe?: string; interpreted?: boolean }
-interface Reference { rng: number[] | null; rngFrame: number; first: number; keys: Record<string, number[]> }
+interface Reference { keys: Record<string, number[]> }
 
 const argv = process.argv.slice(2);
 const opt = (f: string) => { const i = argv.indexOf(f); return i < 0 ? undefined : argv[i + 1]; };
 const [replayArg, variantsArg] = argv;
-if (!variantsArg) { console.error('usage: ablate.mts <replay> <variants.json> [--jobs 4] [--out results.json] [--fresh]'); process.exit(2); }
+if (!variantsArg) { console.error('usage: ablate.mts <replay> <variants.json> [--rom x.sfc] [--jobs 4] [--out results.json] [--fresh]'); process.exit(2); }
 const replay = resolve(replayArg), jobs = +(opt('--jobs') ?? 4);
-const rom: string = createRequire(import.meta.url)('../../rom').baseRomOrExit('evermore', null);
+const rom = opt('--rom') ? resolve(opt('--rom')!) : defaultRom();
+if (!rom) { console.error('no ROM: pass --rom, or set SNESRECOMP_ROM'); process.exit(2); }
 const movie = readReplay(replay), to = movie.count, midGame = movie.start?.midGame ?? false;
-const base = { rom, align: 'nmi' as const, regions: REGIONS, mask: true, replay, to, stride: 1, atNmi: true };
+const base = { rom, align: 'nmi' as const, regions: REGIONS, replay, to, stride: 1, atNmi: true };
 
 async function reference(): Promise<Reference> {
     const dir = join(REPO, 'out', 'compare', 'ablate'), file = join(dir, basename(replay) + '.json');
     mkdirSync(dir, { recursive: true });
     if (existsSync(file) && !argv.includes('--fresh')) return JSON.parse(readFileSync(file, 'utf8'));
-    const { bytes, frame } = midGame ? { bytes: null, frame: 0 } : await askMesenRng({ ...base, atNmi: false, to: SYNC_AT });
     const keys: Reference['keys'] = {};
-    await runMesen({ ...base, rng: bytes }, (k, c) => { keys[k] = c; }).done;
-    const ref = { rng: bytes && [...bytes], rngFrame: frame, first: midGame ? 1 : SYNC_AT + 5, keys };
+    await runMesen(base, (k, c) => { keys[k] = c; }).done;
+    const ref = { keys };
     writeFileSync(file, JSON.stringify(ref));
     return ref;
 }
@@ -53,10 +51,10 @@ function run(v: Variant, ref: Reference): Promise<Result> {
     const saved = { ...process.env };
     Object.assign(process.env, env);
     let stall: NodeJS.Timeout;
-    const job = runRecomp({ ...base, exe, rng: ref.rng && Uint8Array.from(ref.rng), rngFrame: ref.rngFrame }, (k, c) => {
+    const job = runRecomp({ ...base, exe }, (k, c) => {
         stall.refresh();
         const r = ref.keys[k];
-        if (!r || k < ref.first) return;
+        if (!r) return;
         res.keys++;
         REGIONS.forEach((name, i) => {
             if (c[i] === r[i] || (midGame && k === 1 && name === 'picture')) return;
@@ -69,7 +67,7 @@ function run(v: Variant, ref: Reference): Promise<Result> {
     stall = setTimeout(() => { if (res.synced) res.synced = false; res.end = `no key after ${res.keys} compared`; job.kill(); }, STALL_MS);
     return job.done.catch((e: Error) => { res.synced = false; res.end = e.message.slice(0, 160); }).then(() => {
         clearTimeout(stall);
-        if (res.synced && res.keys < Object.keys(ref.keys).filter(k => +k >= ref.first).length) { res.synced = false; res.end = `ended after ${res.keys} keys`; }
+        if (res.synced && res.keys < Object.keys(ref.keys).length) { res.synced = false; res.end = `ended after ${res.keys} keys`; }
         res.seconds = Math.round((Date.now() - t0) / 1000);
         return res;
     });

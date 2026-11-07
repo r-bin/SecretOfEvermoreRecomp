@@ -84,10 +84,13 @@ if(SOE_TEST_ROM)
                      $<TARGET_FILE:SecretOfEvermoreSNESRecomp> ${SOE_TEST_ROM})
     set_tests_properties(save_state_resume PROPERTIES TIMEOUT 240)
     if(SOE_NODE)
-        add_test(NAME replay_01_recorded
-                 COMMAND bash ${CMAKE_SOURCE_DIR}/tests/replay_01_recorded.sh
-                         $<TARGET_FILE:SecretOfEvermoreSNESRecomp> ${SOE_TEST_ROM})
-        set_tests_properties(replay_01_recorded PROPERTIES TIMEOUT 900)
+        foreach(replay 01-no-inputs-1-loop 02-new-game-to-flowers)
+            string(SUBSTRING ${replay} 0 2 n)
+            add_test(NAME replay_${n}_recorded
+                     COMMAND bash ${CMAKE_SOURCE_DIR}/tests/replay_recorded.sh
+                             $<TARGET_FILE:SecretOfEvermoreSNESRecomp> ${SOE_TEST_ROM} ${replay})
+            set_tests_properties(replay_${n}_recorded PROPERTIES TIMEOUT 1800)
+        endforeach()
     endif()
 endif()
 

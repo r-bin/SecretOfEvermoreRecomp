@@ -4,25 +4,22 @@
 //
 //   node tools/compare/probes/native-vs-interp.mts <rom> <replay.evsmv> <to> [exe]
 import { resolve } from 'node:path';
-import { askMesenRng } from '../mesen.mts';
 import { runRecomp, defaultExe } from '../recomp.mts';
-import { SYNC_AT } from '../game.mts';
 import { allInterpretedEnv } from './interp.mts';
 import { readReplay } from '../replay.mts';
 
 const [romArg, replay, toArg, exeArg] = process.argv.slice(2);
 if (!toArg) { console.error('usage: native-vs-interp.mts <rom> <replay.evsmv> <to> [exe]'); process.exit(2); }
 const rom = resolve(romArg), to = +toArg, exe = exeArg ? resolve(exeArg) : defaultExe();
-const base = { rom, align: 'nmi' as const, regions: ['wram' as const], mask: true, replay, to, stride: 1, atNmi: true };
+const base = { rom, align: 'nmi' as const, regions: ['wram' as const], replay, to, stride: 1, atNmi: true };
 // A movie from mid-game starts from one state on every run: nothing to copy.
-const { bytes: rng, frame: rngFrame } = readReplay(replay).start?.midGame ? { bytes: null, frame: 0 } : await askMesenRng({ ...base, atNmi: false, to: SYNC_AT });
 
 type Side = { nmi: Map<number, [number, number]>; wram: Map<number, number> };
 function run(env: Record<string, string>): { side: Side; done: Promise<unknown> } {
     const side: Side = { nmi: new Map(), wram: new Map() };
     const saved = { ...process.env };
     Object.assign(process.env, env);
-    const job = runRecomp({ ...base, exe, rng, rngFrame, onNmi: (k, clock, pc) => side.nmi.set(k, [clock, pc]) },
+    const job = runRecomp({ ...base, exe, onNmi: (k, clock, pc) => side.nmi.set(k, [clock, pc]) },
         (key, crcs) => side.wram.set(key, crcs[0]));
     for (const k of Object.keys(env)) if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k];
     return { side, done: job.done };

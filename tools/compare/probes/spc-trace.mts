@@ -4,15 +4,13 @@
 //
 //   node tools/compare/probes/spc-trace.mts <rom> <replay> <K> [n=1] [context=12]
 import { resolve } from 'node:path';
-import { runMesen, askMesenRng } from '../mesen.mts';
+import { runMesen } from '../mesen.mts';
 import { runRecomp, defaultExe } from '../recomp.mts';
-import { SYNC_AT } from '../game.mts';
 
 const [romArg, replay, ks, nArg = '1', ctxArg = '12'] = process.argv.slice(2);
 if (!ks) { console.error('usage: spc-trace.mts <rom> <replay> <K> [n] [context]'); process.exit(2); }
 const rom = resolve(romArg), K = +ks, n = +nArg, ctx = +ctxArg, exe = defaultExe();
-const base = { rom, align: 'nmi' as const, regions: ['wram' as const], mask: true, replay, to: K + n + 1, stride: 1_000_000, atNmi: true };
-const { bytes: rng, frame: rngFrame } = await askMesenRng({ ...base, atNmi: false, to: SYNC_AT });
+const base = { rom, align: 'nmi' as const, regions: ['wram' as const], replay, to: K + n + 1, stride: 1_000_000, atNmi: true };
 const lua = `
 local spc_ref = nil
 emu.addEventCallback(function()
@@ -26,13 +24,13 @@ end, emu.eventType.nmi)
 `;
 type Op = [pc: number, cycle: number, a: number, y: number];
 const M: Op[] = [], R: Op[] = [];
-await runMesen({ ...base, rng, lua, onNmi: () => {}, onLine: l => {
+await runMesen({ ...base, lua, onNmi: () => {}, onLine: l => {
     if (l.startsWith('S ')) { const p = l.split(' '); M.push([parseInt(p[1], 16), Math.floor(+p[2] / 2), parseInt(p[3], 16), parseInt(p[4], 16)]); }
 } }, () => {}).done;
 if (!M.length) { console.error('no SPC instructions from MesenCE'); process.exit(1); }
 process.env.SNESRECOMP_SPC_EXEC_LOG = `${M[0][1] - 64}-${M[M.length - 1][1]}`;
 let rest = '';
-await runRecomp({ ...base, exe, rng, rngFrame, onNmi: () => {}, onStderr: chunk => {
+await runRecomp({ ...base, exe, onNmi: () => {}, onStderr: chunk => {
     const lines = (rest + chunk.toString()).split('\n');
     rest = lines.pop()!;
     for (const l of lines) {

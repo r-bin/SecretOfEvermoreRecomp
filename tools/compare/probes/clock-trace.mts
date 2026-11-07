@@ -6,23 +6,20 @@
 //
 //   node tools/compare/probes/clock-trace.mts <rom> <replay.evsmv> <to-key> <from-clock> <to-clock> [exe] [context=12]
 import { resolve } from 'node:path';
-import { askMesenRng } from '../mesen.mts';
 import { runRecomp, defaultExe } from '../recomp.mts';
-import { SYNC_AT } from '../game.mts';
 import { allInterpretedEnv } from './interp.mts';
 
 const [romArg, replay, toArg, fromArg, untilArg, exeArg, ctxArg = '12'] = process.argv.slice(2);
 if (!untilArg) { console.error('usage: clock-trace.mts <rom> <replay> <to-key> <from-clock> <to-clock> [exe] [context]'); process.exit(2); }
 const rom = resolve(romArg), to = +toArg, from = +fromArg, until = +untilArg, exe = exeArg ? resolve(exeArg) : defaultExe();
-const base = { rom, align: 'nmi' as const, regions: ['wram' as const], mask: true, replay, to, stride: 1_000_000, atNmi: true };
-const { bytes: rng, frame: rngFrame } = await askMesenRng({ ...base, atNmi: false, to: SYNC_AT });
+const base = { rom, align: 'nmi' as const, regions: ['wram' as const], replay, to, stride: 1_000_000, atNmi: true };
 
 function run(env: Record<string, string>) {
     const out: [number, number, string][] = [];   // pc, start, kind
     let rest = '';
     const saved = { ...process.env };
     Object.assign(process.env, env, { SNESRECOMP_CYC_WATCH: '000000-FFFFFF' });
-    const job = runRecomp({ ...base, exe, rng, rngFrame, onStderr: chunk => {
+    const job = runRecomp({ ...base, exe, onStderr: chunk => {
         const lines = (rest + chunk.toString()).split('\n');
         rest = lines.pop()!;
         for (const l of lines) {

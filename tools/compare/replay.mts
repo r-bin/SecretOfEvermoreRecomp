@@ -1,7 +1,7 @@
-// A replay for the backends, from either format: an .evsmv recording or a MesenCE movie (.mmo). `start` is how a movie
-// began: MesenCE loads the save state itself, the recomp its memory, FastROM, SPC700 and S-DSP (the RNG follows at the copy
-// at key 115). SOE_MMO_FRESH=1 compares the backends instead: both power on with the movie's WRAM and SRAM only, in
-// lockstep, though that run is not the recording (other RNG, the sound start 20 fields shorter).
+// A replay for the backends, from either format: an .evsmv recording or a MesenCE movie (.mmo). A movie recorded from
+// power-on has no start: both backends power on with zeroed RAM. `start` is how a movie with a save state began: MesenCE
+// loads the state itself, the recomp its memory, FastROM, SPC700 and S-DSP. SOE_MMO_FRESH=1 compares the backends
+// instead: both power on with the movie's WRAM and SRAM only, in lockstep, though that run is not the recording.
 import { readFileSync } from 'node:fs';
 import { parseEvsmv, parseMesenMovie } from './movie.mts';
 

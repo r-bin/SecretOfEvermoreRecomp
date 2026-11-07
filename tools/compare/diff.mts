@@ -55,19 +55,16 @@ export interface TargetResult {
 
 /**
  * Compares targets with one reference as checkpoints arrive, in any order between setups but in rising key order
- * within one. A key either side lacks is not compared; keys at or below `skipThrough` are not compared either
- * (before the RNG sync of a cross-backend run).
+ * within one. A key either side lacks is not compared.
  */
 export class Tracker {
     readonly ref = new Map<number, Crcs>();
     private readonly pending: Map<number, Crcs>[];
     private readonly lastMatch: number[];
     readonly results: TargetResult[];
-    private readonly skipThrough: number;
     private readonly stride: number;
 
-    constructor(targets: number, skipThrough = -1, stride = 1) {
-        this.skipThrough = skipThrough;
+    constructor(targets: number, stride = 1) {
         this.stride = stride;
         this.pending = Array.from({ length: targets }, () => new Map());
         this.lastMatch = new Array(targets).fill(0);
@@ -89,7 +86,6 @@ export class Tracker {
 
     /** True when this target diverged for the first time at this key. */
     addTarget(i: number, key: number, crcs: Crcs): boolean {
-        if (key <= this.skipThrough) return false;
         const r = this.ref.get(key);
         if (!r) { this.pending[i].set(key, crcs); return false; }
         return this.check(i, key, crcs);
@@ -121,13 +117,13 @@ export class Tracker {
 
 export interface ByteDiff { offset: number; a: number; b: number }
 
-/** The differing bytes of two snapshots of one region, skipping the ignored offsets; at most `max`. */
-export function byteDiff(a: Uint8Array, b: Uint8Array, ignore: ReadonlySet<number> = new Set(), max = Infinity): { diffs: ByteDiff[]; total: number } {
+/** The differing bytes of two snapshots of one region; at most `max`. */
+export function byteDiff(a: Uint8Array, b: Uint8Array, max = Infinity): { diffs: ByteDiff[]; total: number } {
     const diffs: ByteDiff[] = [];
     let total = 0;
     const n = Math.min(a.length, b.length);
     for (let i = 0; i < n; i++) {
-        if (a[i] === b[i] || ignore.has(i)) continue;
+        if (a[i] === b[i]) continue;
         total++;
         if (diffs.length < max) diffs.push({ offset: i, a: a[i], b: b[i] });
     }

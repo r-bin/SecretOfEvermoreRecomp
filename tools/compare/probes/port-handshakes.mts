@@ -5,9 +5,8 @@
 //   node tools/compare/probes/port-handshakes.mts <rom> <replay.evsmv> <to> [show=20]
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { runMesen, askMesenRng } from '../mesen.mts';
+import { runMesen } from '../mesen.mts';
 import { runRecomp, defaultExe } from '../recomp.mts';
-import { SYNC_AT } from '../game.mts';
 import { allInterpretedEnv, cycLines } from './interp.mts';
 
 const [romArg, replay, to, show = '20'] = process.argv.slice(2);
@@ -16,8 +15,7 @@ if (!to) { console.error('usage: port-handshakes.mts <rom> <replay.evsmv> <to> [
 const NMI_VECTOR = 0x00823A, image = readFileSync(rom);
 const exe = defaultExe();
 Object.assign(process.env, allInterpretedEnv(exe), { SNESRECOMP_CYC_WATCH: '000000-FFFFFF' });
-const base = { rom, align: 'nmi' as const, regions: ['wram' as const], mask: true, replay, to: +to, stride: 1_000_000, atNmi: true };
-const { bytes: rng, frame: rngFrame } = await askMesenRng({ ...base, atNmi: false, to: SYNC_AT });
+const base = { rom, align: 'nmi' as const, regions: ['wram' as const], replay, to: +to, stride: 1_000_000, atNmi: true };
 
 type Handshake = { value: number; reads: number; nmi: number };
 const mesen: Handshake[] = [], recomp: Handshake[] = [];
@@ -48,10 +46,10 @@ end
 `;
 let nmis = 0;
 await Promise.all([
-    runMesen({ ...base, rng, lua, onNmi: () => {}, onLine: l => {
+    runMesen({ ...base, lua, onNmi: () => {}, onLine: l => {
         if (l.startsWith('Q ')) { const p = l.split(' '); add(mesen, p[1] === 'W', parseInt(p[2], 16), +p[3]); }
     } }, () => {}).done,
-    runRecomp({ ...base, exe, rng, rngFrame, onNmi: () => {}, onStderr: cycLines(pc => {
+    runRecomp({ ...base, exe, onNmi: () => {}, onStderr: cycLines(pc => {
         if (pc === NMI_VECTOR) nmis++;
         if (!isRom(pc)) return;
         const k = kindOf(pc);

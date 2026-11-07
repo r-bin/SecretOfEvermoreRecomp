@@ -5,9 +5,8 @@
 //
 //   node tools/compare/probes/frame-trace.mts <rom> <replay.evsmv> <K> [show=40]
 import { resolve } from 'node:path';
-import { runMesen, askMesenRng } from '../mesen.mts';
+import { runMesen } from '../mesen.mts';
 import { runRecomp, defaultExe } from '../recomp.mts';
-import { SYNC_AT } from '../game.mts';
 import { allInterpretedEnv, cycLines } from './interp.mts';
 
 const [romArg, replay, ks, show = '40'] = process.argv.slice(2);
@@ -16,8 +15,7 @@ if (!ks) { console.error('usage: frame-trace.mts <rom> <replay.evsmv> <K> [show]
 const K = +ks, NMI_VECTOR = 0x00823A, IDLE = new Set([0x80858F, 0x808592]);
 const exe = defaultExe();
 Object.assign(process.env, allInterpretedEnv(exe), { SNESRECOMP_CYC_WATCH: '000000-FFFFFF' });
-const base = { rom, align: 'nmi' as const, regions: ['wram' as const], mask: true, replay, to: K + 2, stride: 1_000_000, atNmi: true };
-const { bytes: rng, frame: rngFrame } = await askMesenRng({ ...base, atNmi: false, to: SYNC_AT });
+const base = { rom, align: 'nmi' as const, regions: ['wram' as const], replay, to: K + 2, stride: 1_000_000, atNmi: true };
 const lua = `
 local tr_on = false
 emu.addEventCallback(function() tr_on = (nmi_taken == ${K}) end, emu.eventType.nmi)
@@ -28,10 +26,10 @@ end, emu.callbackType.exec, 0x000000, 0xFFFFFF)
 const M: [number, number][] = [], R: [number, number][] = [], entry = new Map<number, number>();
 let nmis = 0;
 await Promise.all([
-    runMesen({ ...base, rng, lua, onNmi: () => {}, onLine: l => {
+    runMesen({ ...base, lua, onNmi: () => {}, onLine: l => {
         if (l.startsWith('T ')) { const p = l.split(' '); M.push([parseInt(p[1], 16), +p[2]]); }
     } }, () => {}).done,
-    runRecomp({ ...base, exe, rng, rngFrame, onNmi: (k, clock) => entry.set(k, clock), onStderr: cycLines((pc, clocks) => {
+    runRecomp({ ...base, exe, onNmi: (k, clock) => entry.set(k, clock), onStderr: cycLines((pc, clocks) => {
         if (pc === NMI_VECTOR) nmis++;
         if (nmis === K) R.push([pc, clocks]);
     }) }, () => {}).done,

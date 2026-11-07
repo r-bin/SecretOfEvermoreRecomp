@@ -4,15 +4,13 @@
 //
 //   node tools/compare/probes/ppu-reads.mts <rom> <replay.evsmv> <K> [exe]
 import { resolve } from 'node:path';
-import { runMesen, askMesenRng } from '../mesen.mts';
+import { runMesen } from '../mesen.mts';
 import { runRecomp, defaultExe } from '../recomp.mts';
-import { SYNC_AT } from '../game.mts';
 
 const [romArg, replay, ks, exeArg] = process.argv.slice(2);
 if (!ks) { console.error('usage: ppu-reads.mts <rom> <replay.evsmv> <K> [exe]'); process.exit(2); }
 const rom = resolve(romArg), K = +ks, exe = exeArg ? resolve(exeArg) : defaultExe();
-const base = { rom, align: 'nmi' as const, regions: ['wram' as const], mask: true, replay, to: K + 1, stride: 1_000_000, atNmi: true };
-const { bytes: rng, frame: rngFrame } = await askMesenRng({ ...base, atNmi: false, to: SYNC_AT });
+const base = { rom, align: 'nmi' as const, regions: ['wram' as const], replay, to: K + 1, stride: 1_000_000, atNmi: true };
 const lua = `
 local function rd(a, v)
   if nmi_taken == ${K - 1} then local st = emu.getState(); print(string.format("R %04X %02X %d %d %d", a & 0xFFFF, v, st["masterClock"], st["memoryManager.hClock"], st["ppu.scanline"])) end
@@ -30,10 +28,10 @@ process.env.SNESRECOMP_PPU_READ_LOG = '1';
 process.env.SNESRECOMP_HV_LOG = '1';
 const HV: string[] = [];
 await Promise.all([
-    runMesen({ ...base, rng, lua, onNmi: () => {}, onLine: l => {
+    runMesen({ ...base, lua, onNmi: () => {}, onLine: l => {
         if (l.startsWith('R ')) { const p = l.split(' '); M.push([parseInt(p[1], 16), parseInt(p[2], 16), +p[3]]); if (p[1] === '2137') MH.push(`h clock ${p[4]} line ${p[5]}`); }
     } }, () => {}).done,
-    runRecomp({ ...base, exe, rng, rngFrame, onNmi: (k, clock) => nmi.set(k, clock), onStderr: chunk => {
+    runRecomp({ ...base, exe, onNmi: (k, clock) => nmi.set(k, clock), onStderr: chunk => {
         const lines = (rest + chunk.toString()).split('\n');
         rest = lines.pop()!;
         for (const l of lines) {

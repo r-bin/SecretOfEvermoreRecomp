@@ -43,9 +43,8 @@ extern uint8_t g_ram[0x20000];
  *   "H <key> <crc> ..." to fd 3, one CRC-32 per region of SOE_COMPARE_REGIONS (wram, vram, cgram, oam, sram, aram,
  *   dsp, sound, picture; tools/compare/README.md). aram, dsp and sound need SOE_COMPARE_AT=nmi: they
  *   are read at the SPC700's next instruction on a copy of the APU (CmpSpcEnter). picture is a word hash, not a CRC.
- * - SOE_COMPARE_MASK: WRAM offsets zeroed before hashing (hex, "a-b" ranges, comma separated).
  * - SOE_COMPARE_DUMP=<key>: write "D <key>\n" and the raw regions once.
- * - SOE_COMPARE_PEEK: WRAM offsets (the mask's syntax) written as "P <frame> <key> <master clock> <hex bytes>"
+ * - SOE_COMPARE_PEEK: WRAM offsets (hex, "a-b" ranges, comma separated) written as "P <frame> <key> <master clock> <hex bytes>"
  *   after every emulated frame (frame 0 = the first from power-on): a probe for a few bytes frame by frame.
  * - SOE_COMPARE_QUIT_AT=<key>: exit once the key reaches it (a replay's script cannot wait for a key).
  * - SOE_COMPARE_AT=nmi: sample (hash, dump, quit) as each NMI is taken instead of after each frame; the key is
@@ -66,7 +65,6 @@ static struct {
     unsigned stride;
     long dump_at;
     int regions[CMP_REGIONS], nregions;
-    uint8_t mask[0x20000 / 8];
     uint32_t peek[256];
     int npeek;
     long last, frames, quit_at;
@@ -178,13 +176,6 @@ static void CmpInit(void) {
         p = strchr(p, ',');
         if (!p) break;
         p++;
-    }
-    for (const char *p = getenv("SOE_COMPARE_MASK"); p && *p;) {
-        char *end;
-        unsigned long a = strtoul(p, &end, 16), b = a;
-        if (*end == '-') b = strtoul(end + 1, &end, 16);
-        for (unsigned long o = a; o <= b && o < 0x20000; o++) s_cmp.mask[o >> 3] |= (uint8_t)(1u << (o & 7));
-        p = *end == ',' ? end + 1 : NULL;
     }
     for (const char *p = peek; p && *p;) {
         char *end;
@@ -305,12 +296,7 @@ static int CmpSpcSide(void) {
 static const uint8_t *CmpRegion(int r, size_t *n, uint8_t *scratch) {
     Ppu *ppu = g_snes->ppu;
     switch (r) {
-    case CMP_WRAM:
-        memcpy(scratch, g_ram, 0x20000);
-        for (size_t o = 0; o < 0x20000; o++)
-            if (s_cmp.mask[o >> 3] & (1u << (o & 7))) scratch[o] = 0;
-        *n = 0x20000;
-        return scratch;
+    case CMP_WRAM: *n = 0x20000; return g_ram;
     case CMP_VRAM: *n = sizeof(ppu->vram); return (const uint8_t *)ppu->vram;
     case CMP_CGRAM: *n = sizeof(ppu->cgram); return (const uint8_t *)ppu->cgram;
     case CMP_SRAM: *n = (size_t)g_sram_size; return g_sram;
@@ -476,8 +462,8 @@ static void GameHardwareReset(void) {
 void SoeAfterConfig(void) {
     g_config.new_renderer = false;
     RtlEnableExtendedFrameTiming();
-    /* Branch snesrecomp-spc-access-cycles: the SPC700's time is the master clock since power-on (MesenCE's rate and
-     * rounding); the CPU reaches the ports 20 clocks into an absolute CMP/STA (docs/upstream-access-timing.md). */
+    /* snesrecomp PR #241 (framework/snesrecomp.patch): the SPC700's time is the master clock since power-on (MesenCE's
+     * rate and rounding); the CPU reaches the ports 20 clocks into an absolute CMP/STA (docs/upstream-access-timing.md). */
     const char *mc = getenv("SNESRECOMP_APU_MASTER_CLOCK"); /* =0: the framework's old APU timeline, for A/B runs */
     RtlApuUseMasterClock(!(mc && mc[0] == '0'), 20);
     /* SOE_COMPARE_SAVE_ROOT: battery RAM from (and back to) this folder instead of saves/, so a compare run starts

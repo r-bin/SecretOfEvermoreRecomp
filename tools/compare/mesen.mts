@@ -5,12 +5,8 @@ import { mkdtempSync, writeFileSync, rmSync, existsSync, symlinkSync } from 'nod
 import { tmpdir, homedir } from 'node:os';
 import { join, basename, extname, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
-import { createRequire } from 'node:module';
-import { FRAME_COUNTER, RNG, SYNC_AT, CROSS_NOISE } from './game.mts';
 import { REGION_SIZE, SPC_SIDE, SOUND_FIELDS, type Region, type Crcs } from './diff.mts';
 import { readReplay, type Replay } from './replay.mts';
-
-const require = createRequire(import.meta.url);
 
 // The testrunner ends a run after 100 s of wall time unless told otherwise, so a long replay used to stop part way at
 // a key that depended on the machine's speed. The Lua script ends the run itself at its target key.
@@ -49,9 +45,6 @@ export interface MesenJob {
     regions: Region[];
     stride?: number;
     dumpAt?: number;
-    mask: boolean;
-    /** RNG bytes at counter SYNC_AT copied in (when target), or sampled (when reference). */
-    rng?: Uint8Array | null;
     replay?: string | null;
     /** Sample as each NMI is taken; the key is the NMI's number since power-on (the recomp's SOE_COMPARE_AT=nmi). */
     atNmi?: boolean;
@@ -111,10 +104,6 @@ export function generateMesenLua(job: MesenJob, dumpPath: string, pads: Uint16Ar
     const regions = job.regions;
     const lua = (list: Region[]) => `{ ${list.map(r => `"${r}"`).join(', ')} }`;
 
-    // Convert noise offsets to a Lua set table
-    const noiseList = job.mask ? [...CROSS_NOISE] : [];
-    const noiseLua = noiseList.length ? `{ ${noiseList.map(o => `[${o}] = true`).join(', ')} }` : '{}';
-
     // Button mapping table
     const buttonsLua = BUTTON_BITS.map(([bit, name]) => `{ ${bit}, "${name}" }`).join(', ');
 
@@ -126,15 +115,11 @@ export function generateMesenLua(job: MesenJob, dumpPath: string, pads: Uint16Ar
         padsLua = `{ ${Array.from(pads.subarray(0, limit)).join(',')} }`;
     }
 
-    // RNG hex bytes if poking
-    const rngHex = job.rng ? Buffer.from(job.rng).toString('hex') : null;
-
     return `
 local is_nmi = ${isNmi}
 local stride = ${stride}
 local target = ${target}
 local dump_at = ${dumpAt}
-local mask_noise = ${noiseLua}
 local pads = ${padsLua}
 local buttons = { ${buttonsLua} }
 local regions = ${lua(regions.filter(r => !SPC_SIDE.has(r)))}
@@ -161,7 +146,6 @@ local nmi_log = ${job.onNmi ? 'true' : 'false'}
 local nmi_taken = 0
 local raw_last, nmis = -1, 0
 local last_key = -1
-local rng_done = false
 
 -- CRC32 IEEE 802.3 table
 local crc_table = {}
@@ -177,11 +161,10 @@ for i = 0, 255 do
   crc_table[i] = v
 end
 
-local function crc32_mem(mtype, size, is_wram_mask)
+local function crc32_mem(mtype, size)
   local c = 0xFFFFFFFF
   for i = 0, size - 1 do
     local b = emu.read(i, mtype, false)
-    if is_wram_mask and mask_noise[i] then b = 0 end
     c = (crc_table[(c ~ b) & 0xFF] ~ (c >> 8)) & 0xFFFFFFFF
   end
   return (c ~ 0xFFFFFFFF) & 0xFFFFFFFF
@@ -245,7 +228,7 @@ end
 local function hash_region(r)
   if r == "picture" then return picture_hash end
   if r == "sound" then return crc32_bytes(sound_bytes()) end
-  return crc32_mem(MEM[r][1], MEM[r][2], r == "wram")
+  return crc32_mem(MEM[r][1], MEM[r][2])
 end
 
 -- The sound side is read at the first SPC700 instruction at least 16 cycles after the NMI's clock (the recomp glue's
@@ -334,27 +317,6 @@ emu.addEventCallback(function()
     if key < 0 or key <= last_key then return end
   end
   last_key = key
-
-  -- Poke RNG if target
-  ${rngHex ? `
-  if not rng_done and key >= ${SYNC_AT} then
-    local rh = "${rngHex}"
-    for i = 1, #rh, 2 do
-      local b = tonumber(rh:sub(i, i + 1), 16)
-      emu.write(${RNG[0]} + (i - 1) // 2, b, wram)
-    end
-    rng_done = true
-  end
-  ` : `
-  if not rng_done and key >= ${SYNC_AT} then
-    local rh = ""
-    for a = ${RNG[0]}, ${RNG[1] - 1} do
-      rh = rh .. string.format("%02X", emu.read(a, wram, false))
-    end
-    print("RNG " .. rh .. " " .. frames)
-    rng_done = true
-  end
-  `}
 
   if not at_nmi and sample(key) then return end
 
@@ -459,47 +421,3 @@ export function runMesen(job: MesenJob, onCp: (key: number, crcs: Crcs) => void)
 
     return { done, kill: () => { if (child.exitCode === null) child.kill(); } };
 }
-
-/** Sample RNG from Mesen at key SYNC_AT, and the frame it was taken after (where a recomp replay pokes it in). */
-export function askMesenRng(job: MesenJob): Promise<{ bytes: Uint8Array; frame: number }> {
-    return new Promise((resolve, reject) => {
-        const exe = job.exe || defaultMesenExe();
-        if (!existsSync(exe)) return reject(new Error(`no Mesen executable at ${exe}`));
-        const dir = mkdtempSync(join(tmpdir(), 'soe-mesen-rng-'));
-        const luaPath = join(dir, 'rng.lua');
-        const dumpPath = join(dir, 'dump.bin');
-
-        const replay = job.replay ? readReplay(job.replay) : null;
-        const pads = replay?.pads ?? null;
-        const script = generateMesenLua({ ...job, to: SYNC_AT, dumpAt: undefined, rng: null, peek: [] }, dumpPath, pads, replay?.start);
-        writeFileSync(luaPath, script);
-
-        const iso = isolatedRom(dir, job.rom);
-        const child = spawn(exe, ['--testrunner', iso.rom, luaPath, '--snes.ramPowerOnState=AllZeros', TESTRUNNER_TIMEOUT], {
-            cwd: dir,
-            stdio: ['ignore', 'pipe', 'pipe'],
-        });
-
-        let rngBytes: Uint8Array | null = null, rngFrame = 0;
-        child.stdout?.on('data', (d: Buffer) => {
-            const text = d.toString('utf8');
-            for (const line of text.split('\n')) {
-                const trimmed = line.trim();
-                if (trimmed.startsWith('RNG ')) {
-                    const [hex, frame] = trimmed.slice(4).trim().split(' ');
-                    rngBytes = new Uint8Array(Buffer.from(hex, 'hex'));
-                    rngFrame = Number(frame);
-                    child.kill();
-                }
-            }
-        });
-
-        child.on('exit', () => {
-            rmSync(dir, { recursive: true, force: true });
-            iso.cleanup();
-            if (rngBytes) resolve({ bytes: rngBytes, frame: rngFrame });
-            else reject(new Error('Mesen ended without returning RNG bytes'));
-        });
-    });
-}
-
