@@ -32,10 +32,11 @@ in the commit that settles it; delete this file once the first release is out an
 
 ## Names and data from elsewhere
 
-- [ ] `src/bound-c/include/soe_ram.h` and `recomp/bank*.cfg` hold names exported from everscript-vscode. That repo
-  still holds room, enemy, item and flag names taken from third-party tools (its `docs/cleanup.md` D3, D4); they are due
-  to be rewritten. Check that none of them came here, or that they have been rewritten in everscript-vscode first and
-  imported again.
+- [x] The WRAM names in `src/bound-c/include/soe_ram.h` are our own. We worked out from playing the game what each
+  address does and named it from that; the game's original names are not known. The routine names in `recomp/bank*.cfg`
+  come from the same research.
+- [ ] everscript-vscode still holds room, enemy, item and flag names taken from third-party tools (its `docs/cleanup.md`
+  D3, D4). Do not import any of them here until they have been rewritten there.
 - [ ] No byte tables from the ROM are in tracked files. Opcode lists and other CPU facts are fine; graphics, text, tables
   and code bytes are not. One way to check: `git grep -nIE '(0x[0-9A-Fa-f]{2}, *){16}'`, then read each hit.
 
