@@ -22,8 +22,9 @@ in the commit that settles it; delete this file once the first release is out an
 
 ## The game
 
-- [ ] The README states that the project is not affiliated with or endorsed by Square Enix, that *Secret of Evermore* is
-  their trademark, and that the player needs a legally obtained ROM of their own. Put the same lines in the release text.
+- [x] The README states that the project is not affiliated with or endorsed by Square Enix, that *Secret of Evermore* is
+  their trademark, and that the player needs a legally obtained ROM of their own.
+- [ ] The release text carries the same disclaimer.
 - [ ] The release text and the launcher do not use the game's logo, box art, screenshots or music. The executable name
   and the zip name may use the title as plain text.
 - [ ] A zip from a dry run (`publish_release` unchecked) has been unpacked and searched: no `*.sfc`/`*.smc`/`*.srm`, no

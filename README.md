@@ -81,3 +81,7 @@ This project's own source is under PolyForm Noncommercial 1.0.0 (`LICENSE`). The
 derive from snesrecomp under the same terms. snesrecomp, and `framework/snesrecomp.patch` as changes to it, carry
 snesrecomp's terms: `snesrecomp/LICENSE`, `snesrecomp/THIRD_PARTY_ATTRIBUTION.md`. Neither covers the game, which is not
 distributed here.
+
+This is an unofficial fan project. It is not affiliated with, endorsed by or sponsored by Square Enix. *Secret of Evermore*
+is a trademark of Square Enix; all rights to the game belong to their owners. This repository contains no part of the game.
+To play, you need your own legally obtained copy of the ROM.
