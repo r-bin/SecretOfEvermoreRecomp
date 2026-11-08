@@ -2,12 +2,12 @@
 
 **Status:** draft, no PR yet. Depends on [#241](01-access-exact-timing.md): the beam hook is answered only on the master-clock timeline.
 
-Commit: `3b73e98c` (`abeba9ab` on `pr-stack-on-main`, one conflict with `mstan`'s `s_latch_snes`, resolved their way).
+Branch: `ppu-render-reads` in the fork, `bc980ee9` (first written as `3b73e98c` on an older main, not published; one conflict with `mstan`'s `s_latch_snes`, resolved their way).
 
 ## To do before opening
 
 1. Add a game-neutral test: a PPU harness that reads `$2138` and `$213B` at chosen H/V positions, in `tests/ppu/`.
-2. Carry the test stub, `7359f4f6` on `pr-stack-on-main` (`g_ppu_beam_hook` in `tests/dma/hdma_timing_test.c`).
+2. Carry the test stub, `4c10057c` on the fork's `develop` (`g_ppu_beam_hook` in `tests/dma/hdma_timing_test.c`).
 3. Open it stacked on #241.
 
 ## PR title

@@ -2,7 +2,7 @@
 
 **Status:** draft, no PR yet. Depends on [PR 3](03-bus-exact-compiled-code.md).
 
-Commits: `25d2f42f`, `88bc5ef8`, and on `pr-stack-on-main` the fix `73d951bc`.
+Branch: `aot-resume` in the fork, up to the fix `09cf15ec` (first written as `25d2f42f`, `88bc5ef8` on an older main, not published).
 
 This one is not needed for sync. It is what makes the native build native: without it most of a run stays in the interpreter.
 Replay 01, native share of instructions: **16.31 % → 99.70 %** (`SNESRECOMP_TIER_STATS=1`, resume off and on). If that is not worth the
@@ -13,7 +13,7 @@ size of the change upstream, this PR is the one to drop.
 1. Move `$4212`'s check to #247's `snes_set_cpu_read_clocked` scope. Our test of `g_aot_access_prefix` does the same job; upstream's
    way is the one to keep. Simply having no polling tick for compiled code was identical on the five replays of 2026-11-05 (`ABL_TICK_UPSTREAM`).
 2. Take out the outermost beam sync ([Not proposed](README.md#not-proposed)).
-3. Carry the test stubs, `eb2b5e88` on `pr-stack-on-main` (done 2026-11-07: `interp_bridge_aot_rti` in the shared harness of
+3. Carry the test stubs, `d56d8da9` on the fork's `develop` (done 2026-11-07: `interp_bridge_aot_rti` in the shared harness of
    `tests/v2/test_hle_func_seam.py`, the resume symbols in `tests/interp816/bridge_test.c`). Add a resume test to `tests/v2/`.
 4. Squash the three commits.
 
@@ -67,7 +67,7 @@ On the committed replays (2026-11-07), native; first NMI where WRAM parts:
 | Compiled RTI yields at the popped PC | `ABL_RTI_YIELD` | 2 | 2 |
 | Beam sync before register reads | `ABL_BEAM_READS` | 3 | 3 |
 | No `$4212` polling tick | `ABL_TICK4212` | 2 | 2 |
-| PB restored after a normal return | `73d951bc` left out | 2938 on the old replay 01, 6 clocks short (needs a rebuild, not rerun) | not run |
+| PB restored after a normal return | `09cf15ec` left out | 2938 on the old replay 01, 6 clocks short (needs a rebuild, not rerun) | not run |
 
 With `SNESRECOMP_AOT_RESUME=0`, RTI yield and beam sync stay in sync on both replays: they are needed only with resume, which is
 why they are here and not in PR 3, and why the compiled-interrupt commit is no PR of its own. The `$4212` tick is not quite that:
@@ -97,5 +97,5 @@ Replay 01. Setup: [README.md](README.md#reproduce), steps 1-6. Native share:
 SNESRECOMP_TIER_STATS=1 node tools/compare/probes/tier-stats.mts <rom> tools/compare/replays/01-no-inputs-1-loop.mmo 8592
 SNESRECOMP_AOT_RESUME=0 SNESRECOMP_TIER_STATS=1 node tools/compare/probes/tier-stats.mts <rom> tools/compare/replays/01-no-inputs-1-loop.mmo 8592
 ```
-Expected: `99.70 % native`, `16.31 % native`. The PB fix: check out `df2384d9`, the commit before it, regenerate and build: step 6 stops at
+Expected: `99.70 % native`, `16.31 % native`. The PB fix: check out `44ae0bd2`, the commit before it, regenerate and build: step 6 stops at
 `wram differ at counter $0100 = 2938`. The other rows need [ablation-gates.patch](ablation-gates.patch).

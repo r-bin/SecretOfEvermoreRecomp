@@ -30,13 +30,15 @@ Upstream: https://github.com/RetroPortingToolKit/snesrecomp. Measured 2026-11-07
 
 State values: draft, open, conflicts, merged, closed. Update this table when a state changes, and the file's Status line with it.
 
-The framework side of all of them is `framework/snesrecomp.patch` in this repository: the tree of the local snesrecomp branch
-`pr-stack-on-main` against main ([../framework.md](../framework.md)). A reviewer needs only this repository.
+The framework side of all of them is `framework/snesrecomp.patch` in this repository: the tree of `develop` in our fork
+https://github.com/r-bin/snesrecomp against main ([../framework.md](../framework.md)). A reviewer needs only this repository.
+The fork also holds one branch per PR: `spc-access-cycles` (1), `ppu-render-reads` (2), `aot-bus-exact` (3), `aot-resume` (4),
+`brightness-rule` (5); each one's tip is where its PR is in the stack, so it includes the PRs before it.
 
 ## What was tested
 
-The whole stack on current main (`pr-stack-on-main`, `eb2b5e88`: main + #241 + the later commits + the PB fix
-([04](04-compiled-resume.md)) + test stubs for PRs 2-4; `8b525c5c` adds PR 5, off by default, so the memory results stand). Against MesenCE 2.2.1 at every NMI from power-on, nothing copied in or
+The whole stack on current main (the fork's `develop`, `d56d8da9`: main + #241 + the later commits + the PB fix
+([04](04-compiled-resume.md)) + test stubs for PRs 2-4; `53406604` adds PR 5, off by default, so the memory results stand). Against MesenCE 2.2.1 at every NMI from power-on, nothing copied in or
 masked, native and all-interpreted alike ([../progress.md](../progress.md)):
 
 | Replay | NMIs | WRAM, VRAM, CGRAM, OAM, SRAM |
@@ -49,9 +51,9 @@ replays. Every change was turned off alone, native and interpreted, on both (`to
 Replay 01 needs every required change. 02 needs one thing 01 does not: the `$4212` polling tick with compiled resume off
 (PR 4, NMI 19685).
 
-Upstream's tests on `pr-stack-on-main`: `pytest tests/v2 tests/test_snes_cycles.py` **596 passed** (with `lib/` submodules
+Upstream's tests on the fork's `develop`: `pytest tests/v2 tests/test_snes_cycles.py` **596 passed** (with `lib/` submodules
 initialized; without them `test_disconnect_diagnostics` cannot build, on plain main too). The three test stubs that made it so are
-one commit per PR: `7359f4f6` (PR 2), `666e9f60` (PR 3), `eb2b5e88` (PR 4). `tests/run_c_tests.sh` passes on macOS as far as plain
+one commit per PR: `4c10057c` (PR 2), `87961ea1` (PR 3), `d56d8da9` (PR 4). `tests/run_c_tests.sh` passes on macOS as far as plain
 main does: both stop at the lobby test, which does not build on macOS, and after it need `pkg-config`; not run on Linux yet.
 
 ## Reproduce

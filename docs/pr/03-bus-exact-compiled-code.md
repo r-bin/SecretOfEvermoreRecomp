@@ -2,7 +2,7 @@
 
 **Status:** draft, no PR yet, **blocked on a decision.** Depends on [#241](01-access-exact-timing.md).
 
-Commit: `9a4dc97c` (`f07db622` on `pr-stack-on-main`), without its nested-deadline part ([Not proposed](README.md#not-proposed)).
+Branch: `aot-bus-exact` in the fork, `b8eed84c` (first written as `9a4dc97c` on an older main, not published), without its nested-deadline part ([Not proposed](README.md#not-proposed)).
 
 ## The decision
 
@@ -23,7 +23,7 @@ how often that happens here decides whether PR 4 still reaches its native share.
 2. Make the generator switches part of the output's identity. On main, `v2_emit` reuses published output without looking at
    `SNESRECOMP_EXACT_BUS` or `SNESRECOMP_AOT_RESUME`: a regenerate with the switch changed prints `0 bank(s) emitted, 28 reused` and
    leaves the old code in place. #250 does this for its flags, in `tools/generation_recipe.py`.
-3. Carry the test stub, `666e9f60` on `pr-stack-on-main` (done 2026-11-07: `g_aot_access_prefix` in
+3. Carry the test stub, `87961ea1` on the fork's `develop` (done 2026-11-07: `g_aot_access_prefix` in
    `tests/dma/hdma_timing_test.c`, which `tests/v2/test_rdnmi_ownership.py` links).
 4. Check read-modify-write and word accesses that straddle regions. This game has none.
 

@@ -54,7 +54,7 @@ Our own framework changes and their pull requests: [pr/README.md](pr/README.md).
 
 - **PB lost after a resumed call:** #248 keeps the live PB while an LLE unwind is pending; with compiled resume that flag can still be set
   on a normal return, so the caller ran on in the callee's bank (native 6 clocks short, parted at NMI 2938). Fix: keep it only when the
-  call propagates the unwind (`73d951bc`). Lesson: a rebase needs replay 01 native too; interpreted stayed in sync throughout.
+  call propagates the unwind (`09cf15ec`). Lesson: a rebase needs replay 01 native too; interpreted stayed in sync throughout.
 - **The brightness rule changed under our comparison (found 2026-11-07):** upstream `81d410f2` (2026-11-04) made snesrecomp round
   brightness as bsnes does; our `--fade` rewrite still modelled the old expand-then-scale rule, so it made more frames differ, not fewer.
   Fix: a framework switch to MesenCE's rule (PR 5) instead of rewriting pixels afterwards; both replays' pictures then match. Lesson:

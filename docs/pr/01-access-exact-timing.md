@@ -14,7 +14,7 @@ plus `mstan`'s repairs on the PR.
    check it before removing the per-sample DSP fields.
 4. Replace the fitted DMA constant (below). Remove the two comments naming the game (`common_rtl.c`, `snes.c`).
 5. Run replay 01 on the result. The removed parts were each tested off alone, never all together, and this branch itself has not run on
-   main: only `pr-stack-on-main` has.
+   main: only the fork's `develop` has.
 
 ## PR title
 

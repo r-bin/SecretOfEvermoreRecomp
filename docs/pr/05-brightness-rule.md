@@ -2,7 +2,7 @@
 
 **Status:** draft, no PR yet. Independent of 1-4: it touches only `ppu_brightness.h`, `ppu.c` and the brightness test.
 
-Commit: `8b525c5c` on `pr-stack-on-main`.
+Branch: `brightness-rule` in the fork, `53406604`.
 
 ## To do before opening
 
