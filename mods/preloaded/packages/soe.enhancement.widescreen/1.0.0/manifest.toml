@@ -31,7 +31,7 @@ presentation_only = true
 [[feature]]
 id = "experimental"
 name = "Widescreen (experimental)"
-description = "Like vanilla extended, and the whole room is alive: every enemy and character keeps moving wherever it is, at full speed (their logic gets extra time the SNES never had). Spawners spawn as usual. At most a set number of characters fit into the old 4:3 view; the others wait at its edge, drawn in grey. Changes the game: battles and timings differ from 4:3 (src/soe_ws_alive.c)."
+description = "Like vanilla extended, and the whole room is alive: every enemy and character keeps moving wherever it is, at full speed (their logic gets extra time the SNES never had). Spawners spawn as usual. Enemies outside the old 4:3 view only come for you while it holds fewer than a set number of characters. Changes the game: battles and timings differ from 4:3 (src/soe_ws_alive.c)."
 group = "Display"
 default_enabled = false
 
@@ -219,8 +219,8 @@ label = "Greyscale"
 [[option]]
 feature = "experimental"
 id = "cap"
-label = "Characters in the 4:3 view"
-description = "How many characters may be active inside the old 4:3 view at once, the Boy and the Dog included (the game's own limit is 6). More wait at its edge until there is room."
+label = "Crowd in the 4:3 view"
+description = "Once the old 4:3 view holds this many characters (the Boy and the Dog included; the game's own limit is 6), enemies outside it do not come for you. Those inside fight as usual."
 type = "integer"
 min = 3
 max = 30
@@ -231,7 +231,7 @@ default = 6
 feature = "experimental"
 id = "count"
 label = "Count"
-description = "Everyone counts every character, as the game's limit does; Enemies only leaves the Boy, the Dog and friendly characters out."
+description = "Everyone counts every character in the 4:3 view, as the game's limit does; Enemies only leaves the Boy, the Dog and friendly characters out."
 type = "choice"
 default = "all"
 [[option.choice]]

@@ -103,7 +103,8 @@ framework change, no guest write.
     `$C4:id` at facing `+$22` (`$90:8124`), the script's first set-sprite command; their palette
     slot `+$0C` is already set, so live CGRAM colours apply.
   * **Experimental:** vanilla extended plus E6 ([enemies](enemies.md#e6-as-built)): the room alive around the wide
-    view, the whole room awake (its logic in free time: no emulated time), at most 6 in the 4:3 view, held ones grey. Its own plugin `soe.widescreen.alive` (ordinary, it changes the
+    view, the whole room awake (its logic in free time: no emulated time), enemies outside the 4:3 view do not aggro
+    while it holds 6. Its own plugin `soe.widescreen.alive` (ordinary, it changes the
     game). Step 10's own renderer is still open.
   `SOE_WS_MODE=vanilla|extended` overrides; `SOE_WS_SPRITES_CENTER=1` draws the extras in the centre
   too (under native OAM) and `SOE_WS_SPRITES_SHIFT=<px>` shifts them, to check placement.
@@ -164,3 +165,4 @@ viewport" lives (fog, ghosts, HUD placement, floating menus become passes of one
 | 2026-11-09 | E6 adaptive radius (superseded the same day by free time), replay 06 in `0x38` through the launcher feature (isolated copy of the build with its own `state.toml`), 16:9 | 8–14 awake, `$0B19` +1189 per 1200 frames (vanilla +1195) |
 | 2026-11-09 | E6 with free time (`$8E:E45C`..`$E4B0`), replay 06 in `0x38` and replay 02, through the feature; `ctest` replays 01/02 with E6 off | 19–21 awake, `$0B19` +1200 per 1200 frames, host 668 fps (675 off); replay 02 same rooms, no runaway; frames clean; ctest passes |
 | 2026-11-09 | `ctest` while the user played with *Widescreen (experimental)* selected | replays 01/02 failed at key 420: the tests read the launcher's shared `state.toml`, so E6 was on. `tests/replay_recorded.sh` now sets `SOE_WS_ALIVE=0`; all 4 pass with the selection on, and from an isolated copy with it off |
+| 2026-11-09 | User test: villagers turned grey and inactive (the hold at a full 4:3 view) | holding removed; the cap now limits aggro instead (`$8F:D879`, `$D69B`, `$D715`). Replay 06 in `0x38`: 17–20 awake, none asleep, view 2–6, full speed; replay 02: none asleep, no runaway; `ctest` 6/6 |

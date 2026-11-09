@@ -1,5 +1,5 @@
 /*
- * Widescreen experiment E6: the whole room alive, at most `cap` entities in the 4:3 view
+ * Widescreen experiment E6: the whole room alive, at most `cap` characters drawn into a fight in the 4:3 view
  * (docs/widescreen/enemies.md, "E6 as built"). Changes the game.
  */
 #ifndef SOE_WS_ALIVE_H
@@ -19,10 +19,13 @@ enum {
 };
 uint16_t SoeAliveDecide(uint16_t slot, uint16_t cam_x, uint16_t cam_y);
 
-/* E6 is on: only the mod's experimental feature turns it on (SOE_WS_ALIVE=0 turns it off). Held entities are
- * then drawn in the centre too. */
+/* E6 is on: only the mod's experimental feature turns it on (SOE_WS_ALIVE=0 turns it off). */
 int SoeAliveEnabled(void);
-/* E6 is on and this is a field frame: the entity and sprite part of the field tick runs in free time. */
+/* E6 is on: the script and entity part of the field tick runs in free time. */
 int SoeAliveFreeTime(void);
+
+/* Whether the enemy in `slot` may take the party as its target: always inside the 4:3 view at `cam_x`/`cam_y`
+ * ($59/$5B), outside it only while fewer than `cap` characters are in the view. 1 whenever E6 is off. */
+int SoeAliveMayAggro(uint16_t slot, uint16_t cam_x, uint16_t cam_y);
 
 #endif

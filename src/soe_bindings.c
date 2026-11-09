@@ -74,7 +74,7 @@ uint16_t soe_multiply(uint16_t factors) {
 
 enum {
     RNG, PLANE, TILE, POOL, DEPTH, RAY, SPARE, WAIT, DMA, ANIM, OAM_INSERT, SPRITE_SORT, DIR_PAIR, ANIM_START, WAYPOINT_POLL,
-    AUDIO_FADE, SHEAR_STEP, MANHATTAN_DIST, COMPASS_DIR, SLEEP_WAKE, FREE_BEGIN, FREE_END,
+    AUDIO_FADE, SHEAR_STEP, MANHATTAN_DIST, COMPASS_DIR, SLEEP_WAKE, FREE_BEGIN, FREE_END, PICK_TARGET, CHECK_AGGRO, STATIONARY_PLAYER,
     BINDINGS
 };
 static struct { const char *name; unsigned long long c, across, compiled; bool mutate; } s_bind[BINDINGS] = {
@@ -87,6 +87,7 @@ static struct { const char *name; unsigned long long c, across, compiled; bool m
     { "audio_master_volume_fade_tick" }, { "elevation_vector_shear_step" },
     { "elevation_manhattan_distance_eval" }, { "elevation_compass_direction_resolve" }, { "entity_sleep_wake" },
     { "field_tick_free_begin" }, { "field_tick_free_end" },
+    { "ai_pick_target" }, { "enemy_ai_check_aggro" }, { "ai_stationary_player" },
 };
 static int s_stats = -1;
 static void print_stats(void) {
@@ -1251,3 +1252,49 @@ RecompReturn HleFieldTickFreeEnd(CpuState *cpu) {
     soe_frame_driver_free_time(false);
     return run_rom_bytes(cpu, FREE_END, 0xE4B0, 0xE4B4, NULL);
 }
+
+/* $8F:D879, first instruction: LDX $0F42. */
+static void pick_target_first(CpuState *cpu) {
+    const uint32_t a = (uint32_t)cpu->DB << 16 | 0x0F42;
+    Cost c = { 0 };
+    abs16(&c, a);
+    cpu->X = (uint16_t)(g_ram[a & 0x1FFFF] | g_ram[(a + 1) & 0x1FFFF] << 8);
+    set_nz16(cpu, cpu->X);
+    cpu->open_bus = (uint8_t)(cpu->X >> 8);
+    charge(cpu, &c);
+}
+
+/* $8F:D69B and $8F:D715, first instruction: LDA $002E,Y. */
+static void stamina_first(CpuState *cpu) {
+    const uint32_t a = ((uint32_t)cpu->DB << 16) + 0x002Eu + cpu->Y;
+    Cost c = { 0 };
+    abs_i16(&c, a);
+    cpu->A = (uint16_t)(g_ram[a & 0x1FFFF] | g_ram[(a + 1) & 0x1FFFF] << 8);
+    set_nz16(cpu, cpu->A);
+    cpu->open_bus = (uint8_t)(cpu->A >> 8);
+    charge(cpu, &c);
+}
+
+/*
+ * Widescreen E6's aggro cap (src/soe_ws_alive.c, SoeAliveMayAggro) at the three places an enemy takes the party as its
+ * target. When the cap says no, the ROM code goes on at the routine's own "no target" exit, as if its tests had failed:
+ * $8F:D911 (ai_pick_target: TDC, TAX, STA $24,Y, RTS; the caller wanders), $8F:D6C9 (enemy_ai_check_aggro: PLA, JML to
+ * the default action), $8F:D766 (ai_stationary_player: JML walk). Otherwise, and always with E6 off, the ROM routine.
+ */
+static RecompReturn aggro_gate(CpuState *cpu, int which, uint16_t entry, uint16_t body, uint16_t no, void (*first)(CpuState *)) {
+    stats_init();
+    const bool plain = wide_a(cpu) && !cpu->x_flag && cpu->DB == 0x7E && dp_in_wram(cpu, 0x5C);
+    if (plain && interp_bridge_in_lle_scheduler() && !interp_bridge_lle_master_deadline_reached(cpu)) {
+        const uint16_t d = cpu->D;
+#define DP_WORD(o) (uint16_t)(g_ram[(uint16_t)(d + (o))] | g_ram[(uint16_t)(d + (o) + 1)] << 8)
+        if (!SoeAliveMayAggro(cpu->Y, DP_WORD(0x59), DP_WORD(0x5B))) {
+#undef DP_WORD
+            s_bind[which].c++;
+            return interp_bridge_lle_yield_unwind(cpu, (uint32_t)cpu->PB << 16 | no);
+        }
+    }
+    return run_rom_bytes_frame(cpu, which, entry, body, plain ? first : NULL, 2);
+}
+RecompReturn HleAiPickTarget(CpuState *cpu) { return aggro_gate(cpu, PICK_TARGET, 0xD879, 0xD87C, 0xD911, pick_target_first); }
+RecompReturn HleEnemyAiCheckAggro(CpuState *cpu) { return aggro_gate(cpu, CHECK_AGGRO, 0xD69B, 0xD69E, 0xD6C9, stamina_first); }
+RecompReturn HleAiStationaryPlayer(CpuState *cpu) { return aggro_gate(cpu, STATIONARY_PLAYER, 0xD715, 0xD718, 0xD766, stamina_first); }

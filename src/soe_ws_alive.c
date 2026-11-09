@@ -1,36 +1,33 @@
 /*
- * Widescreen experiment E6: the whole room alive, at most `cap` entities in the 4:3 view
- * (docs/widescreen/enemies.md, "E6 as built"). This CHANGES the game: an ordinary plugin, never
- * presentation-only, active only while the launcher's "Widescreen (experimental)" feature is on.
+ * Widescreen experiment E6: the whole room alive, and at most `cap` characters drawn into a fight in the 4:3 view
+ * (docs/widescreen/enemies.md, "E6 as built"). This CHANGES the game: an ordinary plugin, never presentation-only,
+ * active only while the launcher's "Widescreen (experimental)" feature is on.
  *
- * Two parts:
- *  - Free time (SoeAliveFreeTime; src/soe_bindings.c HleFieldTickFree*, src/soe_frame_driver.c): the entity and
- *    sprite part of each field frame costs no emulated time, so all of a room's enemies fit a frame. The SNES CPU
- *    could not run them all (the flower field 0x38 ran at ~55 % speed); the recomp's host can.
- *  - Decisions at $8F:C40F entity_sleep_wake (src/soe_bindings.c HleEntitySleepWake). Vanilla lets an entity sleep
- *    when it is 48 px off the 4:3 screen and the awake budget $1076 is full. Here:
- *   1 nothing sleeps for distance and every sleeper wakes;
- *   2 the 4:3 view takes at most `cap` counted entities: one that reaches the door (vanilla's wake window, 16 px
- *     around it) while it is full is held, i.e. put to sleep by the game's own path, and drawn grey
- *     (src/soe_ws_sprites.c); whoever the round robin ($0EBC, 6 slots a frame) visits first gets a freed place;
- *   3 the budget $1076 = $1070 + (free slots - reserve): the spawner ($8F:DDBB, unchanged) stops while only
- *     `reserve` slots are free, so scripts that create entities find one; the lag rule's budget is overruled;
- *   4 exempt (never held, still counted): +$10 & $0030, HP 0, +$6C >= 0; asleep with & $0078, HP 0 or a spawner
- *     record (+$8C) goes the ROM's way;
- *   5 too many in the view (the camera moved onto them): the counted ones farthest from the Boy sleep (a
- *     spawner-made one goes back to its record, $8F:DF41, as in vanilla).
- * A segmented body (record +$07 bit 0) wakes only while one of the ten segment lists at $58AF is free: a wake
- * without one leaves $1070/$1072 changed ($8F:C4D6).
+ * Three parts:
+ *  - Free time (SoeAliveFreeTime; src/soe_bindings.c HleFieldTickFree*, src/soe_frame_driver.c): the script and entity
+ *    part of each field frame costs no emulated time, so all of a room's enemies fit a frame. The SNES CPU could not
+ *    run them all (the flower field 0x38 ran at ~55 % speed); the recomp's host can.
+ *  - Nobody sleeps (SoeAliveDecide, at $8F:C40F entity_sleep_wake): vanilla lets an entity sleep when it is 48 px off
+ *    the 4:3 screen and the awake budget $1076 is full; here every sleeper wakes and nobody is put to sleep. Asleep
+ *    with +$10 & $0078, HP 0, +$6C >= 0 or a spawner record (+$8C) goes the ROM's way. A segmented body (record +$07
+ *    bit 0) wakes only while one of the ten segment lists at $58AF is free: a wake without one leaves $1070/$1072
+ *    changed ($8F:C4D6). The budget $1076 = $1070 + (free slots - reserve): the spawner ($8F:DDBB, unchanged) stops
+ *    while only `reserve` slots are free, so scripts that create entities find one; the lag rule is overruled.
+ *  - The aggro cap (SoeAliveMayAggro, at the three places an enemy picks the party as its target: ai_pick_target
+ *    $8F:D879, enemy_ai_check_aggro $8F:D69B, ai_stationary_player $8F:D715): an enemy inside the 4:3 view acts as in
+ *    vanilla; one outside it takes the party as a target only while fewer than `cap` characters are in the view (the
+ *    Boy and the Dog counted, as the game's budget counts them). Otherwise it goes the ROM's own way for "no target":
+ *    it wanders or keeps its default action, and one already chasing from outside lets go.
  *
  * Stateless: every decision follows from WRAM at the call. The ROM code does every change of state; this file only
- * picks the branch.
+ * picks the branch. Not gated on the widescreen field gate: a menu or a narrow room in between would let vanilla put
+ * the room back to sleep (the hooks run only in the field tick anyway).
  *
  * Settings: the mod feature "experimental" (options cap, count). SOE_WS_ALIVE=0 switches E6 off (kill switch),
  * SOE_WS_FREE=0 only its free time; nothing switches E6 on but the feature. Test knobs: SOE_WS_ALIVE_RESERVE=<n>
  * (default 4), SOE_WS_ALIVE_DEBUG=1 prints count and budget every 60th frame.
  */
 #include "soe_ws_alive.h"
-#include "soe_widescreen.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -48,8 +45,7 @@ enum {
     /* entity fields */
     kFlags = 0x10, kX = 0x1A, kY = 0x1C, kHp = 0x2A, kNode = 0x6C, kRecord = 0x60, kSpawnRecord = 0x8C,
     kAwake = 0x0100, kAsleep = 0x0200,
-    /* the door: vanilla's wake window [-16, 272) around the 4:3 view, 224 lines tall here */
-    kDoorLeft = -16, kDoorRight = 272, kDoorTop = -16, kDoorBottom = 240,
+    kViewWidth = 256, kViewHeight = 224,   /* the 4:3 view at the rendered camera $59/$5B */
 };
 
 #define kModPackage "soe.enhancement.widescreen"
@@ -86,7 +82,7 @@ int SoeAliveEnabled(void)
 
 int SoeAliveFreeTime(void)
 {
-    return SoeAliveEnabled() && !s_env.free_off && SoeWsFieldGate();
+    return SoeAliveEnabled() && !s_env.free_off;
 }
 
 static int Cap(void) { return s_mod.cap > 0 ? s_mod.cap : 6; }
@@ -95,31 +91,20 @@ static int Cap(void) { return s_mod.cap > 0 ? s_mod.cap : 6; }
  * on the party's side ($0004). */
 static int Counted(uint32_t e) { return !s_mod.enemies_only || !(W(e + kFlags) & 0x0006); }
 
-static int InDoor(uint32_t e, uint16_t cam_x, uint16_t cam_y)
+static int InView(uint32_t e, uint16_t cam_x, uint16_t cam_y)
 {
     int dx = (int16_t)(W(e + kX) - cam_x), dy = (int16_t)(W(e + kY) - cam_y);
-    return dx >= kDoorLeft && dx < kDoorRight && dy >= kDoorTop && dy < kDoorBottom;
+    return dx >= 0 && dx < kViewWidth && dy >= 0 && dy < kViewHeight;
 }
 
-/* Vanilla's own reasons to stay awake, but the budget ($8F:C419..$C42E). */
-static int ExemptAwake(uint32_t e)
-{
-    return (W(e + kFlags) & 0x0030) || W(e + kHp) == 0 || !(W(e + kNode) & 0x8000);
-}
-
-static int32_t DistanceToBoy(uint32_t e)
-{
-    int32_t dx = (int16_t)(W(e + kX) - W(kBoy + kX)), dy = (int16_t)(W(e + kY) - W(kBoy + kY));
-    return dx * dx + dy * dy;
-}
-
-/* Awake and counted inside the door; the Boy and the Dog wherever they are, as $1070 counts them. */
+/* Awake and counted characters in the 4:3 view, the Boy and the Dog among them. */
 static int ViewCount(uint16_t cam_x, uint16_t cam_y)
 {
     int n = 0;
-    if (!s_mod.enemies_only) n += !!(W(kBoy + kFlags) & kAwake) + !!(W(kDog + kFlags) & kAwake);
+    if (!s_mod.enemies_only)
+        for (uint32_t p = kBoy; p <= kDog; p += kDog - kBoy) n += (W(p + kFlags) & kAwake) && InView(p, cam_x, cam_y);
     for (uint32_t e = kSlotFirst; e < kSlotEnd; e += kStride)
-        if ((W(e + kFlags) & kAwake) && Counted(e) && InDoor(e, cam_x, cam_y)) n++;
+        if ((W(e + kFlags) & kAwake) && Counted(e) && InView(e, cam_x, cam_y)) n++;
     return n;
 }
 
@@ -146,21 +131,7 @@ static int SegmentListFree(void)
     return 0;
 }
 
-/* Rule 5: `e` is among the `excess` counted, non-exempt entities in the door farthest from the Boy
- * (equal distance: the higher slot counts as farther). */
-static int AmongFarthest(uint32_t e, int excess, uint16_t cam_x, uint16_t cam_y)
-{
-    const int32_t d = DistanceToBoy(e);
-    int farther = 0;
-    for (uint32_t o = kSlotFirst; o < kSlotEnd; o += kStride) {
-        if (o == e || !(W(o + kFlags) & kAwake) || !Counted(o) || ExemptAwake(o) || !InDoor(o, cam_x, cam_y)) continue;
-        const int32_t od = DistanceToBoy(o);
-        if (od > d || (od == d && o > e)) farther++;
-    }
-    return farther < excess;
-}
-
-/* Rule 3. */
+/* The budget: the spawner stops while only `reserve` slots are free. */
 static void SteerBudget(void)
 {
     int room = FreeSlots() - s_env.reserve;
@@ -180,7 +151,7 @@ static void Debug(uint16_t cam_x, uint16_t cam_y)
 
 uint16_t SoeAliveDecide(uint16_t slot, uint16_t cam_x, uint16_t cam_y)
 {
-    if (!SoeAliveEnabled() || !SoeWsFieldGate() || slot < kSlotFirst || slot >= kSlotEnd) {
+    if (!SoeAliveEnabled() || slot < kSlotFirst || slot >= kSlotEnd) {
         if (s_steered) { SetW(kBudget, kVanillaBudget); s_steered = 0; }
         return kAliveRom;
     }
@@ -188,17 +159,18 @@ uint16_t SoeAliveDecide(uint16_t slot, uint16_t cam_x, uint16_t cam_y)
     const uint16_t flags = W(e + kFlags);
     SteerBudget();
     Debug(cam_x, cam_y);
-    if (flags & kAwake) {
-        if (ExemptAwake(e) || !Counted(e) || !InDoor(e, cam_x, cam_y)) return kAliveKeep;
-        const int excess = ViewCount(cam_x, cam_y) - Cap();
-        return excess > 0 && AmongFarthest(e, excess, cam_x, cam_y) ? kAliveSleep : kAliveKeep;
-    }
+    if (flags & kAwake) return kAliveKeep;
     if (!(flags & kAsleep)) return kAliveRom;
     if (W(e + kHp) == 0 || (flags & 0x0078) || !(W(e + kNode) & 0x8000) || W(e + kSpawnRecord))
         return kAliveRom;
     if (Segmented(e) && !SegmentListFree()) return kAliveKeep;
-    if (Counted(e) && InDoor(e, cam_x, cam_y) && ViewCount(cam_x, cam_y) >= Cap()) return kAliveKeep;
     return kAliveWake;
+}
+
+int SoeAliveMayAggro(uint16_t slot, uint16_t cam_x, uint16_t cam_y)
+{
+    if (!SoeAliveEnabled() || slot < kSlotFirst || slot >= kSlotEnd) return 1;
+    return InView(slot, cam_x, cam_y) || ViewCount(cam_x, cam_y) < Cap();
 }
 
 static void ModReset(void)

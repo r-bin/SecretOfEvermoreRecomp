@@ -36,3 +36,6 @@ hle 8FA999 HleElevationCompassDirectionResolve body=8FA99B elevation_compass_dir
 hle 8FC40F HleEntitySleepWake body=8FC411 entity_sleep_wake, reconstructed-c/8F/8FC40F (G1-rated, calls asm: not run as C); the ROM code, or with widescreen E6 on a decision that goes on in it at $C450/$C451/$C4B1
 hle 8EE45C HleFieldTickFreeBegin body=8EE460 per_frame_field_tick's JSL script_scheduler_pass: widescreen E6 starts free time (src/soe_ws_alive.c); the JSL itself runs as the ROM's
 hle 8EE4B0 HleFieldTickFreeEnd body=8EE4B4 per_frame_field_tick's JSL field_spare_time_loop: free time ends; the JSL itself runs as the ROM's
+hle 8FD879 HleAiPickTarget body=8FD87C ai_pick_target: widescreen E6's aggro cap goes on at its "no target" exit $D911 (src/soe_ws_alive.c); else the ROM's
+hle 8FD69B HleEnemyAiCheckAggro body=8FD69E enemy_ai_check_aggro: widescreen E6's aggro cap goes on at its "no aggro" exit $D6C9; else the ROM's
+hle 8FD715 HleAiStationaryPlayer body=8FD718 ai_stationary_player: widescreen E6's aggro cap goes on at its "no aggro" exit $D766; else the ROM's

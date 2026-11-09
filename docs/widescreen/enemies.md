@@ -195,16 +195,27 @@ Spawner rooms first, then a boss arena and a town.
 
 ### E6 as built
 
-`src/soe_ws_alive.c` (decisions), `HleEntitySleepWake` and `HleFieldTickFree*` in `src/soe_bindings.c` (hooks),
-free time in `src/soe_frame_driver.c`. Only the launcher's *Widescreen (experimental)* turns it on; `SOE_WS_ALIVE=0`
-is the kill switch, `SOE_WS_FREE=0` switches off only the free time. Options: *Characters in the 4:3 view* (3–30,
-default 6), *Count* (everyone / enemies only). Test knobs: `SOE_WS_ALIVE_RESERVE`, `SOE_WS_ALIVE_DEBUG=1`,
-`SOE_FREE_STATS=1`.
+`src/soe_ws_alive.c` (decisions), `HleEntitySleepWake`, `HleFieldTickFree*`, `HleAiPickTarget`,
+`HleEnemyAiCheckAggro`, `HleAiStationaryPlayer` in `src/soe_bindings.c` (hooks), free time in
+`src/soe_frame_driver.c`. Only the launcher's *Widescreen (experimental)* turns it on; `SOE_WS_ALIVE=0` is the kill
+switch (`tests/replay_recorded.sh` sets it), `SOE_WS_FREE=0` switches off only the free time. Options: *Crowd in the
+4:3 view* (3–30, default 6), *Count* (everyone / enemies only). Test knobs: `SOE_WS_ALIVE_RESERVE`,
+`SOE_WS_ALIVE_DEBUG=1`, `SOE_FREE_STATS=1`.
 
-* **Decisions: a hook, not bound C.** `hle_func` at `$8F:C40F`. E6 off or not a field frame: the ROM routine. E6 on:
-  the helper does `LDY $4C` and the ROM code goes on at `$C450` (RTS), `$C451` (sleep, or a spawner-made entity back
-  to its record) or `$C4B1` (wake). Every change of state is the game's own code. Nothing sleeps for distance.
-  Neither `$8F:DC34` nor the spawner is hooked: `$1076` is written at every visit, which also overrules the lag rule.
+* **Nobody sleeps.** `hle_func` at `$8F:C40F`: E6 off, the ROM routine; on, the helper does `LDY $4C` and the ROM code
+  goes on at `$C450` (RTS: an awake entity stays awake) or `$C4B1` (wake). Asleep with `+$10 & $0078`, HP 0,
+  `+$6C` ≥ 0 or a spawner record goes the ROM's way; a segmented body waits for a free segment list. `$1076` is
+  written at every visit (spawner reserve; overrules the lag rule). Not tied to the widescreen field gate: with the
+  gate, a menu or a narrow room in between let vanilla put the room back to sleep.
+* **The aggro cap, not a cap on who is active** (owner, 2026-11-09: characters must never turn inactive; enemies
+  must not aggro while the 4:3 view already holds 6). The three places an enemy takes the party as its target are
+  hooked: `ai_pick_target` `$8F:D879` (chase, roll, shoot types), `enemy_ai_check_aggro` `$8F:D69B` (stationary types),
+  `ai_stationary_player` `$8F:D715`. An enemy inside the 4:3 view (`$59`/`$5B` + 256 × 224) acts as in vanilla; one
+  outside goes on at the routine's own "no target" exit while the view holds `cap` or more awake characters (Boy and Dog
+  counted): `$D911` (`TDC TAX STA $24,Y RTS`, the caller wanders), `$D6C9` (`PLA`, JML default action), `$D766` (JML
+  walk). The helpers do the first instruction natively (`LDX $0F42`, `LDA $002E,Y`), so the ROM path stays compiled.
+  An attack begun before the view filled runs to its end (`+$78` = 7, set by `enemy_engage_target` `$8F:DC1E`).
+  `+$24` is no aggro marker: it holds a party pointer for idle enemies too.
 * **Free time: the logic is not limited to the SNES CPU's speed.** Whole-room AI does not fit the 65816's frame (the
   flower field ran at ~55 % speed with all 21 awake; the cost is spread over the per-entity work: animation, stamina,
   gravity, AI, pair overlap tests). So `per_frame_field_tick` from its `JSL script_scheduler_pass` (`$8E:E45C`) to its
@@ -220,12 +231,9 @@ default 6), *Count* (everyone / enemies only). Test knobs: `SOE_WS_ALIVE_RESERVE
   * A wait for the NMI reached inside it (`HleWaitForNmi`, `HleSpareTime`) ends free time first.
   * Starting the region at `$E464` (entity physics) left the game at ~81 %: the script scheduler before it runs the
     enemies' scripts.
-* **Trap (adaptive version, gone):** the `$8F:C40F` hook is not called every frame (the round robin visits empty
-  slots too), so a gap in `$0100` between two calls is not lag.
-* **Differences from the design:** a held spawner-made entity is returned to its record (the ROM's `$C451` path); an
-  asleep spawner-made one goes the ROM's way (wakes at once). The hit-in-the-last-60-frames exemption of rule 6 is not
-  built. Script-driven actors are not exempt; the gate is the widescreen field gate. The round robin visits 6 of 30
-  slots a frame, so a hold or a wake can come up to 5 frames late.
+* **Superseded the same day:** holding entities asleep at the edge of a full 4:3 view (drawn grey) made villagers turn
+  inactive (user's screenshot); an adaptive active radius. Trap from the latter: the `$8F:C40F` hook is not called every
+  frame (the round robin visits empty slots too), so a gap in `$0100` between two calls is not lag.
 
 Measured on replay 06 (local; flower field `0x38`, 22 entities, 16:9), 2026-11-09:
 
@@ -235,7 +243,7 @@ Measured on replay 06 (local; flower field `0x38`, 22 entities, 16:9), 2026-11-0
 | E6 without free time, cap 6 | 21; at most 6 in view; `$1070` = awake + 2 throughout | +660 | — |
 | E6 with free time from `$E464` | 21 | +978 | — |
 | E6 with free time from `$E45C` (built) | 19–21 | +1200 | 668 fps |
-| E6, cap 3 | 1–2 held at the door or in view (drawn grey in the centre) and woken again | — | — |
+| E6 with the aggro cap (built) | 17–20, none asleep; view 2–6; ~21,800 turn-aways; attacks from outside only while the view held < 6 | +1200 | — |
 
 Replay 02 with E6 on runs through the same rooms (intro, dialogue, flight), a few frames ahead of vanilla because
 vanilla's own lag frames are gone; no free-time runaway. Wide frames show the margin enemies; dialogue scenes clean.
