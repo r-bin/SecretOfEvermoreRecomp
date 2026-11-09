@@ -165,7 +165,9 @@ nothing new runs in the game. Vanilla does it with a hidden entity; here the ren
 
 **Hooks** ([bindings](bindings.md); no hand edits of `src/gen`, no framework change): a variant of
 `entity_sleep_wake` (`$8F:C40F`) that asks the state table instead of the distance windows, and
-of the scheduler tick (`$8F:DC34`) that runs rules 2–7 over all slots. The spawner `$8F:DDBB` stays
+of the scheduler tick (`$8F:DC34`) that runs rules 2–7 over all slots. Both routines are G1-rated C in
+everscript-vscode since v0.399.16/.17, but both call routines that are still asm (`soe_call_rts`/`soe_call_rtl`),
+which no binding here supports yet: see [bindings](bindings.md). The spawner `$8F:DDBB` stays
 the ROM's. Both bindings come from everscript-vscode's reconstructed C, proven equal to the ROM
 with the switch off before the variant is written (replay 01). Switch `SOE_WS_ALIVE` (E5) gets a
 value `view6`; the cap and the reserve are options of the experimental feature.
@@ -176,6 +178,9 @@ value `view6`; the cap and the reserve are options of the experimental feature.
   at once). If not, hold it by returning it to its record at the door, which looks like a despawn in
   the margin.
 * What `$8F:B0A4` does when no slot is free: a script that fails there may soft-lock a room.
+* Segmented bodies (record `+$07` bit 0; Tar Skull, Salabog) take one of ten segment lists at `$58AF`
+  when they wake. With all ten taken the wake fails after `$1070` + 1 / `$1072` − 1 (V, `$8F:C4D6`): the
+  counts drift. Rule 3 must not wake a segmented body while no list is free.
 * Sound: 30 entities' SFX across the room. Mute or pan by distance in `$90:8921` / `$90:88BC` (E2/E5
   audio mitigation).
 * Frame time: the engine is time-sliced; 30 awake entities may not fit a frame, and the game slows

@@ -11,13 +11,13 @@ today's path.
 
 | Routine | Address | Size | C now | For | Priority |
 |---|---|---|---|---|---|
-| `entity_sleep_wake` | `$8F:C40F` | 261 B | none | E2, E5, E6: window constants from a setting; E6 asks a state table | high (first experiment) |
+| `entity_sleep_wake` | `$8F:C40F` | 261 B | G1 (v0.399.16), not bound: calls asm | E2, E5, E6: window constants from a setting; E6 asks a state table | high (first experiment) |
 | `oam_meta_sprite_assembler_continue` | `$80:904D` | 171 B | pseudocode (`80/809033_sprite_clip_cull.c`), not bound | E1: box window | medium |
 | `sprite_slice_clip_and_emit` | `$80:90F8` | 166 B | none | E1: window + X8 | medium |
 | `sprite_slice_16x16_clip_and_emit` | `$80:91FD` | 238 B | none | E1 | medium |
 | `oam_sprite_composite_blit_and_clip` | `$80:92EB` | 328 B | none | E1: keep wide boxes off the 8-bit path | medium |
 | `target_candidate_filter` | `$8C:8658` | 193 B | none | E3 | low |
-| scheduler tick | `$8F:DC34` | 156 B | none | E5 (budget, lag rule), E6 (whole-slot pass, view cap) | low; first for E6 |
+| scheduler tick | `$8F:DC34` | 156 B | G1 (v0.399.17), not bound: calls asm | E5 (budget, lag rule), E6 (whole-slot pass, view cap) | low; first for E6 |
 | `animation_script_play_direct_sfx` / panned | `$90:8921` / `$90:88BC` | 45 / 55 B | none | E2/E5 audio mitigation | low |
 
 ## Useful but not hooked
@@ -34,3 +34,14 @@ Margin prefill and edges (reads `$7F:0000`), camera-limit clipping (reads `$23E9
 clip (reads `$2417..$241D`, `$22FA`), HUD placement, fog, ghosts, fades, the menu/field gate (entry
 hooks are observational), cutscene watch (reads `$28FC`), Mode 7 margins (framework). Collision
 needs nothing: it is already whole-room ([enemies](enemies.md)).
+
+## Bound C that calls asm
+
+Every routine bound so far runs to its end without calling another routine. `entity_sleep_wake` calls
+`$8F:C514`, `$8F:DF41`, `$8F:B31E`, `$8F:C554`, `$8F:B29B` and `$90:817B`; the tick calls the RNG, `$8F:DCD0`
+and `entity_sleep_wake`. `soe_call_rts`/`soe_call_rtl` (everscript-vscode `soe.h`) have no implementation in
+`src/soe_bindings.c`: a callee's length is not known before the C starts, so the one-step proof (§4b of
+[game-rtl](../game-rtl.md)) does not hold. Two ways: run the C up to a call and yield into the compiled callee with
+the continuation as its return (as the raycast hands over between steps), or, for E6 only, hook the entry and
+continue in the ROM bytes at the branch the variant chooses (`$C450` RTS, `$C451` sleep, `$C4B1` wake), so the
+switch-off path stays the ROM's.
