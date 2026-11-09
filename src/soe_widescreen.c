@@ -2,8 +2,9 @@
  * Widescreen, first approach: field backgrounds only.
  *
  * What it does (docs/widescreen/progress.md, step 1):
- *   - widens the frame when config `Widescreen = 1` (aspect from SOE_WS_ASPECT:
- *     16:9 default, 16:10, 21:9, adaptive; SNESRECOMP_WS_EXTRA pins the margin);
+ *   - widens the frame when config `Widescreen = 1` (or SOE_WIDESCREEN=1): to the window's
+ *     shape by default, or SOE_WS_ASPECT=W:H, SOE_WS_WIDTH=<px>, SNESRECOMP_WS_EXTRA=<px per side>,
+ *     up to the PPU's 800 px; DisplayAspect sets the pixel shape;
  *   - on field frames only (BG mode 1, 16x16 tiles on BG1 and BG2, camera mode 0)
  *     opens the side margins, cut to the active camera-limit box $23E9..$23EF so
  *     a wide view never shows a neighbouring part of the map (the huts of 0x51);
@@ -30,6 +31,7 @@
 
 #include "common_rtl.h"
 #include "desktop/config.h"
+#include "desktop/display_aspect.h"
 #include "snes/ppu.h"
 #include "snes/ws_shadow.h"
 #include "widescreen.h"
@@ -59,33 +61,65 @@ static int EnvFlag(const char *name, int dflt)
     return v && *v ? atoi(v) != 0 : dflt;
 }
 
-/* Frame width for a view aspect, with 256 px shown as 4:3. */
-static int WidthForAspect(double aspect)
+/* Widescreen on: config `Widescreen = 1`, or SOE_WIDESCREEN=1 (tests force it on or off). */
+static int Enabled(void)
 {
-    int w = (int)(256.0 * aspect / (4.0 / 3.0) + 0.5);
+    const char *v = getenv("SOE_WIDESCREEN");
+    return v && *v ? atoi(v) != 0 : g_config.widescreen;
+}
+
+/* Horizontal:vertical size of one SNES pixel as presented (config DisplayAspect). */
+static double PixelAspect(void)
+{
+    int n, d;
+    SnesDisplayAspect_GetPixelAspect(SnesDisplayAspect_Clamp(g_config.display_aspect), &n, &d);
+    return (double)n / d;
+}
+
+/* Frame width that shows a 224-line picture at `view_aspect`; even, so the centre stays put. */
+static int WidthForAspect(double view_aspect)
+{
+    int w = (int)(view_aspect * 224.0 / PixelAspect() + 0.5);
     w += w & 1;
-    return Clamp(w, 256, 256 + 2 * kWsExtraMax);
+    return Clamp(w, 256, kPpuBufWidth);
+}
+
+/* SOE_WS_ASPECT: "adaptive" (default: follow the window), or any "W:H" (16:9, 21:9, 32:9, 5:4 ...).
+ * Returns 0 for adaptive. */
+static double FixedAspect(void)
+{
+    const char *a = getenv("SOE_WS_ASPECT");
+    double w, h;
+    if (a && sscanf(a, "%lf:%lf", &w, &h) == 2 && w > 0 && h > 0) return w / h;
+    return 0;
+}
+
+/* The width this run asks for. Order: SOE_WS_WIDTH=<px>, SNESRECOMP_WS_EXTRA=<px per side>,
+ * a fixed aspect, else the window's shape (16:9 before the window exists). */
+static int WantedWidth(int drawable_w, int drawable_h)
+{
+    const char *px = getenv("SOE_WS_WIDTH");
+    if (px && *px) return Clamp(atoi(px) & ~1, 256, kPpuBufWidth);
+    int pinned = PpuWsExtraOverride();
+    if (pinned >= 0) return Clamp(256 + 2 * pinned, 256, kPpuBufWidth);
+    double fixed = FixedAspect();
+    if (fixed > 0) return WidthForAspect(fixed);
+    if (drawable_w > 0 && drawable_h > 0) return WidthForAspect((double)drawable_w / drawable_h);
+    return WidthForAspect(16.0 / 9.0);
 }
 
 void SoeWsPrepareFrame(int drawable_w, int drawable_h, int *frame_w, int *frame_h)
 {
     *frame_h = 224;
-    if (!g_config.widescreen) {
-        *frame_w = 256;
-        return;
-    }
-    int pinned = PpuWsExtraOverride();
-    if (pinned >= 0) {
-        *frame_w = 256 + 2 * pinned;
-        return;
-    }
-    const char *a = getenv("SOE_WS_ASPECT");
-    double aspect = 16.0 / 9.0;
-    if (a && !strcmp(a, "16:10")) aspect = 16.0 / 10.0;
-    else if (a && !strcmp(a, "21:9")) aspect = 21.0 / 9.0;
-    else if (a && !strcmp(a, "adaptive") && drawable_w > 0 && drawable_h > 0)
-        aspect = (double)drawable_w / drawable_h;
-    *frame_w = WidthForAspect(aspect);
+    *frame_w = Enabled() ? WantedWidth(drawable_w, drawable_h) : 256;
+}
+
+/* The host opens the window before the first frame decides its width, so it asks here:
+ * a 240-line window at the shape of the frame we will draw. */
+int SoeWsWindowBaseWidth(int frame_w)
+{
+    int w = Enabled() ? WantedWidth(0, 0) : frame_w;
+    return (int)(240.0 * w * PixelAspect() / 224.0 + 0.5);
 }
 
 /* The field set-up writes BGMODE $39: mode 1, BG3 priority, 16x16 tiles on BG1/BG2. */

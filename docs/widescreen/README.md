@@ -43,7 +43,7 @@ and the tree is `soe://tags/widescreen/` (`src/games/evermore/resources/tags/tag
 
 | Setting | Values | Default | Topic |
 |---|---|---|---|
-| Aspect | 4:3, 16:10, 16:9, 21:9, adaptive (fit the window), custom margin per side (0..272) | 4:3 | below |
+| Aspect | adaptive (follow the window), any W:H, any width up to 800 px | adaptive when on | [progress](progress.md) |
 | Pixel aspect | 8:7, 1:1, 4:3 CRT (separate from the view aspect, as in MMX) | 8:7 | [other-recomps](other-recomps.md) |
 | Edges (parallax, room and camera-limit edges) | clip to terrain box / mirror / extend / off | clip | [backgrounds-and-parallax](backgrounds-and-parallax.md), [camera-and-limits](camera-and-limits.md) |
 | Small rooms / limit boxes narrower than the view | pillarbox / mirror / clip | pillarbox | [camera-and-limits](camera-and-limits.md) |

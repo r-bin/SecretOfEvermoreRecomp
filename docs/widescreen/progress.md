@@ -17,16 +17,28 @@ files here; what the MMX recomp and SoE-Recomp taught us: [other-recomps](other-
 | 7 | Settings as a mod package, pixel aspect, adaptive | open (env variables in step 1) | [README](README.md#settings) |
 | 8 | Floating menu window, Mode 7 | open | [menus-and-gates](menus-and-gates.md), [mode7](mode7.md) |
 | 9 | Experiments E1..E5 | after the bound C of each consumer | [modes](modes.md), [bindings](bindings.md) |
+| 10 | Own field renderer: any width **and height**, full control of what the view shows | open | below |
 
 ## Step 1: what the first approach does
 
 Hooks only (`SnesDesktopHostGame.prepare_frame`, `begin_sim_frame`; `native_widescreen = 1`), no
 framework change, no guest write.
 
-* **On/off:** config `Widescreen = 1` (the launcher shows the switch). Off, the frame stays 256 px
-  and none of the code runs.
-* **Width:** `SOE_WS_ASPECT` = `16:9` (default, 342 px), `16:10` (308), `21:9` (448), `adaptive`
-  (follows the window); `SNESRECOMP_WS_EXTRA=<px>` pins the margin per side (tests).
+* **The rule:** vanilla widescreen must leave WRAM exactly as without it; only how the recomp
+  draws may change. `ctest` holds it: `replay_01_widescreen` and `replay_02_widescreen` run the
+  stored MesenCE runs with widescreen forced on at 21:9 (`SOE_WIDESCREEN=1`,
+  `SNESRECOMP_WS_EXTRA=96`), every byte of WRAM, VRAM, CGRAM and OAM at every 60th NMI.
+* **On/off:** config `Widescreen = 1` (the launcher shows the switch), or `SOE_WIDESCREEN=1|0`.
+  Off, the frame stays 256 px and none of the code runs.
+* **Any width:** by default the frame follows the window's shape (resize it and the view
+  follows); `SOE_WS_ASPECT=W:H` fixes any aspect (16:9, 21:9, 32:9, 5:4 ...), `SOE_WS_WIDTH=<px>`
+  any width, `SNESRECOMP_WS_EXTRA=<px per side>` pins it for tests. The pixel shape comes from
+  `DisplayAspect` (4:3 CRT, 8:7, 1:1): 16:9 is 342 px with CRT pixels, 398 px with square ones.
+  Limit: the PPU draws at most 800 px (272 per side); wider windows are pillarboxed.
+* **Window:** the host opens the window before the first frame picks its width, so
+  `window_base_width` gives it the widescreen shape (a 1284 × 720 window at scale 3 for 16:9).
+  Without it the window opened 4:3 and the wide frame was letterboxed into it: it "did not look
+  wide" (the first user test, 2026-11-09).
 * **Gate:** field frames only (BG mode 1, 16 × 16 tiles on BG1 and BG2, camera mode `$241F` = 0);
   everything else is pillarboxed: menu pages, Mode 7, the 9 rooms with other camera modes.
 * **Edges:** each margin stops at the active camera-limit box `$23E9..$23EF` (room `0x51` shows one
@@ -40,6 +52,16 @@ framework change, no guest write.
 * **Sprites:** unchanged. The game never places one at X ≥ 256, so enemies appear at the old
   edge on the right; on the left, sprites partly off screen show in the margin. Fixing that
   asymmetry is step 3/6 work (clip OBJ to the 256 px centre or widen on purpose).
+
+## Any resolution: where the framework stops
+
+The PPU path draws up to 800 × 224 (+16 lines of overscan); the host clamps a frame to 240 lines.
+So any *width* works now, but more *height* (a taller view of the room, a free zoom, 4K at native
+pixels) needs our own field renderer, as MMX built one (`mmx_renderer.c`): draw BG1/BG2 from the
+room grid in `$7F` and the tiles in VRAM, sprites from OAM (later from the entity slots for
+ghosts), into a frame of any size through the host's `draw_frame` hook. Still presentation only:
+it reads WRAM, VRAM, CGRAM and OAM and writes nothing. That is also where "full control of the
+viewport" lives (fog, ghosts, HUD placement, floating menus become passes of one renderer).
 
 ## Learnings applied from other recomps
 
@@ -61,3 +83,4 @@ framework change, no guest write.
 | 2026-11-09 | Picture, hut `0x51` (limit box 256 px wide) | pillarboxed; with `SOE_WS_EDGES=0` the neighbouring huts show at both edges, as predicted |
 | 2026-11-09 | `ctest` in the shared checkout | replays 01/02 fail at key 420 **with and without** the widescreen hooks, and the shared `build/` without widescreen code fails the same way: another session's uncommitted seeds and bindings. Clean check on the last commit: see the next row |
 | 2026-11-09 | `ctest` on the last commit plus only this change (isolated worktree, fresh regen: 28 banks) | 6 / 6 pass, replays 01 and 02 included |
+| 2026-11-09 | Window shape, any width: compiled; headless `SOE_WS_ASPECT=32:9` gives a 684 px frame (214 px margins), the village margin filled, cut at the room's right edge | works; `replay_0x_widescreen` registered, **not run yet** (long run skipped while another session uses the machine) |

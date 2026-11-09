@@ -92,6 +92,13 @@ if(SOE_TEST_ROM)
                      COMMAND bash ${CMAKE_SOURCE_DIR}/tests/replay_recorded.sh
                              $<TARGET_FILE:SecretOfEvermoreSNESRecomp> ${SOE_TEST_ROM} ${replay})
             set_tests_properties(replay_${n}_recorded PROPERTIES TIMEOUT 1800)
+            # The same stored MesenCE run with widescreen on (21:9): widescreen may change only
+            # how the frame is drawn, never the game (docs/widescreen/progress.md).
+            add_test(NAME replay_${n}_widescreen
+                     COMMAND bash ${CMAKE_SOURCE_DIR}/tests/replay_recorded.sh
+                             $<TARGET_FILE:SecretOfEvermoreSNESRecomp> ${SOE_TEST_ROM} ${replay})
+            set_tests_properties(replay_${n}_widescreen PROPERTIES TIMEOUT 1800
+                                 ENVIRONMENT "SOE_WIDESCREEN=1;SNESRECOMP_WS_EXTRA=96")
         endforeach()
     endif()
 endif()
