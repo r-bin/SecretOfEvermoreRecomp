@@ -115,7 +115,8 @@ write SRAM only to a separate slot.
 
 ## The whole room alive, six in the 4:3 view (experiment E6)
 
-Proposal, 2026-11-09, for the experimental full-screen mode (step 10 of [progress](progress.md)). E5
+Built 2026-11-09 for the experimental full-screen mode (step 10 of [progress](progress.md)); what the code does
+and where it differs from this design: [Built](#e6-as-built) below. E5
 with one rule added: the native 256 × 224 view never holds more than vanilla's crowd. Facts it rests
 on are the V rows above; what it adds is marked as a design, and the open questions are U.
 
@@ -191,3 +192,37 @@ value `view6`; the cap and the reserve are options of the experimental feature.
 **Test.** E5's per-room test, plus a host-side check each frame: admitted ≤ 6 unless an exempt
 entity is in view, free slots ≥ reserve after the tick, and no entity drawn by the game while held.
 Spawner rooms first, then a boss arena and a town.
+
+### E6 as built
+
+`src/soe_ws_alive.c` (decisions), `HleEntitySleepWake` in `src/soe_bindings.c` (the hook), launcher feature
+*Widescreen (experimental)* with options *Characters in the 4:3 view* (3–30, default 6) and *Count* (everyone /
+enemies only). `SOE_WS_ALIVE=0|1`, `SOE_WS_ALIVE_CAP`, `SOE_WS_ALIVE_RESERVE`, `SOE_WS_ALIVE_COUNT`,
+`SOE_WS_ALIVE_DEBUG=1` for tests.
+
+* **Hook, not bound C.** `hle_func` at `$8F:C40F`. E6 off or not a field frame: the ROM routine, unchanged (replays 01
+  and 02 still match MesenCE, with and without widescreen). E6 on: the helper does `LDY $4C` and the ROM code goes on
+  at `$C450` (RTS), `$C451` (sleep, or a spawner-made entity back to its record) or `$C4B1` (wake). Every change of
+  state is the game's own code; E6 only picks the branch. Neither `$8F:DC34` nor the spawner is hooked: `$1076` is
+  written at every visit, which also overrules the lag rule (it runs before the visits in the same tick).
+* **Stateless.** No host table: who is admitted follows from WRAM at each call, so save states and replays of the mode
+  reproduce it. A freed place goes to whichever held entity the round robin visits first (not the longest waiting).
+* **Differences from the design:** a held spawner-made entity is returned to its record (the ROM's `$C451` path), never
+  put to sleep, so the open question of sleeping one does not arise; an asleep spawner-made one goes the ROM's way
+  (wakes at once). The hit-in-the-last-60-frames exemption of rule 6 is not built (it needs state). Script-driven actors
+  are not exempt; the gate is the widescreen field gate.
+* **Latency.** The round robin visits 6 of 30 slots a frame, so a hold or a wake can come up to 5 frames late: one
+  sample of the cap-3 run below showed 4 in view.
+
+Measured on replay 06 (local; flower field `0x38`, 22 entities), 2026-11-09:
+
+| Run | Field (`0x38`) | `$0B19` per 1200 frames |
+|---|---|---|
+| E6 off | 5 awake, 17 asleep | +1195 |
+| E6 on, cap 6 | 21 awake, 0 asleep; at most 6 in view at every 60th frame; `$1070` = awake + 2 throughout | +660 |
+| E6 on, cap 3 | 1–2 held at the door or in view (drawn grey in the centre: checked in the frame dump) and woken again; counts consistent | — |
+
+**Open: lag.** With every enemy of `0x38` awake the game logic runs at about 55 % speed: the 65816 runs out of frame
+time, as hardware would. The framework has no overclock, and our frame driver is hardware rules only. Ways: a CPU clock
+multiplier for E6 (framework change, upstream proposal), or far entities thinking every other frame (a hook in the
+entity pass). Owner's call.

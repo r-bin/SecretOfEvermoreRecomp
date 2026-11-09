@@ -58,6 +58,7 @@ typedef struct Item {
     uint8_t palette_slot;    /* entity +$0C */
     uint8_t priority;        /* OBJ priority: 3 over the canopy, 2 under it */
     int16_t sort;            /* room y: lower is further back */
+    uint8_t asleep;          /* from the asleep list: E6 draws it in the centre too */
 } Item;
 
 typedef struct Snapshot {
@@ -98,7 +99,7 @@ static int Depth(uint32_t e, uint8_t *priority)
     return 1;
 }
 
-static void Add(Snapshot *s, uint32_t sprite, int x, int y, uint8_t slot, uint8_t priority, int sort)
+static void Add(Snapshot *s, uint32_t sprite, int x, int y, uint8_t slot, uint8_t priority, int sort, int asleep)
 {
     if (s->count >= kMaxItems || (sprite >> 16) < 0xC0 || (sprite & 0xffff) < 3) return;
     s->item[s->count].sprite = sprite;
@@ -107,6 +108,7 @@ static void Add(Snapshot *s, uint32_t sprite, int x, int y, uint8_t slot, uint8_
     s->item[s->count].palette_slot = slot;
     s->item[s->count].priority = priority;
     s->item[s->count].sort = (int16_t)sort;
+    s->item[s->count].asleep = (uint8_t)asleep;
     s->count++;
 }
 
@@ -168,7 +170,7 @@ static uint32_t StandingSprite(uint16_t record, int facing)
     return sprite;
 }
 
-static void SnapshotEntity(Snapshot *s, uint32_t e)
+static void SnapshotEntity(Snapshot *s, uint32_t e, int asleep)
 {
     uint16_t hide = W(e + 0x12);
     uint32_t main = (uint32_t)g_ram[e + 0x08] << 16 | W(e + 0x06);
@@ -178,8 +180,8 @@ static void SnapshotEntity(Snapshot *s, uint32_t e)
     if (!Depth(e, &priority)) return;
     int x = (int16_t)W(e + 0x1A), y = (int16_t)W(e + 0x1C), z = (int16_t)W(e + 0x1E);
     uint8_t slot = g_ram[e + 0x0C];
-    if (!(hide & 0x4000)) Add(s, shadow, x, y, slot, priority, y - 1);
-    if (!(hide & 0x8000)) Add(s, main, x, y - (z >> 4), slot, priority, y);
+    if (!(hide & 0x4000)) Add(s, shadow, x, y, slot, priority, y - 1, asleep);
+    if (!(hide & 0x8000)) Add(s, main, x, y - (z >> 4), slot, priority, y, asleep);
 }
 
 /* Every live entity, both lists, then the Boy and the Dog, then the projectiles. */
@@ -195,20 +197,21 @@ static void TakeSnapshot(Snapshot *s)
             int bit = cur - kSlotFirst;
             if (seen[bit >> 3] & (1 << (bit & 7))) break;
             seen[bit >> 3] |= (uint8_t)(1 << (bit & 7));
-            SnapshotEntity(s, cur);
+            /* Held by E6: asleep, alive and not parked (+$10 $0008, a dead one another still links to). */
+            SnapshotEntity(s, cur, list && W(cur + 0x2A) != 0 && !(W(cur + 0x10) & 0x0008));
             cur = W(cur + 0x5E);
         }
     }
     for (int k = 0; k < 2; k++) {
         uint16_t e = k ? kDog : kBoy;
         int bit = e - kSlotFirst;
-        if (!(seen[bit >> 3] & (1 << (bit & 7)))) SnapshotEntity(s, e);
+        if (!(seen[bit >> 3] & (1 << (bit & 7)))) SnapshotEntity(s, e, 0);
     }
     for (int p = 0; p < kProjectileCount; p++) {
         uint32_t e = kProjectiles + (uint32_t)p * kProjectileStride;
         if (!W(e + 0x10)) continue;
         int x = (int16_t)W(e + 0x14) >> 4, y = (int16_t)W(e + 0x16) >> 4, z = (int16_t)W(e + 0x18) >> 4;
-        Add(s, (uint32_t)g_ram[e + 0x08] << 16 | W(e + 0x06), x, y - z, g_ram[e + 0x0C], 3, y);
+        Add(s, (uint32_t)g_ram[e + 0x08] << 16 | W(e + 0x06), x, y - z, g_ram[e + 0x0C], 3, y, 0);
     }
 }
 
@@ -308,7 +311,7 @@ void SoeWsSpritesReset(void)
     if (g_ppu) PpuSetExtraObjects(g_ppu, NULL, 0);
 }
 
-void SoeWsSpritesFrame(int enabled, int grey, int cam_x, int cam_y, int left, int right)
+void SoeWsSpritesFrame(int enabled, int grey, int held, int cam_x, int cam_y, int left, int right)
 {
     if (!g_ppu) return;
     if (s_center < 0) { const char *c = getenv("SOE_WS_SPRITES_CENTER"); s_center = c && *c == '1';
@@ -329,13 +332,15 @@ void SoeWsSpritesFrame(int enabled, int grey, int cam_x, int cam_y, int left, in
             const Item *it = &s_prev.item[index[k]];
             int ox, oy, w, h, math;
             uint16_t *px = s_pixels[drawn];
-            if (!Compose(it, grey, px, &ox, &oy, &w, &h, &math)) continue;
+            const int held_here = held && it->asleep;
+            if (!Compose(it, grey || held_here, px, &ox, &oy, &w, &h, &math)) continue;
             int sx = it->x - ox - cam_x + s_shift, sy = it->y - oy - cam_y;
             if (sx + w <= -left || sx >= 256 + right || sy + h <= 0 || sy >= 224) continue;
             /* Margins only: the 4:3 centre is the game's own picture. SOE_WS_SPRITES_CENTER=1 draws
              * the centre too (under native OAM), to check the placement against the game's own;
-             * SOE_WS_SPRITES_SHIFT=<px> moves them, the control that such a check can fail. */
-            if (!s_center)
+             * SOE_WS_SPRITES_SHIFT=<px> moves them, the control that such a check can fail. A sleeper
+             * held by E6 is drawn there too: the game hides it. */
+            if (!s_center && !held_here)
             for (int r = 0; r < h; r++)
                 for (int q = 0; q < w; q++)
                     if (sx + q >= 0 && sx + q < 256) px[r * w + q] = 0;

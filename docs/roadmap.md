@@ -101,6 +101,7 @@ Three goals, in this order, each resting on the one before: **WRAM sync** (the r
 | 🟡 | **Bind more routines** with the proof already used: replay 01 stays in sync, the C path runs often, `SOE_HLE_MUTATE=1` is caught | Each new binding has a row in [progress-internal.md](progress-internal.md), "Bound C" |
 | 🟡 | **Next targets:** the LZ decompressors, then the room tilemap loader and collision unpacker | Bound and proven |
 | 🟡 | **A build report** listing which routines run as C, compiled or interpreted | Written by each build |
+| 🟡 | **Bound C that calls asm** (`soe_call_rts`/`soe_call_rtl`): no binding can do it yet, so e.g. `entity_sleep_wake` and the scheduler tick (G1 in everscript-vscode v0.399.16/.17) stay ROM code ([widescreen/bindings.md](widescreen/bindings.md)) | The C runs up to a call, the compiled callee runs, the C goes on; both routines bound and proven |
 
 What limits the C share, measured on the old replay 01 (2026-11-04): 664 routines run; 9 hold 50 % of its instructions, 76 hold
 90 %, 233 hold 99 %. A binding's C runs only when it fits before the next deadline; a routine that can stop between steps,
@@ -113,6 +114,7 @@ in the C are enough (`src/soe_cost.c`). Details: [progress-internal.md](progress
 |---|---|---|
 | 🟡 | **Measure on weaker machines.** About half the time is the PPU's per-pixel renderer; only Apple Silicon is measured | Numbers for one low-end PC and a handheld-class device |
 | 🟢 | **Optional faster mode** if a target falls short, with the accurate build kept as the default | Only after a measured need |
+| 👤 | **Widescreen E6 lags** in crowded rooms: the whole flower field awake runs the game logic at about 55 % speed ([widescreen/enemies.md](widescreen/enemies.md#e6-as-built)) | The owner picks a CPU clock multiplier (framework change) or far entities thinking less often; then E6 runs at full speed in `0x38` |
 
 ## 9. Upstream reports for snesrecomp
 

@@ -29,6 +29,7 @@
 #include "common_rtl.h"
 #include "common_cpu_infra.h"
 #include "snes/snes.h"
+#include "soe_ws_alive.h"
 
 #ifdef SOE_RECONSTRUCTED_C
 #define SOE_COST
@@ -73,7 +74,7 @@ uint16_t soe_multiply(uint16_t factors) {
 
 enum {
     RNG, PLANE, TILE, POOL, DEPTH, RAY, SPARE, WAIT, DMA, ANIM, OAM_INSERT, SPRITE_SORT, DIR_PAIR, ANIM_START, WAYPOINT_POLL,
-    AUDIO_FADE, SHEAR_STEP, MANHATTAN_DIST, COMPASS_DIR,
+    AUDIO_FADE, SHEAR_STEP, MANHATTAN_DIST, COMPASS_DIR, SLEEP_WAKE,
     BINDINGS
 };
 static struct { const char *name; unsigned long long c, across, compiled; bool mutate; } s_bind[BINDINGS] = {
@@ -84,7 +85,7 @@ static struct { const char *name; unsigned long long c, across, compiled; bool m
     { "oam_depth_sorted_sprite_insert_node" }, { "sprite_sorting_canopy_occlusion_and_render_depth" },
     { "direction_index_from_signed_byte_pair" }, { "anim_start_record" }, { "companion_waypoint_history_poll" },
     { "audio_master_volume_fade_tick" }, { "elevation_vector_shear_step" },
-    { "elevation_manhattan_distance_eval" }, { "elevation_compass_direction_resolve" },
+    { "elevation_manhattan_distance_eval" }, { "elevation_compass_direction_resolve" }, { "entity_sleep_wake" },
 };
 static int s_stats = -1;
 static void print_stats(void) {
@@ -1201,3 +1202,30 @@ RecompReturn HleElevationCompassDirectionResolve(CpuState *cpu) {
     return run_rom_bytes_frame(cpu, COMPASS_DIR, 0xA999, 0xA99B, plain ? shear_first : NULL, 2);
 }
 
+/*
+ * $8F:C40F entity_sleep_wake (RTS; knowledge/routines/entity_sleep_wake.md). Its C (reconstructed-c/8F/8FC40F) calls
+ * routines that are still asm, which no binding here can do yet (docs/widescreen/bindings.md), so the ROM code
+ * runs. With widescreen experiment E6 on (src/soe_ws_alive.c) the decision is E6's: the helper does the first
+ * instruction (LDY $4C) and the ROM code goes on at the instruction of the branch it picked (RTS, the sleep path
+ * or the wake path), so every change of state is still the game's own. E6 changes the game; its path is never
+ * taken with E6 off, and then this is the ROM routine.
+ */
+RecompReturn HleEntitySleepWake(CpuState *cpu) {
+    stats_init();
+    const bool plain = wide_a(cpu) && !cpu->x_flag && dp_in_wram(cpu, 0x5C);
+    if (plain && interp_bridge_in_lle_scheduler() && !interp_bridge_lle_master_deadline_reached(cpu)) {
+        const uint16_t d = cpu->D;
+#define DP_WORD(o) (uint16_t)(g_ram[(uint16_t)(d + (o))] | g_ram[(uint16_t)(d + (o) + 1)] << 8)
+        const uint16_t to = SoeAliveDecide(DP_WORD(0x4C), DP_WORD(0x59), DP_WORD(0x5B));
+#undef DP_WORD
+        if (to != kAliveRom) {
+            s_bind[SLEEP_WAKE].c++;
+            cpu_aot_insn_begin(cpu, 0xC40F);
+            cpu_mirrors_to_p(cpu);
+            sort_first(cpu);
+            cpu_p_to_mirrors(cpu);
+            return interp_bridge_lle_yield_unwind(cpu, (uint32_t)cpu->PB << 16 | to);
+        }
+    }
+    return run_rom_bytes_frame(cpu, SLEEP_WAKE, 0xC40F, 0xC411, plain ? sort_first : NULL, 2);
+}

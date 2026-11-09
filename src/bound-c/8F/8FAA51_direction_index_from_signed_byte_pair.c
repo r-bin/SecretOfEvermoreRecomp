@@ -10,9 +10,9 @@
  * Routine Rating & Verification:
  * - Target Routine:   direction_index_from_signed_byte_pair ($8FAA51) [RTL]
  * - Test Method:      G1 differential testing (trampoline + 4th MB bridge in snes9x / cpu65816)
- * - Initial ROM ASM:  59 instructions (132 bytes)
+ * - Initial ROM ASM:  32 instructions (49 bytes)
  * - Compiled C ASM:   172 instructions [Calypsi 65816 -O1 --speed]
- * - Code Expansion:   2.9x instructions vs ROM
+ * - Code Expansion:   5.4x instructions vs ROM
  * - ASM Closeness:    100% state parity per call (A, X, Y, S, D, DB, P, WRAM, I/O order match ROM)
  * - Rating Hash:      74df107cd387c784
  * - Rating Status:    VALID (unmodified since rating)

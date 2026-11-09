@@ -10,11 +10,11 @@
  * Routine Rating & Verification:
  * - Target Routine:   elevation_vector_shear_step ($8FA963) [RTS]
  * - Test Method:      G1 differential testing (trampoline + 4th MB bridge in snes9x / cpu65816)
- * - Initial ROM ASM:  27 instructions (54 bytes)
+ * - Initial ROM ASM:  15 instructions (26 bytes)
  * - Compiled C ASM:   172 instructions [Calypsi 65816 -O1 --speed]
- * - Code Expansion:   6.4x instructions vs ROM
+ * - Code Expansion:   11.5x instructions vs ROM
  * - ASM Closeness:    100% state parity per call (A, X, Y, S, D, DB, P, WRAM, I/O order match ROM)
- * - Rating Hash:      6c82f03ceb2b75e4
+ * - Rating Hash:      6110912c3506a9c0
  * - Rating Status:    VALID (unmodified since rating)
  */
 #include "soe.h"

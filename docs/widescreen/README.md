@@ -71,7 +71,7 @@ anything that changes the game registers as an ordinary plugin. Manifest format:
 
 Kill switches (rule P14), each forcing the vanilla path: `SOE_WS_PREFILL`, `SOE_WS_EDGES`,
 `SOE_WS_HUD`, `SOE_WS_FOG`, `SOE_WS_GHOSTS`, `SOE_WS_MENU`, `SOE_WS_CUTSCENE`, `SOE_WS_MODE7`,
-`SOE_WS_OAM` (E1), `SOE_WS_WAKE` (E2), `SOE_WS_TARGET` (E3), `SOE_WS_ALIVE` (E5).
+`SOE_WS_OAM` (E1), `SOE_WS_WAKE` (E2), `SOE_WS_TARGET` (E3), `SOE_WS_ALIVE` (E6, built; E5 is E6 without the cap).
 
 ## Status per topic
 

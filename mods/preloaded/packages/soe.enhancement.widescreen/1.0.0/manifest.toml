@@ -3,7 +3,7 @@ id = "soe.enhancement.widescreen"
 version = "1.0.0"
 name = "Widescreen"
 author = "r-bin"
-description = "Shows more of each room to the sides. Only the picture changes: the game runs exactly as in 4:3. Menus and other screens stay 4:3. Pick one mode; each has its own settings."
+description = "Shows more of each room to the sides. In the vanilla modes only the picture changes: the game runs exactly as in 4:3; the experimental mode changes the game. Menus and other screens stay 4:3. Pick one mode; each has its own settings."
 license = "MIT"
 resolver = "declarative"
 save_compatibility = "shared"
@@ -27,6 +27,13 @@ description = "Like vanilla, and the characters and projectiles the game keeps i
 group = "Display"
 default_enabled = false
 presentation_only = true
+
+[[feature]]
+id = "experimental"
+name = "Widescreen (experimental)"
+description = "Like vanilla extended, and the whole room is alive: every enemy and character keeps moving wherever it is, spawners spawn as usual, and at most a set number of them fit into the old 4:3 view (the others wait, in grey, at its edge). Changes the game: replays and timings differ from 4:3 (src/soe_ws_alive.c)."
+group = "Display"
+default_enabled = false
 
 [[option]]
 feature = "widescreen"
@@ -144,6 +151,96 @@ label = "Colour"
 value = "grey"
 label = "Greyscale"
 
+[[option]]
+feature = "experimental"
+id = "aspect"
+label = "View aspect ratio"
+description = "Adaptive follows the window's shape; the others fix the view. Pixel shape comes from Settings > Display Aspect."
+type = "choice"
+default = "adaptive"
+[[option.choice]]
+value = "adaptive"
+label = "Adaptive"
+[[option.choice]]
+value = "16:10"
+label = "16:10"
+[[option.choice]]
+value = "16:9"
+label = "16:9"
+[[option.choice]]
+value = "21:9"
+label = "21:9"
+[[option.choice]]
+value = "32:9"
+label = "32:9"
+
+[[option]]
+feature = "experimental"
+id = "edges"
+label = "Room edges"
+description = "Camera limits shows only the part of the map the game shows (one hut of a hut map); Whole room shows everything the room's map holds."
+type = "choice"
+default = "limits"
+[[option.choice]]
+value = "limits"
+label = "Camera limits"
+[[option.choice]]
+value = "room"
+label = "Whole room"
+
+[[option]]
+feature = "experimental"
+id = "foreground"
+label = "Foreground (canopy, roofs)"
+description = "Camera limits stops the foreground layer at the area the game can show, also when Room edges shows the whole room; As far as the terrain draws it wherever the room's map has it."
+type = "choice"
+default = "limits"
+[[option.choice]]
+value = "limits"
+label = "Camera limits"
+[[option.choice]]
+value = "terrain"
+label = "As far as the terrain"
+
+[[option]]
+feature = "experimental"
+id = "look"
+label = "Characters in the margins"
+description = "Colour draws them as the game would; Greyscale marks them as drawn by the widescreen mode, outside the game's own view."
+type = "choice"
+default = "colour"
+[[option.choice]]
+value = "colour"
+label = "Colour"
+[[option.choice]]
+value = "grey"
+label = "Greyscale"
+
+[[option]]
+feature = "experimental"
+id = "cap"
+label = "Characters in the 4:3 view"
+description = "How many characters may be active inside the old 4:3 view at once, the Boy and the Dog included (the game's own limit is 6). More wait at its edge until there is room."
+type = "integer"
+min = 3
+max = 30
+step = 1
+default = 6
+
+[[option]]
+feature = "experimental"
+id = "count"
+label = "Count"
+description = "Everyone counts every character, as the game's limit does; Enemies only leaves the Boy, the Dog and friendly characters out."
+type = "choice"
+default = "all"
+[[option.choice]]
+value = "all"
+label = "Everyone"
+[[option.choice]]
+value = "enemies"
+label = "Enemies only"
+
 [[plugin]]
 feature = "widescreen"
 id = "soe.widescreen"
@@ -151,3 +248,11 @@ id = "soe.widescreen"
 [[plugin]]
 feature = "extended"
 id = "soe.widescreen"
+
+[[plugin]]
+feature = "experimental"
+id = "soe.widescreen"
+
+[[plugin]]
+feature = "experimental"
+id = "soe.widescreen.alive"

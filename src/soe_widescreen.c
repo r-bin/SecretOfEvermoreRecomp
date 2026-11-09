@@ -30,6 +30,7 @@
  */
 #include "soe_widescreen.h"
 #include "soe_ws_sprites.h"
+#include "soe_ws_alive.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -70,10 +71,12 @@ static int EnvFlag(const char *name, int dflt)
     return v && *v ? atoi(v) != 0 : dflt;
 }
 
-/* The mod package and its features, one per mode; both claim the plugin "soe.widescreen". */
+/* The mod package and its features, one per mode; all claim the plugin "soe.widescreen". The experimental
+ * one draws as vanilla extended and adds E6 (src/soe_ws_alive.c, its own plugin "soe.widescreen.alive"). */
 #define kModPackage "soe.enhancement.widescreen"
 #define kModVanilla "widescreen"
 #define kModExtended "extended"
+#define kModExperimental "experimental"
 
 enum Edges { kEdgesLimits, kEdgesRoom, kEdgesOff };
 /* BG1, the canopy in front: clipped to the camera-limit box, or shown as far as the terrain. */
@@ -103,8 +106,9 @@ static void ModActivate(void)
 {
     char v[32];
     s_mod.on = 1;
-    s_mod.extended = snes_mod_runtime_feature_enabled_c(kModPackage, kModExtended);
-    const char *feature = s_mod.extended ? kModExtended : kModVanilla;
+    const int experimental = snes_mod_runtime_feature_enabled_c(kModPackage, kModExperimental);
+    s_mod.extended = experimental || snes_mod_runtime_feature_enabled_c(kModPackage, kModExtended);
+    const char *feature = experimental ? kModExperimental : s_mod.extended ? kModExtended : kModVanilla;
     strcpy(s_mod.aspect, "adaptive");
     if (snes_mod_runtime_feature_option_value_c(kModPackage, feature, "aspect", v, sizeof v))
         snprintf(s_mod.aspect, sizeof s_mod.aspect, "%s", v);
@@ -128,7 +132,8 @@ static int Enabled(void)
     const char *v = getenv("SOE_WIDESCREEN");
     if (v && *v) return atoi(v) != 0;
     return s_mod.on || snes_mod_runtime_feature_enabled_c(kModPackage, kModVanilla) ||
-           snes_mod_runtime_feature_enabled_c(kModPackage, kModExtended);
+           snes_mod_runtime_feature_enabled_c(kModPackage, kModExtended) ||
+           snes_mod_runtime_feature_enabled_c(kModPackage, kModExperimental);
 }
 
 /* Vanilla extended: entities drawn in the margins from WRAM (src/soe_ws_sprites.c). SOE_WS_MODE
@@ -311,11 +316,13 @@ static int DrawnScroll(uint16_t ppu_scroll, uint16_t shadow)
 }
 
 /* Margin columns drawn this frame; the rest of the margin is cleared in SoeWsEndFrame. */
-static int s_left, s_right;
+static int s_left, s_right, s_field;
+
+int SoeWsFieldGate(void) { return s_field; }
 
 void SoeWsBeginFrame(unsigned number)
 {
-    s_left = s_right = 0;
+    s_left = s_right = s_field = 0;
     if (!g_ppu) return;
     if (g_ws_extra <= 0) {   /* no margins (widescreen off, Mode 7): nothing of ours in the PPU */
         SoeWsSpritesReset();
@@ -339,6 +346,7 @@ void SoeWsBeginFrame(unsigned number)
         SoeWsSpritesReset();
         return;
     }
+    s_field = 1;
 
     int bg1_x = DrawnScroll(g_ppu->hScroll[0], Ram16(kScrollBg1H));
     int bg1_y = DrawnScroll(g_ppu->vScroll[0], Ram16(kScrollBg1V));
@@ -357,7 +365,7 @@ void SoeWsBeginFrame(unsigned number)
     }
     PpuSetExtraSideSpace(g_ppu, left, right, 0);
     s_left = left, s_right = right;
-    SoeWsSpritesFrame(ExtendedMode(), GreyLook(), cam_x, cam_y, left, right);
+    SoeWsSpritesFrame(ExtendedMode(), GreyLook(), SoeAliveEnabled(), cam_x, cam_y, left, right);
 
     if (!EnvFlag("SOE_WS_PREFILL", 1) || cells_w == 0) return;
     WsShadowSetWorld(0, (uint32_t)bg1_x, (uint32_t)bg1_y);

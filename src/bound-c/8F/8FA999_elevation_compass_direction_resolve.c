@@ -10,9 +10,9 @@
  * Routine Rating & Verification:
  * - Target Routine:   elevation_compass_direction_resolve ($8FA999) [RTS]
  * - Test Method:      G1 differential testing (trampoline + 4th MB bridge in snes9x / cpu65816)
- * - Initial ROM ASM:  57 instructions (119 bytes)
+ * - Initial ROM ASM:  14 instructions (24 bytes)
  * - Compiled C ASM:   94 instructions [Calypsi 65816 -O1 --speed]
- * - Code Expansion:   1.6x instructions vs ROM
+ * - Code Expansion:   6.7x instructions vs ROM
  * - ASM Closeness:    100% state parity per call (A, X, Y, S, D, DB, P, WRAM, I/O order match ROM)
  * - Rating Hash:      09ffa14a3c349f8b
  * - Rating Status:    VALID (unmodified since rating)

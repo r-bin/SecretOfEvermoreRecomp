@@ -18,5 +18,7 @@ int SoeWsWindowBaseWidth(int frame_w);
 void SoeWsBeginFrame(unsigned number);
 /* SnesDesktopHostGame.end_sim_frame: blacks the margin columns the PPU did not draw. */
 void SoeWsEndFrame(const uint8_t *field, unsigned number);
+/* This frame is a field frame with margins (the gate of SoeWsBeginFrame); experiment E6 runs only then. */
+int SoeWsFieldGate(void);
 
 #endif

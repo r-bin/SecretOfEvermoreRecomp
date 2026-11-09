@@ -33,3 +33,4 @@ hle 8EE5FC HleAudioMasterVolumeFadeTick body=8EE5FF audio_master_volume_fade_tic
 hle 8FA963 HleElevationVectorShearStep body=8FA965 elevation_vector_shear_step, reconstructed-c/8F/8FA963 (G1-rated); C only when it ends before the slice deadline
 hle 8FA97D HleElevationManhattanDistanceEval body=8FA97F elevation_manhattan_distance_eval, reconstructed-c/8F/8FA97D (G1-rated); C only when it ends before the slice deadline
 hle 8FA999 HleElevationCompassDirectionResolve body=8FA99B elevation_compass_direction_resolve, reconstructed-c/8F/8FA999 (G1-rated); C only when it ends before the slice deadline
+hle 8FC40F HleEntitySleepWake body=8FC411 entity_sleep_wake, reconstructed-c/8F/8FC40F (G1-rated, calls asm: not run as C); the ROM code, or with widescreen E6 on a decision that goes on in it at $C450/$C451/$C4B1
