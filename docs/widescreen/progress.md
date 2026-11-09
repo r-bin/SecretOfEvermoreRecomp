@@ -14,7 +14,7 @@ files here; what the MMX recomp and SoE-Recomp taught us: [other-recomps](other-
 | 4 | Edges option (clip / mirror / extend), small rooms | open (clip to the camera limits is in step 1) | [backgrounds-and-parallax](backgrounds-and-parallax.md), [camera-and-limits](camera-and-limits.md) |
 | 5 | Fog of war | open | [fog-of-war](fog-of-war.md) |
 | 6 | Hybrid ghosts | open | [modes](modes.md) |
-| 7 | Settings as a mod package, pixel aspect, adaptive | open (env variables in step 1) | [README](README.md#settings) |
+| 7 | Settings as a mod package, pixel aspect, adaptive | done: package `soe.enhancement.widescreen` (view, room edges); more options as their steps land | `mods/preloaded/packages/`, [README](README.md#settings) |
 | 8 | Floating menu window, Mode 7 | open | [menus-and-gates](menus-and-gates.md), [mode7](mode7.md) |
 | 9 | Experiments E1..E5 | after the bound C of each consumer | [modes](modes.md), [bindings](bindings.md) |
 | 10 | Own field renderer: any width **and height**, full control of what the view shows | open | below |
@@ -28,8 +28,17 @@ framework change, no guest write.
   draws may change. `ctest` holds it: `replay_01_widescreen` and `replay_02_widescreen` run the
   stored MesenCE runs with widescreen forced on at 21:9 (`SOE_WIDESCREEN=1`,
   `SNESRECOMP_WS_EXTRA=96`), every byte of WRAM, VRAM, CGRAM and OAM at every 60th NMI.
-* **On/off:** config `Widescreen = 1` (the launcher shows the switch), or `SOE_WIDESCREEN=1|0`.
-  Off, the frame stays 256 px and none of the code runs.
+* **On/off and settings: the mod package `soe.enhancement.widescreen`** (launcher → Mods →
+  Display → Widescreen; `mods/preloaded/packages/soe.enhancement.widescreen/1.0.0/manifest.toml`).
+  Default off. Options: **View aspect ratio** (adaptive, 16:10, 16:9, 21:9, 32:9) and **Room
+  edges** (camera limits, whole room). The plugin `soe.widescreen` is registered as
+  presentation-only (`snes_mod_register_presentation_plugin`): it touches no CPU, WRAM, VRAM,
+  OAM, CGRAM, APU or save state, which the widescreen replays check. A reset callback makes the
+  mod the only switch: the legacy `Widescreen` line in `config.ini` and the launcher's legacy
+  toggle (`widescreen_supported`, now 0) do nothing. The window is sized after the mod
+  selection is committed, so it opens wide when the mod is on. Test overrides that win over the
+  mod: `SOE_WIDESCREEN=0|1`, `SOE_WS_ASPECT`, `SOE_WS_WIDTH`, `SNESRECOMP_WS_EXTRA`,
+  `SOE_WS_EDGES=limits|room|off`.
 * **Any width:** by default the frame follows the window's shape (resize it and the view
   follows); `SOE_WS_ASPECT=W:H` fixes any aspect (16:9, 21:9, 32:9, 5:4 ...), `SOE_WS_WIDTH=<px>`
   any width, `SNESRECOMP_WS_EXTRA=<px per side>` pins it for tests. The pixel shape comes from
@@ -100,3 +109,4 @@ viewport" lives (fog, ghosts, HUD placement, floating menus become passes of one
 | 2026-11-09 | Guest state, widescreen on (21:9) vs off, new build, 4 dumps | identical |
 | 2026-11-09 | Smeared rows past the map (user's screenshot, a room with HDMA colour bands) | blacked by construction; not reproduced headless (no such room on the test route) |
 | 2026-11-09 | Gate, intro to village (frames 120–2490 every 60) | logo screens pillarboxed (both margins black); intro room, title over its room and the village widened; guest state on vs off identical |
+| 2026-11-09 | Mod package, headless with a `state.toml`: no selection / 21:9 + camera limits / adaptive + whole room (hut `0x51`) | 256 px (off) / 448 px / 342 px with the neighbouring hut in the left margin, black past the room's right edge |

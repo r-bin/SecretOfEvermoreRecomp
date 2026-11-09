@@ -2,9 +2,10 @@
  * Widescreen, first approach: field backgrounds only.
  *
  * What it does (docs/widescreen/progress.md, step 1):
- *   - widens the frame when config `Widescreen = 1` (or SOE_WIDESCREEN=1): to the window's
- *     shape by default, or SOE_WS_ASPECT=W:H, SOE_WS_WIDTH=<px>, SNESRECOMP_WS_EXTRA=<px per side>,
- *     up to the PPU's 800 px; DisplayAspect sets the pixel shape;
+ *   - is switched on by the mod package soe.enhancement.widescreen (launcher, Mods page;
+ *     mods/preloaded/packages/), whose options pick the view (adaptive or a fixed aspect) and
+ *     the room edges; the frame follows the window's shape or the fixed aspect, up to the PPU's
+ *     800 px, and DisplayAspect sets the pixel shape;
  *   - on field frames only (BG mode 1, 16x16 tiles on BG1 and BG2, camera mode 0)
  *     opens the side margins, cut to the active camera-limit box $23E9..$23EF so
  *     a wide view never shows a neighbouring part of the map (the huts of 0x51);
@@ -18,8 +19,9 @@
  * Presentation only: reads WRAM and the PPU, writes neither. Addresses and their
  * evidence: everscript-vscode docs/entities/off-screen-behaviour.md, tag `widescreen`.
  *
- * Kill switches: SOE_WS_PREFILL=0 (draw the raw ring), SOE_WS_EDGES=0 (ignore the
- * camera limits, use the whole budget). SOE_WS_CHECK=1 compares the prefill rule
+ * Test overrides (win over the mod): SOE_WIDESCREEN=0|1, SOE_WS_ASPECT=W:H|adaptive,
+ * SOE_WS_WIDTH=<px>, SNESRECOMP_WS_EXTRA=<px per side>, SOE_WS_EDGES=limits|room|off.
+ * Kill switch SOE_WS_PREFILL=0 (draw the raw ring). SOE_WS_CHECK=1 compares the prefill rule
  * with the game's own tilemap words for the on-screen cells and prints the result.
  */
 #include "soe_widescreen.h"
@@ -30,6 +32,7 @@
 #include <string.h>
 
 #include "common_rtl.h"
+#include "mod_runtime.h"
 #include "desktop/config.h"
 #include "desktop/display_aspect.h"
 #include "snes/ppu.h"
@@ -59,11 +62,56 @@ static int EnvFlag(const char *name, int dflt)
     return v && *v ? atoi(v) != 0 : dflt;
 }
 
-/* Widescreen on: config `Widescreen = 1`, or SOE_WIDESCREEN=1 (tests force it on or off). */
+/* The mod package and its feature; the plugin id is the manifest's [[plugin]] id. */
+#define kModPackage "soe.enhancement.widescreen"
+#define kModFeature "widescreen"
+
+enum Edges { kEdgesLimits, kEdgesRoom, kEdgesOff };
+
+/* Settings from the mod, read on activation. */
+static struct { int on; char aspect[16]; enum Edges edges; } s_mod;
+
+/* The mod alone decides; the legacy config flag `Widescreen` is not read. */
+static void ModReset(void)
+{
+    memset(&s_mod, 0, sizeof(s_mod));
+}
+
+static void ModActivate(void)
+{
+    char v[32];
+    s_mod.on = 1;
+    strcpy(s_mod.aspect, "adaptive");
+    if (snes_mod_runtime_feature_option_value_c(kModPackage, kModFeature, "aspect", v, sizeof v))
+        snprintf(s_mod.aspect, sizeof s_mod.aspect, "%s", v);
+    s_mod.edges = kEdgesLimits;
+    if (snes_mod_runtime_feature_option_value_c(kModPackage, kModFeature, "edges", v, sizeof v) &&
+        !strcmp(v, "room"))
+        s_mod.edges = kEdgesRoom;
+}
+
+/* Presentation only: this code changes what is drawn and touches no CPU, WRAM, VRAM, OAM,
+ * CGRAM, APU or save state (ctest replay_0x_widescreen holds it to that). */
+SNES_MOD_CONSTRUCTOR(soe_register_widescreen_plugin)
+{
+    (void)snes_mod_register_reset_callback(ModReset);
+    (void)snes_mod_register_presentation_plugin("soe.widescreen", ModActivate);
+}
+
+/* Widescreen on: the mod, or SOE_WIDESCREEN=0|1 (tests). The window is sized after the mod
+ * selection is committed but before plugins activate, so ask the runtime then. */
 static int Enabled(void)
 {
     const char *v = getenv("SOE_WIDESCREEN");
-    return v && *v ? atoi(v) != 0 : g_config.widescreen;
+    if (v && *v) return atoi(v) != 0;
+    return s_mod.on || snes_mod_runtime_feature_enabled_c(kModPackage, kModFeature);
+}
+
+static enum Edges EdgesMode(void)
+{
+    const char *v = getenv("SOE_WS_EDGES");
+    if (v && *v) return !strcmp(v, "room") ? kEdgesRoom : !strcmp(v, "off") || !strcmp(v, "0") ? kEdgesOff : kEdgesLimits;
+    return s_mod.edges;
 }
 
 /* Horizontal:vertical size of one SNES pixel as presented (config DisplayAspect). */
@@ -82,13 +130,14 @@ static int WidthForAspect(double view_aspect)
     return Clamp(w, 256, kPpuBufWidth);
 }
 
-/* SOE_WS_ASPECT: "adaptive" (default: follow the window), or any "W:H" (16:9, 21:9, 32:9, 5:4 ...).
- * Returns 0 for adaptive. */
+/* The fixed view aspect: SOE_WS_ASPECT, else the mod's option; any "W:H" (16:9, 21:9, 32:9,
+ * 5:4 ...). Returns 0 for adaptive (follow the window). */
 static double FixedAspect(void)
 {
     const char *a = getenv("SOE_WS_ASPECT");
+    if (!a || !*a) a = s_mod.aspect;
     double w, h;
-    if (a && sscanf(a, "%lf:%lf", &w, &h) == 2 && w > 0 && h > 0) return w / h;
+    if (sscanf(a, "%lf:%lf", &w, &h) == 2 && w > 0 && h > 0) return w / h;
     return 0;
 }
 
@@ -216,9 +265,12 @@ void SoeWsBeginFrame(unsigned number)
     int cam_x = bg2_x, cam_y = bg2_y + 1;
     int cells_w = g_ram[kRoomCellsW], cells_h = Ram16(kRoomCellsH);
     int left = g_ws_extra, right = g_ws_extra;
-    if (EnvFlag("SOE_WS_EDGES", 1)) {
-        left = Clamp(cam_x - (int16_t)Ram16(kLimitLeft), 0, g_ws_extra);
-        right = Clamp((int16_t)Ram16(kLimitRight) - (cam_x + 256), 0, g_ws_extra);
+    enum Edges edges = EdgesMode();
+    if (edges != kEdgesOff) {
+        int lo = edges == kEdgesRoom ? 0 : (int16_t)Ram16(kLimitLeft);
+        int hi = edges == kEdgesRoom ? cells_w * 16 : (int16_t)Ram16(kLimitRight);
+        left = Clamp(cam_x - lo, 0, g_ws_extra);
+        right = Clamp(hi - (cam_x + 256), 0, g_ws_extra);
     }
     PpuSetExtraSideSpace(g_ppu, left, right, 0);
     s_left = left, s_right = right;

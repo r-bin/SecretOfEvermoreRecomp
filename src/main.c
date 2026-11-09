@@ -59,8 +59,8 @@ static const SnesDesktopHostGame kGameHost = {
     /* Battery-backed SRAM shows the launcher's SAVES panel. Leave NULL for a
      * title without one. The path is exe-relative. */
     .sram_path           = "saves/save.srm",
-    /* Widescreen, off unless config `Widescreen = 1` (src/soe_widescreen.c). */
-    .widescreen_supported = 1,
+    /* Widescreen is the mod package soe.enhancement.widescreen (Mods page), not the legacy
+     * launcher switch, so widescreen_supported stays 0 (src/soe_widescreen.c). */
     .native_widescreen   = 1,
     .prepare_frame       = SoeWsPrepareFrame,
     .begin_sim_frame     = SoeWsBeginFrame,

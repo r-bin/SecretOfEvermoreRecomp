@@ -1,0 +1,62 @@
+format_version = 1
+id = "soe.enhancement.widescreen"
+version = "1.0.0"
+name = "Widescreen"
+author = "r-bin"
+description = "Shows more of each room to the sides. Only the picture changes: the game runs exactly as in 4:3, enemies appear where they always did, menus and other screens stay 4:3."
+license = "MIT"
+resolver = "declarative"
+save_compatibility = "shared"
+
+[[target]]
+game_id = "secretofevermore-usa"
+rom_sha256 = "17c864a76d498feb6479eee8e7d6807b951c66225033228622bb66754baab1db"
+
+[[feature]]
+id = "widescreen"
+name = "Widescreen"
+description = "Extend the field to the sides with the room's own map. Presentation only (src/soe_widescreen.c)."
+group = "Display"
+default_enabled = false
+presentation_only = true
+
+[[option]]
+feature = "widescreen"
+id = "aspect"
+label = "View aspect ratio"
+description = "Adaptive follows the window's shape; the others fix the view. Pixel shape comes from Settings > Display Aspect."
+type = "choice"
+default = "adaptive"
+[[option.choice]]
+value = "adaptive"
+label = "Adaptive"
+[[option.choice]]
+value = "16:10"
+label = "16:10"
+[[option.choice]]
+value = "16:9"
+label = "16:9"
+[[option.choice]]
+value = "21:9"
+label = "21:9"
+[[option.choice]]
+value = "32:9"
+label = "32:9"
+
+[[option]]
+feature = "widescreen"
+id = "edges"
+label = "Room edges"
+description = "Camera limits shows only the part of the map the game shows (one hut of a hut map); Whole room shows everything the room's map holds."
+type = "choice"
+default = "limits"
+[[option.choice]]
+value = "limits"
+label = "Camera limits"
+[[option.choice]]
+value = "room"
+label = "Whole room"
+
+[[plugin]]
+feature = "widescreen"
+id = "soe.widescreen"
