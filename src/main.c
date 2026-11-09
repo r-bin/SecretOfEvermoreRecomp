@@ -27,6 +27,7 @@
 
 #include "host_main.h"
 #include "game_rtl.h"
+#include "soe_widescreen.h"
 void SoeAfterConfig(void);   /* src/game_rtl.c */
 #include "snesrecomp_rom_identity.h"  /* generated from rom_identity.txt */
 
@@ -58,6 +59,11 @@ static const SnesDesktopHostGame kGameHost = {
     /* Battery-backed SRAM shows the launcher's SAVES panel. Leave NULL for a
      * title without one. The path is exe-relative. */
     .sram_path           = "saves/save.srm",
+    /* Widescreen, off unless config `Widescreen = 1` (src/soe_widescreen.c). */
+    .widescreen_supported = 1,
+    .native_widescreen   = 1,
+    .prepare_frame       = SoeWsPrepareFrame,
+    .begin_sim_frame     = SoeWsBeginFrame,
 };
 
 #ifndef __ANDROID__

@@ -1,0 +1,183 @@
+/*
+ * Widescreen, first approach: field backgrounds only.
+ *
+ * What it does (docs/widescreen/progress.md, step 1):
+ *   - widens the frame when config `Widescreen = 1` (aspect from SOE_WS_ASPECT:
+ *     16:9 default, 16:10, 21:9, adaptive; SNESRECOMP_WS_EXTRA pins the margin);
+ *   - on field frames only (BG mode 1, 16x16 tiles on BG1 and BG2, camera mode 0)
+ *     opens the side margins, cut to the active camera-limit box $23E9..$23EF so
+ *     a wide view never shows a neighbouring part of the map (the huts of 0x51);
+ *   - fills the margin cells of BG1 and BG2 from the room grid in bank $7F
+ *     (word = 2*(row*width + col), tile word at $7F:grid+0 for BG1, +2 for BG2),
+ *     because the game streams only a 17 x 15-cell window into the tilemap ring;
+ *   - pillarboxes everything else (menu pages, Mode 7, other camera modes).
+ * Sprites stay as the game places them: it never puts one at X >= 256, so enemies
+ * still appear at the original edge (the "vanilla" enemy mode).
+ *
+ * Presentation only: reads WRAM and the PPU, writes neither. Addresses and their
+ * evidence: everscript-vscode docs/entities/off-screen-behaviour.md, tag `widescreen`.
+ *
+ * Kill switches: SOE_WS_PREFILL=0 (draw the raw ring), SOE_WS_EDGES=0 (ignore the
+ * camera limits, use the whole budget). SOE_WS_CHECK=1 compares the prefill rule
+ * with the game's own tilemap words for the on-screen cells and prints the result.
+ */
+#include "soe_widescreen.h"
+
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "common_rtl.h"
+#include "desktop/config.h"
+#include "snes/ppu.h"
+#include "snes/ws_shadow.h"
+#include "widescreen.h"
+
+enum {
+    kBank7F = 0x10000,      /* g_ram offset of $7F:0000 */
+    kRoomId = 0x0ADB,
+    kCameraX = 0x0059,      /* rendered camera, DP */
+    kCameraY = 0x005B,
+    kRoomCellsW = 0x08EE,
+    kRoomCellsH = 0x08F0,
+    kLimitLeft = 0x23E9,
+    kLimitRight = 0x23ED,
+    kCameraMode = 0x241F,   /* index into the camera-mode table $90:8E68 */
+    kScrollBg1H = 0x010E,   /* BG scroll shadows, copied to the PPU in NMI */
+    kScrollBg1V = 0x0110,
+    kScrollBg2H = 0x0112,
+    kScrollBg2V = 0x0114,
+};
+
+static uint16_t Ram16(uint32_t a) { return (uint16_t)(g_ram[a] | g_ram[a + 1] << 8); }
+static int Clamp(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
+
+static int EnvFlag(const char *name, int dflt)
+{
+    const char *v = getenv(name);
+    return v && *v ? atoi(v) != 0 : dflt;
+}
+
+/* Frame width for a view aspect, with 256 px shown as 4:3. */
+static int WidthForAspect(double aspect)
+{
+    int w = (int)(256.0 * aspect / (4.0 / 3.0) + 0.5);
+    w += w & 1;
+    return Clamp(w, 256, 256 + 2 * kWsExtraMax);
+}
+
+void SoeWsPrepareFrame(int drawable_w, int drawable_h, int *frame_w, int *frame_h)
+{
+    *frame_h = 224;
+    if (!g_config.widescreen) {
+        *frame_w = 256;
+        return;
+    }
+    int pinned = PpuWsExtraOverride();
+    if (pinned >= 0) {
+        *frame_w = 256 + 2 * pinned;
+        return;
+    }
+    const char *a = getenv("SOE_WS_ASPECT");
+    double aspect = 16.0 / 9.0;
+    if (a && !strcmp(a, "16:10")) aspect = 16.0 / 10.0;
+    else if (a && !strcmp(a, "21:9")) aspect = 21.0 / 9.0;
+    else if (a && !strcmp(a, "adaptive") && drawable_w > 0 && drawable_h > 0)
+        aspect = (double)drawable_w / drawable_h;
+    *frame_w = WidthForAspect(aspect);
+}
+
+/* The field set-up writes BGMODE $39: mode 1, BG3 priority, 16x16 tiles on BG1/BG2. */
+static int IsFieldFrame(void)
+{
+    return PPU_mode(g_ppu) == 1 && PPU_bigTiles(g_ppu, 0) && PPU_bigTiles(g_ppu, 1) &&
+           Ram16(kCameraMode) == 0;
+}
+
+static uint16_t CellTileWord(int layer, int cx, int cy, int cells_w)
+{
+    uint16_t grid = Ram16(kBank7F + 2u * (uint32_t)(cy * cells_w + cx));
+    return Ram16(kBank7F + (uint16_t)(grid + 2 * layer));
+}
+
+static struct { unsigned frames; uint64_t same, differ; } s_check;
+
+/* Compare the prefill rule with the words the game itself streamed for the cells
+ * on screen. The streamed window starts at the scroll's cell. */
+static void CheckOnScreenCells(int cam_x, int cam_y, int cells_w, int cells_h)
+{
+    const uint16_t *vram = PpuRenderVram(g_ppu);
+    for (int layer = 0; layer < 2; layer++) {
+        uint32_t base = PPU_bgTilemapAdr(g_ppu, layer);
+        for (int cy = cam_y >> 4; cy < ((cam_y + 224) >> 4) && cy < cells_h; cy++)
+            for (int cx = cam_x >> 4; cx < ((cam_x + 256) >> 4) && cx < cells_w; cx++) {
+                uint16_t game = vram[(base + (uint32_t)(cy & 31) * 32 + (uint32_t)(cx & 31)) & 0x7fff];
+                if (game == CellTileWord(layer, cx, cy, cells_w)) s_check.same++;
+                else s_check.differ++;
+            }
+    }
+    if (++s_check.frames % 600 == 0)
+        fprintf(stderr, "[widescreen] prefill check: %llu cells match, %llu differ\n",
+                (unsigned long long)s_check.same, (unsigned long long)s_check.differ);
+}
+
+static void PrefillColumns(int x0, int x1, int cam_y, int cells_w, int cells_h)
+{
+    for (int cx = x0 >> 4; cx <= (x1 - 1) >> 4; cx++) {
+        if (cx < 0 || cx >= cells_w) continue;
+        for (int cy = cam_y >> 4; cy <= (cam_y + 224) >> 4 && cy < cells_h; cy++)
+            /* Force, not Prefill: the room set-up clears the whole ring by DMA, and the
+             * shadow keeps those blank uploads as authoritative history that Prefill
+             * never replaces. The grid is the live source of the same words. */
+            for (int layer = 0; layer < 2; layer++)
+                WsShadowForceTile(layer, (uint32_t)cx, (uint32_t)cy, CellTileWord(layer, cx, cy, cells_w));
+    }
+}
+
+void SoeWsBeginFrame(unsigned number)
+{
+    (void)number;
+    if (!g_ppu || g_ws_extra <= 0) return;
+
+    static uint16_t s_room = 0xffff;
+    uint16_t room = Ram16(kRoomId);
+    if (room != s_room) {
+        WsShadowReset();
+        s_room = room;
+    }
+
+    if (EnvFlag("SOE_WS_DEBUG", 0) && number % 60 == 0)
+        fprintf(stderr, "[widescreen] frame %u: mode %d big %d/%d camera mode %u extra %d\n", number,
+                PPU_mode(g_ppu), !!PPU_bigTiles(g_ppu, 0), !!PPU_bigTiles(g_ppu, 1), Ram16(kCameraMode),
+                g_ws_extra);
+    if (!IsFieldFrame()) {
+        PpuSetExtraSideSpace(g_ppu, 0, 0, 0);   /* pillarbox */
+        return;
+    }
+
+    int cam_x = (int16_t)Ram16(kCameraX), cam_y = (int16_t)Ram16(kCameraY);
+    int cells_w = g_ram[kRoomCellsW], cells_h = Ram16(kRoomCellsH);
+    int left = g_ws_extra, right = g_ws_extra;
+    if (EnvFlag("SOE_WS_EDGES", 1)) {
+        left = Clamp(cam_x - (int16_t)Ram16(kLimitLeft), 0, g_ws_extra);
+        right = Clamp((int16_t)Ram16(kLimitRight) - (cam_x + 256), 0, g_ws_extra);
+    }
+    PpuSetExtraSideSpace(g_ppu, left, right, 0);
+
+    if (!EnvFlag("SOE_WS_PREFILL", 1) || cells_w == 0) return;
+    WsShadowSetWorld(0, Ram16(kScrollBg1H), Ram16(kScrollBg1V));
+    WsShadowSetWorld(1, Ram16(kScrollBg2H), Ram16(kScrollBg2V));
+    WsShadowFrame(g_ppu);
+    PrefillColumns(cam_x - left, cam_x, cam_y, cells_w, cells_h);
+    PrefillColumns(cam_x + 256, cam_x + 256 + right, cam_y, cells_w, cells_h);
+    if (EnvFlag("SOE_WS_CHECK", 0)) CheckOnScreenCells(cam_x, cam_y, cells_w, cells_h);
+    if (EnvFlag("SOE_WS_DEBUG", 0) && number % 60 == 0) {
+        WsShadowMarginStat st;
+        WsShadowGetMarginStats(1, &st);
+        fprintf(stderr, "[widescreen] BG2 margins: west %llu/%llu east %llu/%llu (hit/miss), seeded %llu, raw %llu/%llu\n",
+                (unsigned long long)st.westHit, (unsigned long long)st.westMiss, (unsigned long long)st.eastHit,
+                (unsigned long long)st.eastMiss, (unsigned long long)st.prefillSeed,
+                (unsigned long long)st.westRawFallback, (unsigned long long)st.eastRawFallback);
+    }
+}

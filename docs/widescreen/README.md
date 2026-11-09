@@ -1,7 +1,8 @@
 # Widescreen for the Secret of Evermore recomp
 
 Research, 2026-11-09. How to build a widescreen mode on the snesrecomp framework, what the game
-does outside its 256 px screen, and which options are safe. Nothing is implemented yet.
+does outside its 256 px screen, and which options are safe. A first approach (field backgrounds,
+vanilla enemies) is in `src/soe_widescreen.c`; state and checks: [progress](progress.md).
 
 **Goal.** A wider picture that, by default, changes nothing in the game: the 256 px centre and all
 of WRAM/VRAM/CGRAM/OAM stay identical to 4:3, and the margins only show what the game already
@@ -90,6 +91,7 @@ Kill switches (rule P14), each forcing the vanilla path: `SOE_WS_PREFILL`, `SOE_
 | [bindings](bindings.md) | list |
 | [advance-work](advance-work.md) | what can start now |
 | [other-recomps](other-recomps.md) | compared with the MMX recomp and SoE-Recomp |
+| [progress](progress.md) | step 1 (field backgrounds) working; what is verified |
 
 ## Order of work
 
