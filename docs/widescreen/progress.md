@@ -17,7 +17,7 @@ files here; what the MMX recomp and SoE-Recomp taught us: [other-recomps](other-
 | 7 | Settings as a mod package, pixel aspect, adaptive | done: package `soe.enhancement.widescreen`, one feature per mode (each with its own options; the experimental renderer gets a third); more options as their steps land | `mods/preloaded/packages/`, [README](README.md#settings) |
 | 8 | Floating menu window, Mode 7 | open | [menus-and-gates](menus-and-gates.md), [mode7](mode7.md) |
 | 9 | Experiments E1..E5 | after the bound C of each consumer | [modes](modes.md), [bindings](bindings.md) |
-| 10 | **Experimental**: own field renderer, any width **and height**, full control of what the view shows | open, next | below |
+| 10 | **Experimental**: own field renderer, any width **and height**, full control of what the view shows; enemies by E6 (whole room alive, 6 in the 4:3 view) | open, next; E6 proposed | below; [enemies](enemies.md#the-whole-room-alive-six-in-the-43-view-experiment-e6) |
 
 ## Step 1: what the first approach does
 

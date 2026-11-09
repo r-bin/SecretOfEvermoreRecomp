@@ -450,8 +450,16 @@ static void GameHardwareReset(void) {
  * the first sound-driver upload waited 46,700 master clocks for $BBAA that MesenCE does not wait, and every later
  * NMI came late (docs/imperfections/apu-time-in-long-frames.md).
  */
+/* HD Mode 7 stays off: snesrecomp's GPU presenter draws the flight black on macOS
+ * (docs/bugs-and-todos.md §3 item 12). SOE_HD_MODE7=1 leaves the setting alone, to check an upstream fix. */
+static void SoeHdMode7Off(void) {
+    const char *v = getenv("SOE_HD_MODE7");
+    if (!(v && v[0] == '1')) g_config.mode7.enabled = false;
+}
+
 void SoeAfterConfig(void) {
     g_config.new_renderer = false;
+    SoeHdMode7Off();
     RtlEnableExtendedFrameTiming();
     /* snesrecomp PR #241 (framework/snesrecomp.patch): the SPC700's time is the master clock since power-on (MesenCE's
      * rate and rounding); the CPU reaches the ports 20 clocks into an absolute CMP/STA (docs/research/upstream-access-timing.md). */
@@ -469,6 +477,7 @@ void SoeAfterConfig(void) {
  * a Mode 7 field gets the framework's own renderer, the one its HD Mode 7 path is built with, and
  * nothing meant for the other modes. The PPU's mode here is the one the next field starts with. */
 void SoePrepareFrame(int drawable_w, int drawable_h, int *frame_w, int *frame_h) {
+    SoeHdMode7Off(); /* the launcher's Settings can switch it on in a running game */
     snesrecomp_desktop_set_new_renderer(g_ppu && (g_ppu->bgmode & 7) == 7);
     SoeWsPrepareFrame(drawable_w, drawable_h, frame_w, frame_h);
 }

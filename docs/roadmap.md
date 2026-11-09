@@ -52,6 +52,7 @@ Three goals, in this order, each resting on the one before: **WRAM sync** (the r
 | 🟢 | **BRR offset at power-on:** harmless; one line upstream ([imperfections/dsp-brr-offset-reset.md](imperfections/dsp-brr-offset-reset.md)) | Sent with §9 |
 | 🟡 | **Close the DMA-only fixes.** VRAM and CGRAM writes during rendering are handled for DMA alone, and `$213B` bit 7 for DMA reads | CPU-side cases fixed or shown not to occur |
 | 🟡 | **Try the new renderer on the picture comparison** once Mode 4 exists upstream (§9) | `SoeAfterConfig`'s override removed, or the reason written down |
+| 🟡 | **HD Mode 7 off** (2026-11-09): the GPU presenter draws the flight black on macOS ([bugs-and-todos.md](bugs-and-todos.md) §3 item 12); our glue forces `Mode7Enabled` off | Fixed upstream and checked on a Mac with `SOE_HD_MODE7=1`; then `SoeHdMode7Off` removed |
 
 ## 3. Prove the whole game
 

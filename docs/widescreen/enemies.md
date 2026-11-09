@@ -112,3 +112,77 @@ with bound C and a "never sleep" variant, or a frame callback forcing `$1076` (g
 a presentation plugin). Test: per room from an entry save state, run N frames with E5 off and on,
 diff WRAM outside the entity pool and list differing story-flag bytes (`$2200..`); while E5 is on,
 write SRAM only to a separate slot.
+
+## The whole room alive, six in the 4:3 view (experiment E6)
+
+Proposal, 2026-11-09, for the experimental full-screen mode (step 10 of [progress](progress.md)). E5
+with one rule added: the native 256 × 224 view never holds more than vanilla's crowd. Facts it rests
+on are the V rows above; what it adds is marked as a design, and the open questions are U.
+
+**Goals.** (1) Every enemy and NPC of the room runs its AI all the time, wherever it is. (2)
+Spawners fire as in vanilla: same ring 16..48 px off the 4:3 view, same timers, same room cap. (3)
+The 4:3 view `$59`/`$5B` + [0, 256) × [0, 224) holds at most **6 counted entities**, Boy and Dog
+included, as vanilla's budget `$1076` counts them, so a fight in the old screen is as crowded as
+vanilla allows and no more. (4) Scripts never miss a free slot.
+
+**Three states per entity** (host-side table, indexed by slot, reset on room change `$0ADB`):
+
+| State | Game side | AI | Drawn |
+|---|---|---|---|
+| free | awake, outside the view | yes | in the margins (vanilla extended drawing) |
+| admitted | awake, counts against the view cap | yes | as the game draws it |
+| held | asleep through the game's own `$8F:C514` | no | in the margins, frozen in its last frame, greyscale (the *Characters in the margins* look) |
+
+**Rules, once per frame in the scheduler tick** (all 30 slots, not 6 by round robin):
+
+1. *Never sleep by distance.* An awake entity outside [−48, 304) stays awake; a spawner-made one is
+   not returned to its record for distance (rule 4 does that).
+2. *The door.* A free entity whose position (`+$1A`/`+$1C` minus the camera) enters [−16, 272) ×
+   [−16, 240), vanilla's wake window, is admitted if fewer than 6 are admitted, else held at that
+   spot. An admitted entity becomes free again only past [−48, 304), vanilla's sleep window: the
+   same hysteresis vanilla has, so nothing flickers at the edge.
+3. *Re-admission.* When an admitted entity leaves, dies (HP 0) or is freed, the held entity that
+   has waited longest is woken (tie: nearest to the Boy, then lowest slot). No RNG, no host clock:
+   the choices follow from WRAM alone, so a replay of the mode reproduces itself.
+4. *Slot reserve.* Keep 4 slots free for scripts (opcodes `0x3C`, `0xBA`, `0xA2` create entities
+   directly). The spawner is not changed: its gate `$1070 < $1076` is steered by writing `$1076` =
+   `$1070` + (free slots − reserve), floor `$1070`. If a script still finds the pool short, the
+   spawner-made entity farthest from the view is returned to its record through `$8F:DF41` (timer 0,
+   count + 1), as vanilla does with far ones.
+5. *Exempt, never held:* `+$10 & $0030`, `+$6C` ≥ 0 (bosses, multipart, waypoint nodes), HP 0, the
+   Boy, the Dog, and actors a script slot `$28FC` `+$0D` points at. They count against the cap but
+   may push it over 6 (a boss arena keeps its adds).
+6. *Camera pushes.* When the camera, not the entity, brings more than 6 into the view (the Boy runs
+   into a crowd), the excess farthest from the Boy is held; exempt ones and anything that hit or was
+   hit in the last 60 frames are kept.
+7. *Lag rule off.* The budget is no longer lowered after missed frames (it would fight rule 4).
+8. *Gate.* Only on field frames with the player in control ([menus-and-gates](menus-and-gates.md));
+   in cutscenes ([cutscenes](cutscenes.md)) every held entity wakes and the tick runs vanilla.
+
+**Why hold = asleep.** It is the state vanilla already puts entities in when its budget is full,
+the wake path restarts the stand animation, and asleep entities get neither AI nor drawing, so
+nothing new runs in the game. Vanilla does it with a hidden entity; here the renderer still shows it.
+
+**Hooks** ([bindings](bindings.md); no hand edits of `src/gen`, no framework change): a variant of
+`entity_sleep_wake` (`$8F:C40F`) that asks the state table instead of the distance windows, and
+of the scheduler tick (`$8F:DC34`) that runs rules 2–7 over all slots. The spawner `$8F:DDBB` stays
+the ROM's. Both bindings come from everscript-vscode's reconstructed C, proven equal to the ROM
+with the switch off before the variant is written (replay 01). Switch `SOE_WS_ALIVE` (E5) gets a
+value `view6`; the cap and the reserve are options of the experimental feature.
+
+**Open (U), to settle before building:**
+
+* Is sleeping a spawner-made entity safe? Vanilla never does it (it returns them, `+$8C` ≠ 0 wakes
+  at once). If not, hold it by returning it to its record at the door, which looks like a despawn in
+  the margin.
+* What `$8F:B0A4` does when no slot is free: a script that fails there may soft-lock a room.
+* Sound: 30 entities' SFX across the room. Mute or pan by distance in `$90:8921` / `$90:88BC` (E2/E5
+  audio mitigation).
+* Frame time: the engine is time-sliced; 30 awake entities may not fit a frame, and the game slows
+  as it would on hardware. Measure per room before deciding on more CPU time per frame.
+* Rooms that open when cleared, kill counters, scripts that wait for an enemy to sleep: the
+  per-room WRAM diff of the E5 test finds them.
+
+**Test.** E5's per-room test, plus a host-side check each frame: admitted ≤ 6 unless an exempt
+entity is in view, free slots ≥ reserve after the tick, and no entity drawn by the game while held.
+Spawner rooms first, then a boss arena and a town.
