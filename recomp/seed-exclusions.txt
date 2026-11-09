@@ -34,3 +34,5 @@ hle 8FA963 HleElevationVectorShearStep body=8FA965 elevation_vector_shear_step, 
 hle 8FA97D HleElevationManhattanDistanceEval body=8FA97F elevation_manhattan_distance_eval, reconstructed-c/8F/8FA97D (G1-rated); C only when it ends before the slice deadline
 hle 8FA999 HleElevationCompassDirectionResolve body=8FA99B elevation_compass_direction_resolve, reconstructed-c/8F/8FA999 (G1-rated); C only when it ends before the slice deadline
 hle 8FC40F HleEntitySleepWake body=8FC411 entity_sleep_wake, reconstructed-c/8F/8FC40F (G1-rated, calls asm: not run as C); the ROM code, or with widescreen E6 on a decision that goes on in it at $C450/$C451/$C4B1
+hle 8EE45C HleFieldTickFreeBegin body=8EE460 per_frame_field_tick's JSL script_scheduler_pass: widescreen E6 starts free time (src/soe_ws_alive.c); the JSL itself runs as the ROM's
+hle 8EE4B0 HleFieldTickFreeEnd body=8EE4B4 per_frame_field_tick's JSL field_spare_time_loop: free time ends; the JSL itself runs as the ROM's

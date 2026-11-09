@@ -12,7 +12,9 @@
  * - where the field's NMI is recognised (nmi-recognition.md, with soe_last_cycle.c);
  * - $4212 bit 7 as the access sees it (vblank-flag-at-access.md).
  * What the PPU and registers lack (DMA during rendering, open bus, 15-bit CGRAM) is in soe_ppu_fixes.c. Only hardware
- * rules belong here, no game: the candidate for upstream (docs/pr/05-frame-driver.md).
+ * rules belong here, no game: the candidate for upstream (docs/pr/05-frame-driver.md). One exception, not part of
+ * that candidate and never on in the reference build: free time (soe_frame_driver_free_time), which game-changing
+ * options of the glue use to let a region of game code cost no emulated time.
  *
  * The game's reset code and its scene loads switch NMI back on inside vblank (MesenCE: the reset code at V=226,
  * 6 times in the first 4 minutes). While NMI is off and the vblank flag is set, the CPU runs one instruction per
@@ -171,7 +173,9 @@ static void slow_apu_to_reference(void) {
  * refresh point itself; this driver charges the stall after the instruction. A refresh point from the instruction's
  * start up to the access comes before it (fitted on 14,780 port reads of the attract run's loads: no exception).
  */
+static bool s_free_apu;
 static uint64_t access_clock(uint64_t start, uint32_t lead) {
+    s_free_apu = true; /* free time: this slice talked to the APU (or synced it) and keeps its time */
     const uint64_t a = start + lead;
     return refresh_points_upto(a) > refresh_points_upto(start - 1) ? a + REFRESH_CLOCKS : a;
 }
@@ -197,6 +201,61 @@ static void refresh_end(void) {
     s_refresh_from = g_cpu.master_cycles;
     snes_refresh_state_set(0, g_cpu.master_cycles);
     slow_apu_to_reference();
+}
+
+/*
+ * Free time: a host feature for game-changing options of the glue (widescreen E6, src/soe_ws_alive.c), never on in
+ * the reference build. Between soe_frame_driver_free_time(true) and (false) the CPU's work costs no time: the beam is
+ * held (snes_beam_hold) and after every slice the clock goes back to where free time began, so no line, NMI, IRQ,
+ * HDMA or refresh sees that work. A slice that touched the APU keeps its time, so a handshake with the sound CPU
+ * still gets its answer (the SPC700 runs on the master clock); free time then goes on from there.
+ * Free time stays two lines clear of the field's vblank: it does not start later than that (the frame runs as usual),
+ * and ends when kept APU time reaches it. So the NMI never comes inside it: the handler waits for the joypad read,
+ * which a held beam never finishes.
+ */
+#define MAX_FREE_SLICES 200000
+static bool s_free;
+static uint64_t s_free_mark, s_free_cycles;
+static int s_free_slices;
+static uint64_t s_free_limit; /* this field's vblank less two lines */
+static struct { unsigned long long rewound, kept, refused; } s_free_stats;
+static void free_mark(void) { s_free_mark = g_cpu.master_cycles; s_free_cycles = g_cpu.cycles; s_free_apu = false; }
+static void free_rewind(void) {
+    if (s_free_apu) {
+        s_free_stats.kept++;
+        free_mark();
+        if (g_cpu.master_cycles >= s_free_limit) { s_free = false; snes_beam_hold(0); } /* the rest of it in real time */
+        return;
+    }
+    s_free_stats.rewound++;
+    g_cpu.master_cycles = s_free_mark;
+    g_cpu.cycles = s_free_cycles;
+    s_refresh_from = s_free_mark;
+    snes_refresh_state_set(0, s_free_mark);
+}
+static void print_free_stats(void) {
+    fprintf(stderr, "[free] %llu slices rewound, %llu kept (APU), %llu starts refused (near vblank)\n",
+            s_free_stats.rewound, s_free_stats.kept, s_free_stats.refused);
+}
+void soe_frame_driver_free_time(bool on) {
+    static int s_debug = -1;
+    if (s_debug < 0) { const char *e = getenv("SOE_FREE_STATS"); s_debug = e && e[0] == '1'; if (s_debug) atexit(print_free_stats); }
+    if (on == s_free) return;
+    if (on) {
+        if (g_cpu.master_cycles >= s_free_limit) { s_free_stats.refused++; return; }
+        free_mark(); s_free = true; s_free_slices = 0; snes_beam_hold(1);
+        return;
+    }
+    free_rewind();
+    s_free = false;
+    snes_beam_hold(0);
+}
+/* After a slice: free time sets the clock back (a runaway region ends free time rather than hang the field). */
+static bool free_slice_end(void) {
+    if (!s_free) return false;
+    if (++s_free_slices > MAX_FREE_SLICES) { fprintf(stderr, "soe_frame_driver: free time ran away at $%06X, off\n", (unsigned)interp_bridge_lle_resume_pc()); soe_frame_driver_free_time(false); return false; }
+    free_rewind();
+    return true;
 }
 
 /*
@@ -456,6 +515,8 @@ void soe_frame_driver_run_frame(void) {
         frame_end = g_snes->beamMasterLast + (to_vblank ? to_vblank : FIELD_CLOCKS);
     }
     soe_compare_pad(g_snes->beamMasterLast);
+    if (s_free) { s_free = false; snes_beam_hold(0); } /* never into a new field */
+    s_free_limit = frame_end > 2u * LINE_CLOCKS ? frame_end - 2u * LINE_CLOCKS : 0;
     if (booting) {
         soe_compare_start_memory();
         s_resume_pc = read_vector(0x00FFFCu);
@@ -507,6 +568,7 @@ void soe_frame_driver_run_frame(void) {
             if (watch) step_end(counted);
             set_deadline(0);
             refresh_end();
+            if (free_slice_end()) slices--; /* free slices do not count against the field's slice budget */
             if (approach) g_interp_bridge_pc_hook = s_bank_stats > 0 ? count_pc : 0;
             update_resume_pc();
             align_beam();

@@ -44,4 +44,4 @@ and `entity_sleep_wake`. `soe_call_rts`/`soe_call_rtl` (everscript-vscode `soe.h
 [game-rtl](../game-rtl.md)) does not hold. Two ways: run the C up to a call and yield into the compiled callee with
 the continuation as its return (as the raycast hands over between steps), or, for E6 only, hook the entry and
 continue in the ROM bytes at the branch the variant chooses (`$C450` RTS, `$C451` sleep, `$C4B1` wake), so the
-switch-off path stays the ROM's. E6 took the second way (2026-11-09); the first is a roadmap item ([roadmap](../roadmap.md) §7).
+switch-off path stays the ROM's. E6 took the second way (2026-11-09; its free time adds two more `hle` lines, `$8E:E45C` and `$8E:E4B0`, that only switch free time and leave the `JSL` to the interpreter); the first is a roadmap item ([roadmap](../roadmap.md) §7).

@@ -114,7 +114,7 @@ in the C are enough (`src/soe_cost.c`). Details: [progress-internal.md](progress
 |---|---|---|
 | 🟡 | **Measure on weaker machines.** About half the time is the PPU's per-pixel renderer; only Apple Silicon is measured | Numbers for one low-end PC and a handheld-class device |
 | 🟢 | **Optional faster mode** if a target falls short, with the accurate build kept as the default | Only after a measured need |
-| 🟢 | **Widescreen E6, whole room at full speed:** E6 keeps the speed by letting far entities sleep (an active area that follows the frame time); the *Always* option keeps all awake at ~55 % speed in `0x38` ([widescreen/enemies.md](widescreen/enemies.md#e6-as-built)). The whole room at full speed needs more CPU per frame: a clock multiplier in the framework (upstream proposal) that leaves the APU's rate alone | The owner wants it; a framework PR |
+| ✅ | **Widescreen E6, whole room at full speed** (2026-11-09): the field tick's script and entity part runs in free time (no emulated time; `soe_frame_driver_free_time`), all 21 enemies of `0x38` awake at full speed ([widescreen/enemies.md](widescreen/enemies.md#e6-as-built)) | Done |
 
 ## 9. Upstream reports for snesrecomp
 

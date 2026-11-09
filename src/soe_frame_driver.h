@@ -23,6 +23,8 @@ uint64_t soe_frame_driver_deadline(void);
 uint64_t soe_frame_driver_hard_deadline(void);
 bool soe_frame_driver_irq_possible(void);
 void soe_frame_driver_settle_refresh(void);
+/* Free time (game-changing options only, e.g. widescreen E6): while on, the CPU's work costs no emulated time. */
+void soe_frame_driver_free_time(bool on);
 
 /* For soe_ppu_fixes.c: where this field's line 225 began, the DRAM refresh points from there up to a clock, and the
  * last instruction the CPU started (0: none recorded in this slice). */

@@ -74,7 +74,7 @@ uint16_t soe_multiply(uint16_t factors) {
 
 enum {
     RNG, PLANE, TILE, POOL, DEPTH, RAY, SPARE, WAIT, DMA, ANIM, OAM_INSERT, SPRITE_SORT, DIR_PAIR, ANIM_START, WAYPOINT_POLL,
-    AUDIO_FADE, SHEAR_STEP, MANHATTAN_DIST, COMPASS_DIR, SLEEP_WAKE,
+    AUDIO_FADE, SHEAR_STEP, MANHATTAN_DIST, COMPASS_DIR, SLEEP_WAKE, FREE_BEGIN, FREE_END,
     BINDINGS
 };
 static struct { const char *name; unsigned long long c, across, compiled; bool mutate; } s_bind[BINDINGS] = {
@@ -86,6 +86,7 @@ static struct { const char *name; unsigned long long c, across, compiled; bool m
     { "direction_index_from_signed_byte_pair" }, { "anim_start_record" }, { "companion_waypoint_history_poll" },
     { "audio_master_volume_fade_tick" }, { "elevation_vector_shear_step" },
     { "elevation_manhattan_distance_eval" }, { "elevation_compass_direction_resolve" }, { "entity_sleep_wake" },
+    { "field_tick_free_begin" }, { "field_tick_free_end" },
 };
 static int s_stats = -1;
 static void print_stats(void) {
@@ -710,6 +711,7 @@ static void spare_first(CpuState *cpu) {
  */
 RecompReturn HleSpareTime(CpuState *cpu) {
     stats_init();
+    soe_frame_driver_free_time(false);
     if (!interp_bridge_in_lle_scheduler()) {
         fprintf(stderr, "soe_bindings: field_spare_time_loop outside the scheduler\n");
         abort();
@@ -773,6 +775,7 @@ static void wait_first(CpuState *cpu) {
  */
 RecompReturn HleWaitForNmi(CpuState *cpu) {
     stats_init();
+    soe_frame_driver_free_time(false);
     if (!interp_bridge_in_lle_scheduler()) {
         fprintf(stderr, "soe_bindings: wait_for_nmi outside the scheduler\n");
         abort();
@@ -1228,4 +1231,23 @@ RecompReturn HleEntitySleepWake(CpuState *cpu) {
         }
     }
     return run_rom_bytes_frame(cpu, SLEEP_WAKE, 0xC40F, 0xC411, plain ? sort_first : NULL, 2);
+}
+
+/*
+ * Free time for widescreen E6 (src/soe_ws_alive.c, docs/widescreen/enemies.md "E6 as built"): the script and entity
+ * part of per_frame_field_tick, from its JSL script_scheduler_pass at $8E:E45C to its JSL field_spare_time_loop at
+ * $8E:E4B0, costs no emulated time while E6 is on, so every enemy of a room fits a frame. A wait for the NMI inside it
+ * (HleWaitForNmi, HleSpareTime) ends free time first: time has to pass there.
+ * Both helpers only switch free time (soe_frame_driver.c) and leave the JSL to the interpreter (no compiled code at a
+ * bound entry): with E6 off they are the ROM's instructions, exactly.
+ */
+RecompReturn HleFieldTickFreeBegin(CpuState *cpu) {
+    stats_init();
+    if (SoeAliveFreeTime()) { soe_frame_driver_free_time(true); s_bind[FREE_BEGIN].c++; }
+    return run_rom_bytes(cpu, FREE_BEGIN, 0xE45C, 0xE460, NULL);
+}
+RecompReturn HleFieldTickFreeEnd(CpuState *cpu) {
+    stats_init();
+    soe_frame_driver_free_time(false);
+    return run_rom_bytes(cpu, FREE_END, 0xE4B0, 0xE4B4, NULL);
 }
