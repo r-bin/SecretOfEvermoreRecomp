@@ -48,6 +48,7 @@ add_executable(SecretOfEvermoreSNESRecomp
     src/soe_cost.c
     src/soe_mesen_state.c
     src/soe_widescreen.c
+    src/soe_ws_sprites.c
     src/gen_stubs.c
 )
 

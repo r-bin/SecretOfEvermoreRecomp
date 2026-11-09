@@ -13,11 +13,11 @@ files here; what the MMX recomp and SoE-Recomp taught us: [other-recomps](other-
 | 3 | HUD placement (vanilla / edges / safe area) | open | [hud-and-adaptive-ui](hud-and-adaptive-ui.md) |
 | 4 | Edges option (clip / mirror / extend), small rooms | open (clip to the camera limits is in step 1) | [backgrounds-and-parallax](backgrounds-and-parallax.md), [camera-and-limits](camera-and-limits.md) |
 | 5 | Fog of war | open | [fog-of-war](fog-of-war.md) |
-| 6 | Hybrid ghosts | open | [modes](modes.md) |
+| 6 | **Vanilla extended**: entities drawn in the margins from WRAM; then ghosts for not-yet-active entities | entities done (`src/soe_ws_sprites.c`); never-activated entities (no frame yet) and ghosts open | [modes](modes.md) |
 | 7 | Settings as a mod package, pixel aspect, adaptive | done: package `soe.enhancement.widescreen` (view, room edges); more options as their steps land | `mods/preloaded/packages/`, [README](README.md#settings) |
 | 8 | Floating menu window, Mode 7 | open | [menus-and-gates](menus-and-gates.md), [mode7](mode7.md) |
 | 9 | Experiments E1..E5 | after the bound C of each consumer | [modes](modes.md), [bindings](bindings.md) |
-| 10 | Own field renderer: any width **and height**, full control of what the view shows | open | below |
+| 10 | **Experimental**: own field renderer, any width **and height**, full control of what the view shows | open, next | below |
 
 ## Step 1: what the first approach does
 
@@ -70,9 +70,21 @@ framework change, no guest write.
   (`$0ADB`). Kill switch `SOE_WS_PREFILL=0`. `SOE_WS_CHECK=1` compares the rule with the game's
   own tilemap words for the cells on screen; `SOE_WS_DEBUG=1` prints the gate and the
   framework's margin statistics every 60 frames.
-* **Sprites:** unchanged. The game never places one at X ≥ 256, so enemies appear at the old
-  edge on the right; on the left, sprites partly off screen show in the margin. Fixing that
-  asymmetry is step 3/6 work (clip OBJ to the 256 px centre or widen on purpose).
+* **Modes** (mod option *Mode*; both keep WRAM identical to no widescreen):
+  * **Vanilla:** sprites exactly as the game draws them. The game never places one at X ≥ 256 and
+    lets far entities sleep, so characters appear at the old edge.
+  * **Vanilla extended** (default): `src/soe_ws_sprites.c` also draws, in the margins only, every
+    entity of the awake and asleep lists (`$3DDF`, `$3DE1`), the Boy, the Dog and the projectiles
+    (`$6387`), from their current frame pointer (`+$06`/`+$09`), palette slot (`+$0C`), hide flags
+    (`+$12`) and the canopy priority of `$8F:C773`. The frame is decoded from the ROM (sprite record →
+    chunks → 8×8/16×16 blocks, as `$80:9033` does; everscript-vscode `maps/sprites.ts`) and handed to
+    the PPU as extra objects (`PpuSetExtraObjects`): composed like OBJ under every native entry, with
+    live CGRAM colours. Drawn from the snapshot of the previous frame, because that is the state the
+    drawn field shows. Map objects, opened chests and cut grass are tiles of the room grid and come
+    with the margin prefill.
+  * **Experimental:** step 10 (own renderer).
+  `SOE_WS_MODE=vanilla|extended` overrides; `SOE_WS_SPRITES_CENTER=1` draws the extras in the centre
+  too (under native OAM) and `SOE_WS_SPRITES_SHIFT=<px>` shifts them, to check placement.
 
 ## Any resolution: where the framework stops
 
@@ -112,3 +124,6 @@ viewport" lives (fog, ghosts, HUD placement, floating menus become passes of one
 | 2026-11-09 | Mod package, headless with a `state.toml`: no selection / 21:9 + camera limits / adaptive + whole room (hut `0x51`) | 256 px (off) / 448 px / 342 px with the neighbouring hut in the left margin, black past the room's right edge |
 | 2026-11-09 | `ctest -R replay` on `86f1dc1` (with the bindings of that commit) | `replay_01_recorded`, `replay_01_widescreen`, `replay_02_recorded`, `replay_02_widescreen` pass: widescreen at 21:9 matches MesenCE byte for byte through all 396 checkpoints of 02. Wall time varies with load (02: 35 s alone, 337 s / 982 s beside a running game; ~55 s CPU each) |
 | 2026-11-09 | Village walk from the user's save (left, up, right, down), 16:9, whole room | game advances (`$0B19` 36577 → 37561), on vs off identical at 5 dumps, picture clean. The garbage/freeze seen earlier came from the uncommitted bindings of the time, not widescreen |
+| 2026-11-09 | Vanilla extended, village walk: guest state vs widescreen off (5 dumps; vanilla, extended, extended with centre check) | identical |
+| 2026-11-09 | Placement: extras drawn in the centre under native OAM vs the vanilla picture, 7 frames | 0 differing pixels; control with a 8 px shift: 361–1083 per frame. Position, frame timing, palette and priority match the game's own sprites |
+| 2026-11-09 | 32:9 village frame, vanilla vs extended | extended shows a villager in the left margin that vanilla does not draw |

@@ -45,6 +45,20 @@ label = "32:9"
 
 [[option]]
 feature = "widescreen"
+id = "mode"
+label = "Mode"
+description = "Both keep the game exactly as in 4:3. Vanilla shows what the game draws: characters appear at the old screen edge. Vanilla extended also draws, in the margins, the characters and projectiles the game keeps in memory but does not draw there."
+type = "choice"
+default = "extended"
+[[option.choice]]
+value = "vanilla"
+label = "Vanilla"
+[[option.choice]]
+value = "extended"
+label = "Vanilla extended"
+
+[[option]]
+feature = "widescreen"
 id = "edges"
 label = "Room edges"
 description = "Camera limits shows only the part of the map the game shows (one hut of a hut map); Whole room shows everything the room's map holds."

@@ -25,6 +25,7 @@
  * with the game's own tilemap words for the on-screen cells and prints the result.
  */
 #include "soe_widescreen.h"
+#include "soe_ws_sprites.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -69,7 +70,7 @@ static int EnvFlag(const char *name, int dflt)
 enum Edges { kEdgesLimits, kEdgesRoom, kEdgesOff };
 
 /* Settings from the mod, read on activation. */
-static struct { int on; char aspect[16]; enum Edges edges; } s_mod;
+static struct { int on; char aspect[16]; enum Edges edges; int extended; } s_mod;
 
 /* The mod alone decides; the legacy config flag `Widescreen` is not read. */
 static void ModReset(void)
@@ -88,6 +89,10 @@ static void ModActivate(void)
     if (snes_mod_runtime_feature_option_value_c(kModPackage, kModFeature, "edges", v, sizeof v) &&
         !strcmp(v, "room"))
         s_mod.edges = kEdgesRoom;
+    s_mod.extended = 1;
+    if (snes_mod_runtime_feature_option_value_c(kModPackage, kModFeature, "mode", v, sizeof v) &&
+        !strcmp(v, "vanilla"))
+        s_mod.extended = 0;
 }
 
 /* Presentation only: this code changes what is drawn and touches no CPU, WRAM, VRAM, OAM,
@@ -105,6 +110,15 @@ static int Enabled(void)
     const char *v = getenv("SOE_WIDESCREEN");
     if (v && *v) return atoi(v) != 0;
     return s_mod.on || snes_mod_runtime_feature_enabled_c(kModPackage, kModFeature);
+}
+
+/* Vanilla extended: entities drawn in the margins from WRAM (src/soe_ws_sprites.c). SOE_WS_MODE
+ * = vanilla|extended overrides the mod. */
+static int ExtendedMode(void)
+{
+    const char *v = getenv("SOE_WS_MODE");
+    if (v && *v) return strcmp(v, "vanilla") != 0;
+    return s_mod.extended;
 }
 
 static enum Edges EdgesMode(void)
@@ -245,6 +259,7 @@ void SoeWsBeginFrame(unsigned number)
     uint16_t room = Ram16(kRoomId);
     if (room != s_room) {
         WsShadowReset();
+        SoeWsSpritesReset();
         s_room = room;
     }
 
@@ -254,6 +269,7 @@ void SoeWsBeginFrame(unsigned number)
                 g_ws_extra);
     if (!IsFieldFrame()) {
         PpuSetExtraSideSpace(g_ppu, 0, 0, 0);   /* pillarbox */
+        SoeWsSpritesReset();
         return;
     }
 
@@ -274,6 +290,7 @@ void SoeWsBeginFrame(unsigned number)
     }
     PpuSetExtraSideSpace(g_ppu, left, right, 0);
     s_left = left, s_right = right;
+    SoeWsSpritesFrame(ExtendedMode(), cam_x, cam_y, left, right);
 
     if (!EnvFlag("SOE_WS_PREFILL", 1) || cells_w == 0) return;
     WsShadowSetWorld(0, (uint32_t)bg1_x, (uint32_t)bg1_y);
