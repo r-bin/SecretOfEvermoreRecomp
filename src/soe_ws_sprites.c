@@ -29,9 +29,10 @@
  *                 its script's first set-sprite command (0x22..0x2B: bank = cmd + $A8) is the frame
  *                 (everscript-vscode maps/character-animation.ts, resolveCharacterSprite)
  *   ghosts        widescreen E6 only: a spawn record (60 at $5DC3, 16 bytes) with a count left (+$0C) is drawn at
- *                 its point (+$02/+$04) as a stippled dark silhouette of its character's standing frame (record
- *                 +$00), in the margins only: when it spawns there the enemy takes its place; one that has not
- *                 spawned when the 4:3 view reaches it simply is not drawn there
+ *                 its point (+$02/+$04) as a dark silhouette of its character's standing frame (record +$00),
+ *                 thinned by an ordered dither whose density follows the screen distance from the 4:3 edge (half
+ *                 from 32 px out, none at the edge): it fades out as it comes into the 4:3 view and back in as it
+ *                 leaves; when it spawns, the enemy takes its place
  *
  * Timing: the field drawn at begin_sim_frame shows the OAM built a frame earlier, while WRAM already
  * holds the next positions. So each frame draws the snapshot taken at the previous call, against
@@ -54,6 +55,7 @@ enum {
     kProjectiles = 0x6387, kProjectileCount = 8, kProjectileStride = 44,
     kSpawnFirst = 0x5DC3, kSpawnEnd = 0x6183, kSpawnStride = 0x10,
     kGhostColour = 0x1084,   /* BGR555 dark grey of a ghost's pixels */
+    kGhostFade = 32,         /* px outside the 4:3 view over which a ghost fades in */
     kMaxItems = 96,          /* sprites (main, shadow, projectile, ghost) per frame */
     kMaxSide = 128,          /* largest sprite edge drawn */
 };
@@ -315,7 +317,6 @@ static int Compose(const Item *it, int grey, uint16_t *px, int *ox, int *oy, int
                 int v = ix[((flags & 0x80) ? size - 1 - r : r) * size + ((flags & 0x40) ? size - 1 - q : q)];
                 if (!v) continue;
                 const int dx = cx - x0 + q, dy = cy - y0 + r;
-                if (it->ghost && ((dx + dy) & 1)) continue;   /* stipple: every other pixel */
                 uint16_t bgr = it->ghost ? kGhostColour : g_ppu->cgram[128 + pal * 16 + v] & 0x7FFF;
                 if (grey && !it->ghost) bgr = Grey(bgr);
                 px[dy * (*w) + dx] = (uint16_t)(0x8000 | bgr);
@@ -323,6 +324,20 @@ static int Compose(const Item *it, int grey, uint16_t *px, int *ox, int *oy, int
     }
     *ox = -x0, *oy = -y0;
     return 1;
+}
+
+/* A ghost's opacity as a 4x4 ordered dither in screen space, so the pattern stays put while it moves: a pixel stays
+ * where the Bayer threshold is below its density, half at kGhostFade px or more outside the 4:3 view, none inside. */
+static void GhostFade(uint16_t *px, int w, int h, int sx, int sy)
+{
+    static const uint8_t kBayer[4][4] = { { 0, 8, 2, 10 }, { 12, 4, 14, 6 }, { 3, 11, 1, 9 }, { 15, 7, 13, 5 } };
+    for (int r = 0; r < h; r++)
+        for (int q = 0; q < w; q++) {
+            const int x = sx + q, y = sy + r;
+            const int out = x < 0 ? -x : x >= 256 ? x - 255 : 0;
+            const int density = (out >= kGhostFade ? kGhostFade : out) * 8 / kGhostFade;   /* of 16 */
+            if (kBayer[y & 3][x & 3] >= density) px[r * w + q] = 0;
+        }
 }
 
 void SoeWsSpritesReset(void)
@@ -362,6 +377,7 @@ void SoeWsSpritesFrame(int enabled, int grey, int ghosts, int cam_x, int cam_y, 
             for (int r = 0; r < h; r++)
                 for (int q = 0; q < w; q++)
                     if (sx + q >= 0 && sx + q < 256) px[r * w + q] = 0;
+            if (it->ghost) GhostFade(px, w, h, sx, sy);
             PpuExtraObject *o = &s_objects[drawn];
             o->x = sx, o->y = sy;
             o->width = (uint16_t)w, o->height = (uint16_t)h, o->stride = (uint16_t)w;

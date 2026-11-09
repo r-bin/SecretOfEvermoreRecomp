@@ -196,26 +196,32 @@ Spawner rooms first, then a boss arena and a town.
 ### E6 as built
 
 `src/soe_ws_alive.c` (decisions), `HleEntitySleepWake`, `HleFieldTickFree*`, `HleAiPickTarget`,
-`HleEnemyAiCheckAggro`, `HleAiStationaryPlayer`, `HleSpawnerSpawn` in `src/soe_bindings.c` (hooks), free time in
+`HleEnemyAiCheckAggro`, `HleAiStationaryPlayer`, `HleSpawner`, `HleSpawnerSpawn` in `src/soe_bindings.c` (hooks), free time in
 `src/soe_frame_driver.c`. Only the launcher's *Widescreen (experimental)* turns it on; `SOE_WS_ALIVE=0` is the kill
 switch (`tests/replay_recorded.sh` sets it), `SOE_WS_FREE=0` switches off only the free time. Options: *Crowd in the
 4:3 view* (3–30, default 6), *Count* (everyone / enemies only). Test knobs: `SOE_WS_ALIVE_RESERVE`,
 `SOE_WS_ALIVE_DEBUG=1`, `SOE_FREE_STATS=1`, `SOE_WS_ALIVE_AFTER=<$0B19>` (E6 off until that logic frame, so a vanilla
 replay stays in sync up to there).
 
-* **Spawners as in vanilla, with a density gate and ghosts** (owner, 2026-11-10: a walk through the map should feel
-  like vanilla's; filling the room on entry put 20 enemies in front of the player). The ROM's spawner decides when and
-  where (timer, the ring 16..48 px off the 4:3 screen). `hle_func` at its spawn step `$8F:DE43`: with E6 on, a record
-  with 4 or more spawner-made enemies (`+$8C` ≠ 0, alive) in a 256 × 224 box around its point is skipped (the ROM goes
-  on at `$DE3B`, its loop's next record, same stack). Vanilla keeps that number down with its budget and by taking far
-  ones back; E6 takes nobody back, so the gate keeps it sparse locally, and walking through again spawns more where it
-  is thin. Records with a count left are drawn as **ghosts** in the margins (`src/soe_ws_sprites.c`): a stippled dark
-  silhouette of the character's standing frame at the point; when it spawns, the enemy takes its place; inside the 4:3
-  view no ghost is drawn, so one that does not spawn there just is not seen. Checked with synthetic records in `0x38`
-  (no spawner room is reachable from replay 06's save; the village guards its east exit): a count-6 record in the ring
-  spawned on vanilla's timers (60–90 frames apart) and stopped at 4; a record outside the ring stayed a ghost in the
-  32:9 margin (frame dump). Superseded: filling the room during the first 90 frames, and later spawns anywhere out of
-  sight (2026-11-09).
+* **Spawners: load with the room, then as in vanilla, gated by crowding; ghosts** (owner, 2026-11-10). A record's
+  4:3-sized box (256 × 224 around its point) is *full* with `cap` − 2 enemies (4: vanilla's budget less the Boy and
+  the Dog; `cap` with Count = enemies only), placed or spawned, alive, not friendly.
+  * *Room load* (its first 90 logic frames, the fade-in): `hle_func` at the spawner `$8F:DDBB` spawns, one per frame,
+    every record whose box is not full, wherever its point is (the helper does `INC $6185` and the `PHA` that the ROM's
+    spawn code at `$DE43` pulls; at a bound entry the interpreter runs those ROM bytes).
+  * *Afterwards* the ROM decides when and where (timer, the ring 16..48 px off the 4:3 screen), and `hle_func` at its
+    spawn step `$8F:DE43` skips a record (on at `$DE3B`, the loop's next record, same stack) while its box is full or the
+    player's 4:3 view holds `cap` characters (counted as for aggro). E6 takes nobody back, so walking through again
+    spawns more only where it is thin.
+  * *Ghosts* (`src/soe_ws_sprites.c`): every record with a count left is drawn in the margins as a dark silhouette of its
+    character's first standing frame (a Wimpy Flower's is its burrowed patch), thinned by a 4×4 ordered dither whose
+    density follows the screen distance from the 4:3 edge (half from 32 px out, none at the edge), so it fades out as
+    it comes into the 4:3 view and back in as it leaves; when it spawns, the enemy takes its place.
+  * Checked with synthetic records in `0x38` (no spawner room is reachable from replay 06's save; the village guards its
+    east exit): poked during the load, a count-6 record at a sparse point spawned 3 (box at 4), one at a full point none;
+    poked later, records off the ring stayed ghosts, at 74 px out at half density, at 6 px out nearly invisible (32:9
+    frame dump). Superseded: spawns anywhere out of sight after the load (2026-11-09); a gate counting only spawned
+    enemies, no load spawning and a plain 50 % stipple (2026-11-10).
 
 * **Nobody sleeps.** `hle_func` at `$8F:C40F`: E6 off, the ROM routine; on, the helper does `LDY $4C` and the ROM code
   goes on at `$C450` (RTS: an awake entity stays awake) or `$C4B1` (wake). Asleep with `+$10 & $0078`, HP 0,

@@ -74,7 +74,7 @@ uint16_t soe_multiply(uint16_t factors) {
 
 enum {
     RNG, PLANE, TILE, POOL, DEPTH, RAY, SPARE, WAIT, DMA, ANIM, OAM_INSERT, SPRITE_SORT, DIR_PAIR, ANIM_START, WAYPOINT_POLL,
-    AUDIO_FADE, SHEAR_STEP, MANHATTAN_DIST, COMPASS_DIR, SLEEP_WAKE, FREE_BEGIN, FREE_END, PICK_TARGET, CHECK_AGGRO, STATIONARY_PLAYER, SPAWNER,
+    AUDIO_FADE, SHEAR_STEP, MANHATTAN_DIST, COMPASS_DIR, SLEEP_WAKE, FREE_BEGIN, FREE_END, PICK_TARGET, CHECK_AGGRO, STATIONARY_PLAYER, SPAWNER, SPAWN_STEP,
     BINDINGS
 };
 static struct { const char *name; unsigned long long c, across, compiled; bool mutate; } s_bind[BINDINGS] = {
@@ -87,7 +87,7 @@ static struct { const char *name; unsigned long long c, across, compiled; bool m
     { "audio_master_volume_fade_tick" }, { "elevation_vector_shear_step" },
     { "elevation_manhattan_distance_eval" }, { "elevation_compass_direction_resolve" }, { "entity_sleep_wake" },
     { "field_tick_free_begin" }, { "field_tick_free_end" },
-    { "ai_pick_target" }, { "enemy_ai_check_aggro" }, { "ai_stationary_player" }, { "spawner" },
+    { "ai_pick_target" }, { "enemy_ai_check_aggro" }, { "ai_stationary_player" }, { "spawner" }, { "spawner_spawn_step" },
 };
 static int s_stats = -1;
 static void print_stats(void) {
@@ -1301,18 +1301,52 @@ RecompReturn HleEnemyAiCheckAggro(CpuState *cpu) { return aggro_gate(cpu, CHECK_
 RecompReturn HleAiStationaryPlayer(CpuState *cpu) { return aggro_gate(cpu, STATIONARY_PLAYER, 0xD715, 0xD718, 0xD766, stamina_first); }
 
 /*
+ * $8F:DDBB, the spawner (dog_foraging_ingredient_node_spawn_dice; RTL). During a room's load with widescreen E6 on the
+ * record is E6's (src/soe_ws_alive.c, SoeAliveSpawnPick): the helper does what the ROM does before a spawn (INC $6185,
+ * PHA of the loop count) and the ROM code spawns it from $DE43 (PLA, then the record in X; at a bound entry the
+ * interpreter runs the ROM bytes, not HleSpawnerSpawn); with no record it returns. E6 runs here in free time, so no
+ * cycles are charged. Otherwise the ROM routine (its first instruction interpreted).
+ */
+RecompReturn HleSpawner(CpuState *cpu) {
+    stats_init();
+    const bool plain = wide_a(cpu) && !cpu->x_flag && cpu->DB == 0x7E && cpu->S > 4;
+    if (plain && interp_bridge_in_lle_scheduler() && !interp_bridge_lle_master_deadline_reached(cpu)) {
+        const uint16_t rec = SoeAliveSpawnPick();
+        if (rec != kAliveSpawnRom) {
+            const uint16_t scans = (uint16_t)((g_ram[0x6185] | g_ram[0x6186] << 8) + 1);
+            g_ram[0x6185] = (uint8_t)scans;
+            g_ram[0x6186] = (uint8_t)(scans >> 8);
+            if (!rec) return leave_rtl(cpu);
+            s_bind[SPAWNER].c++;
+            g_ram[cpu->S] = 0x00;                                       /* PHA #$000A, the loop count $DE43 pulls */
+            g_ram[(uint16_t)(cpu->S - 1)] = 0x0A;
+            cpu->S = (uint16_t)(cpu->S - 2);
+            cpu->A = 0x000A;
+            cpu->X = rec;
+            return interp_bridge_lle_yield_unwind(cpu, (uint32_t)cpu->PB << 16 | 0xDE43);
+        }
+    }
+    return run_rom_bytes(cpu, SPAWNER, 0xDDBB, 0xDDBE, NULL);
+}
+
+/*
  * $8F:DE43, the spawner's spawn step (PLA of its loop count, then the record in X is spawned). With widescreen E6 on a
- * record with too many spawned enemies around its point (src/soe_ws_alive.c, SoeAliveSpawnAllowed) is skipped: the ROM
- * code goes on at $DE3B, where the loop goes on to its next record (PLA, DEC, ...) with the same stack. Otherwise the
- * ROM's instruction (interpreted at a bound entry).
+ * record whose box is full, or any while the 4:3 view is crowded (src/soe_ws_alive.c, SoeAliveSpawnAllowed), is
+ * skipped: the ROM code goes on at $DE3B, where the loop goes on to its next record (PLA, DEC, ...) with the same stack.
+ * Otherwise the ROM's instruction (interpreted at a bound entry).
  */
 RecompReturn HleSpawnerSpawn(CpuState *cpu) {
     stats_init();
-    const bool plain = wide_a(cpu) && !cpu->x_flag && cpu->DB == 0x7E;
-    if (plain && interp_bridge_in_lle_scheduler() && !interp_bridge_lle_master_deadline_reached(cpu)
-        && !SoeAliveSpawnAllowed(cpu->X)) {
-        s_bind[SPAWNER].c++;
-        return interp_bridge_lle_yield_unwind(cpu, (uint32_t)cpu->PB << 16 | 0xDE3B);
+    const bool plain = wide_a(cpu) && !cpu->x_flag && cpu->DB == 0x7E && dp_in_wram(cpu, 0x5C);
+    if (plain && interp_bridge_in_lle_scheduler() && !interp_bridge_lle_master_deadline_reached(cpu)) {
+        const uint16_t d = cpu->D;
+#define DP_WORD(o) (uint16_t)(g_ram[(uint16_t)(d + (o))] | g_ram[(uint16_t)(d + (o) + 1)] << 8)
+        const int allowed = SoeAliveSpawnAllowed(cpu->X, DP_WORD(0x59), DP_WORD(0x5B));
+#undef DP_WORD
+        if (!allowed) {
+            s_bind[SPAWN_STEP].c++;
+            return interp_bridge_lle_yield_unwind(cpu, (uint32_t)cpu->PB << 16 | 0xDE3B);
+        }
     }
-    return run_rom_bytes(cpu, SPAWNER, 0xDE43, 0xDE44, NULL);
+    return run_rom_bytes(cpu, SPAWN_STEP, 0xDE43, 0xDE44, NULL);
 }

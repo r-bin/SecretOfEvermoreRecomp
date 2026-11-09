@@ -39,4 +39,5 @@ hle 8EE4B0 HleFieldTickFreeEnd body=8EE4B4 per_frame_field_tick's JSL field_spar
 hle 8FD879 HleAiPickTarget body=8FD87C ai_pick_target: widescreen E6's aggro cap goes on at its "no target" exit $D911 (src/soe_ws_alive.c); else the ROM's
 hle 8FD69B HleEnemyAiCheckAggro body=8FD69E enemy_ai_check_aggro: widescreen E6's aggro cap goes on at its "no aggro" exit $D6C9; else the ROM's
 hle 8FD715 HleAiStationaryPlayer body=8FD718 ai_stationary_player: widescreen E6's aggro cap goes on at its "no aggro" exit $D766; else the ROM's
-hle 8FDE43 HleSpawnerSpawn body=8FDE44 the spawner's spawn step: widescreen E6 skips a record with 4 spawned enemies around its point (on at $DE3B, the loop's next record); else the ROM's
+hle 8FDDBB HleSpawner body=8FDDBE the spawner: during a room's load widescreen E6 picks the record (every one whose 4:3 box is not full) and the ROM spawns it from $DE43; else the ROM's
+hle 8FDE43 HleSpawnerSpawn body=8FDE44 the spawner's spawn step: widescreen E6 skips a record whose 4:3 box is full or while the player's 4:3 view is crowded (on at $DE3B, the loop's next record); else the ROM's

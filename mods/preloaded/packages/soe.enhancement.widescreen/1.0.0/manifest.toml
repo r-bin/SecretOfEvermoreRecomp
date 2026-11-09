@@ -31,7 +31,7 @@ presentation_only = true
 [[feature]]
 id = "experimental"
 name = "Widescreen (experimental)"
-description = "Like vanilla extended, and the whole room is alive: every enemy and character keeps moving wherever it is, at full speed (their logic gets extra time the SNES never had). Spawners work as in vanilla, but stop while 4 spawned enemies stand around them; enemies still to come show as shadows in the margins. Enemies outside the old 4:3 view only come for you while it holds fewer than a set number of characters. Changes the game: battles and timings differ from 4:3 (src/soe_ws_alive.c)."
+description = "Like vanilla extended, and the whole room is alive: every enemy and character keeps moving wherever it is, at full speed (their logic gets extra time the SNES never had). Spawners fill the room as it loads where it is not crowded, then work as in vanilla but not while your 4:3 view is crowded; enemies still to come show as shadows in the margins that fade out near the 4:3 view. Enemies outside the old 4:3 view only come for you while it holds fewer than a set number of characters. Changes the game: battles and timings differ from 4:3 (src/soe_ws_alive.c)."
 group = "Display"
 default_enabled = false
 

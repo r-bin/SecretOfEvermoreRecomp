@@ -28,9 +28,13 @@ int SoeAliveFreeTime(void);
  * ($59/$5B), outside it only while fewer than `cap` characters are in the view. 1 whenever E6 is off. */
 int SoeAliveMayAggro(uint16_t slot, uint16_t cam_x, uint16_t cam_y);
 
-/* Whether the spawner may spawn spawn record `record` ($5DC3..) now: fewer than 4 spawner-made enemies around its
- * point. 1 whenever E6 is off. */
-int SoeAliveSpawnAllowed(uint16_t record);
+/* Whether the spawner's spawn step may spawn record `record` ($5DC3..) now: its box is not full and the 4:3 view at
+ * `cam_x`/`cam_y` holds fewer than `cap` characters. 1 whenever E6 is off. */
+int SoeAliveSpawnAllowed(uint16_t record, uint16_t cam_x, uint16_t cam_y);
+/* During a room's load (its first 90 logic frames): the record the spawner $8F:DDBB should spawn now, 0 for none this
+ * frame. kAliveSpawnRom when E6 is off or the room has loaded (the ROM's spawner runs). */
+enum { kAliveSpawnRom = 0xFFFF };
+uint16_t SoeAliveSpawnPick(void);
 /* Once per field frame, from the start of free time: keeps the budget $1076 where E6 wants it. */
 void SoeAliveFrame(void);
 
