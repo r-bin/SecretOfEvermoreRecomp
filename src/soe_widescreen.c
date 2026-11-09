@@ -39,8 +39,6 @@
 enum {
     kBank7F = 0x10000,      /* g_ram offset of $7F:0000 */
     kRoomId = 0x0ADB,
-    kCameraX = 0x0059,      /* rendered camera, DP */
-    kCameraY = 0x005B,
     kRoomCellsW = 0x08EE,
     kRoomCellsH = 0x08F0,
     kLimitLeft = 0x23E9,
@@ -169,9 +167,22 @@ static void PrefillColumns(int x0, int x1, int cam_y, int cells_w, int cells_h)
     }
 }
 
+/* The scroll the PPU draws this field with, in room pixels. The NMI loaded the PPU from the
+ * shadows before this field ran; the shadows in WRAM already hold the next frame's camera, so
+ * using them puts the margins a frame ahead of the centre (a seam while scrolling, rule P1).
+ * The registers are 10 bits; the shadow supplies the high bits. */
+static int DrawnScroll(uint16_t ppu_scroll, uint16_t shadow)
+{
+    int delta = (int)((ppu_scroll - shadow + 512) & 1023) - 512;
+    return (int16_t)shadow + delta;
+}
+
+/* Margin columns drawn this frame; the rest of the margin is cleared in SoeWsEndFrame. */
+static int s_left, s_right;
+
 void SoeWsBeginFrame(unsigned number)
 {
-    (void)number;
+    s_left = s_right = 0;
     if (!g_ppu || g_ws_extra <= 0) return;
 
     static uint16_t s_room = 0xffff;
@@ -190,7 +201,12 @@ void SoeWsBeginFrame(unsigned number)
         return;
     }
 
-    int cam_x = (int16_t)Ram16(kCameraX), cam_y = (int16_t)Ram16(kCameraY);
+    int bg1_x = DrawnScroll(g_ppu->hScroll[0], Ram16(kScrollBg1H));
+    int bg1_y = DrawnScroll(g_ppu->vScroll[0], Ram16(kScrollBg1V));
+    int bg2_x = DrawnScroll(g_ppu->hScroll[1], Ram16(kScrollBg2H));
+    int bg2_y = DrawnScroll(g_ppu->vScroll[1], Ram16(kScrollBg2V));
+    /* Camera mode 0: BG2 scroll = camera, vertical one line less. */
+    int cam_x = bg2_x, cam_y = bg2_y + 1;
     int cells_w = g_ram[kRoomCellsW], cells_h = Ram16(kRoomCellsH);
     int left = g_ws_extra, right = g_ws_extra;
     if (EnvFlag("SOE_WS_EDGES", 1)) {
@@ -198,10 +214,11 @@ void SoeWsBeginFrame(unsigned number)
         right = Clamp((int16_t)Ram16(kLimitRight) - (cam_x + 256), 0, g_ws_extra);
     }
     PpuSetExtraSideSpace(g_ppu, left, right, 0);
+    s_left = left, s_right = right;
 
     if (!EnvFlag("SOE_WS_PREFILL", 1) || cells_w == 0) return;
-    WsShadowSetWorld(0, Ram16(kScrollBg1H), Ram16(kScrollBg1V));
-    WsShadowSetWorld(1, Ram16(kScrollBg2H), Ram16(kScrollBg2V));
+    WsShadowSetWorld(0, (uint32_t)bg1_x, (uint32_t)bg1_y);
+    WsShadowSetWorld(1, (uint32_t)bg2_x, (uint32_t)bg2_y);
     WsShadowFrame(g_ppu);
     PrefillColumns(cam_x - left, cam_x, cam_y, cells_w, cells_h);
     PrefillColumns(cam_x + 256, cam_x + 256 + right, cam_y, cells_w, cells_h);
@@ -213,5 +230,21 @@ void SoeWsBeginFrame(unsigned number)
                 (unsigned long long)st.westHit, (unsigned long long)st.westMiss, (unsigned long long)st.eastHit,
                 (unsigned long long)st.eastMiss, (unsigned long long)st.prefillSeed,
                 (unsigned long long)st.westRawFallback, (unsigned long long)st.eastRawFallback);
+    }
+}
+
+/* The PPU leaves margin columns it was not asked to draw untouched, so they kept old pixels
+ * (smeared rows past a room edge). Black them: outside the room there is nothing to show. */
+void SoeWsEndFrame(const uint8_t *field, unsigned number)
+{
+    (void)number;
+    if (!field || g_ws_extra <= 0) return;
+    const int width = 256 + 2 * g_ws_extra;
+    uint32_t *px = (uint32_t *)(uintptr_t)field;
+    const int left_black = g_ws_extra - s_left, right_from = g_ws_extra + 256 + s_right;
+    for (int y = 0; y < 224; y++) {
+        uint32_t *row = px + (size_t)y * width;
+        for (int x = 0; x < left_black; x++) row[x] = 0;
+        for (int x = right_from; x < width; x++) row[x] = 0;
     }
 }

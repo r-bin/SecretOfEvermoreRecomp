@@ -39,6 +39,13 @@ framework change, no guest write.
   `window_base_width` gives it the widescreen shape (a 1284 × 720 window at scale 3 for 16:9).
   Without it the window opened 4:3 and the wide frame was letterboxed into it: it "did not look
   wide" (the first user test, 2026-11-09).
+* **Scroll phase from the PPU (rule P1):** margins use the scroll the PPU draws this field with
+  (its 10-bit registers, high bits from the shadows). The WRAM shadows `$010E..$0114` already hold
+  the next frame's camera, so using them put the margins one frame ahead of the centre: a seam
+  while scrolling (seen by the user in the village).
+* **Black outside:** margin columns the PPU is not asked to draw (room or limit edge, pillarbox)
+  are blacked in `end_sim_frame`. Left alone they showed whatever the PPU composed there, e.g.
+  a room's per-line colour bands (HDMA colour math) as smeared rows.
 * **Gate:** field frames only (BG mode 1, 16 × 16 tiles on BG1 and BG2, camera mode `$241F` = 0);
   everything else is pillarboxed: menu pages, Mode 7, the 9 rooms with other camera modes.
 * **Edges:** each margin stops at the active camera-limit box `$23E9..$23EF` (room `0x51` shows one
@@ -84,3 +91,6 @@ viewport" lives (fog, ghosts, HUD placement, floating menus become passes of one
 | 2026-11-09 | `ctest` in the shared checkout | replays 01/02 fail at key 420 **with and without** the widescreen hooks, and the shared `build/` without widescreen code fails the same way: another session's uncommitted seeds and bindings. Clean check on the last commit: see the next row |
 | 2026-11-09 | `ctest` on the last commit plus only this change (isolated worktree, fresh regen: 28 banks) | 6 / 6 pass, replays 01 and 02 included |
 | 2026-11-09 | Window shape, any width: compiled; headless `SOE_WS_ASPECT=32:9` gives a 684 px frame (214 px margins), the village margin filled, cut at the room's right edge | works; `replay_0x_widescreen` registered, **not run yet** (long run skipped while another session uses the machine) |
+| 2026-11-09 | Seam while walking (village, 16:9): best vertical alignment of the last margin column with the first 4:3 column | old build: 3 lines off at the left border; new: 0 at both borders, lower mismatch (3581 vs 6307, 8870 vs 10334) |
+| 2026-11-09 | Guest state, widescreen on (21:9) vs off, new build, 4 dumps | identical |
+| 2026-11-09 | Smeared rows past the map (user's screenshot, a room with HDMA colour bands) | blacked by construction; not reproduced headless (no such room on the test route) |

@@ -64,6 +64,7 @@ static const SnesDesktopHostGame kGameHost = {
     .native_widescreen   = 1,
     .prepare_frame       = SoeWsPrepareFrame,
     .begin_sim_frame     = SoeWsBeginFrame,
+    .end_sim_frame       = SoeWsEndFrame,
     .window_base_width   = SoeWsWindowBaseWidth,
 };
 
