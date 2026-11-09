@@ -203,10 +203,10 @@ static int WantedWidth(int drawable_w, int drawable_h)
     return WidthForAspect(16.0 / 9.0);
 }
 
-/* Mode 7 frames are drawn 256 wide, exactly as without widescreen: the host's GPU HD Mode 7
- * (Mode7Enabled) captures the whole widened PPU line, and with it the user saw a black window
- * (2026-11-09; the software path drew it fine, pillarboxed). The PPU's mode at this point is the
- * one the next field starts with. */
+/* Mode 7 frames are drawn 256 wide, exactly as without widescreen: widescreen has nothing for
+ * them, and HD Mode 7 gets the frame it gets in 4:3. (The black flight the user saw with HD Mode 7
+ * was not the width: the GPU presenter draws black on that Mac at any width, docs/bugs-and-todos.md
+ * §3 item 12.) The PPU's mode at this point is the one the next field starts with. */
 void SoeWsPrepareFrame(int drawable_w, int drawable_h, int *frame_w, int *frame_h)
 {
     *frame_h = 224;

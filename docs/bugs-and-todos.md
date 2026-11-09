@@ -122,6 +122,13 @@ These issues should be submitted to the [RetroPortingToolKit/snesrecomp](https:/
    so `Turbo = #` reads as unbound and no error is printed (found 2026-11-09, Turbo on `#` stopped working).
    No other name reaches it either: the config is parsed before SDL knows the layout, so `'` is the US apostrophe.
    No workaround in the glue (the owner's choice, 2026-11-09): the fix belongs in the reader.
+12. **HD Mode 7 shows a black window on macOS (OpenGL output, `Mode7Enabled = 1`):** found 2026-11-09 in the flight
+   (room `0x46`). In the user's live session (lldb) the game drew the scene: brightness `$0106` = `$0E`, BGMODE 7, all
+   57,344 native pixels lit, the HD capture bound. Clearing `g_config.mode7.enabled` in that session brought the picture
+   back at once. The same capture, rendered headless by the CPU path (`SnesHdFrameRenderRegion`, 2x), is a clean
+   picture with either renderer, so the GPU presenter (`desktop/hd_gpu.c`, `SnesHdGpuRender`) draws black there while
+   reporting success (no native fallback). Seen at 256 px; widescreen not involved. Workaround: HD Mode 7 off in
+   Settings. Upstream: check the GL path on Apple's GL 4.1 (the affine shader uses `double`/`precise`).
    Upstream: only a `#` that starts a line starts a comment, or the writer quotes the name and the reader unquotes it.
 
 ---
