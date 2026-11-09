@@ -42,7 +42,8 @@ and the tree is `soe://tags/widescreen/` (`src/games/evermore/resources/tags/tag
 
 | Setting | Values | Default | Topic |
 |---|---|---|---|
-| Aspect | 4:3, 16:10, 16:9, 21:9, custom margin per side (0..272) | 4:3 | below |
+| Aspect | 4:3, 16:10, 16:9, 21:9, adaptive (fit the window), custom margin per side (0..272) | 4:3 | below |
+| Pixel aspect | 8:7, 1:1, 4:3 CRT (separate from the view aspect, as in MMX) | 8:7 | [other-recomps](other-recomps.md) |
 | Edges (parallax, room and camera-limit edges) | clip to terrain box / mirror / extend / off | clip | [backgrounds-and-parallax](backgrounds-and-parallax.md), [camera-and-limits](camera-and-limits.md) |
 | Small rooms / limit boxes narrower than the view | pillarbox / mirror / clip | pillarbox | [camera-and-limits](camera-and-limits.md) |
 | Enemies | vanilla / hybrid (ghosts) / experimental E1..E5 | vanilla | [modes](modes.md) |
@@ -88,6 +89,7 @@ Kill switches (rule P14), each forcing the vanilla path: `SOE_WS_PREFILL`, `SOE_
 | [mode7](mode7.md) | framework V, game tables U |
 | [bindings](bindings.md) | list |
 | [advance-work](advance-work.md) | what can start now |
+| [other-recomps](other-recomps.md) | compared with the MMX recomp and SoE-Recomp |
 
 ## Order of work
 
