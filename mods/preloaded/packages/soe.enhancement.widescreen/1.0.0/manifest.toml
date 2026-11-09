@@ -31,7 +31,7 @@ presentation_only = true
 [[feature]]
 id = "experimental"
 name = "Widescreen (experimental)"
-description = "Like vanilla extended, and the whole room is alive: every enemy and character keeps moving wherever it is, spawners spawn as usual, and at most a set number of them fit into the old 4:3 view (the others wait, in grey, at its edge). Changes the game: replays and timings differ from 4:3 (src/soe_ws_alive.c)."
+description = "Like vanilla extended, and the room is alive: every enemy and character you can see keeps moving, also in the margins, and those farther away too as long as the game keeps its speed. Spawners spawn as usual. At most a set number of characters fit into the old 4:3 view; the others wait at its edge, drawn in grey. Changes the game: battles and timings differ from 4:3 (src/soe_ws_alive.c)."
 group = "Display"
 default_enabled = false
 
@@ -226,6 +226,20 @@ min = 3
 max = 30
 step = 1
 default = 6
+
+[[option]]
+feature = "experimental"
+id = "far"
+label = "Characters far off screen"
+description = "Keep the speed: those far outside the view pause whenever the game would slow down, as the game itself does; everything you can see keeps moving. Always: every character in the room keeps moving, even if the game slows down in crowded rooms."
+type = "choice"
+default = "speed"
+[[option.choice]]
+value = "speed"
+label = "Keep the speed"
+[[option.choice]]
+value = "always"
+label = "Always"
 
 [[option]]
 feature = "experimental"

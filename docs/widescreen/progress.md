@@ -17,7 +17,7 @@ files here; what the MMX recomp and SoE-Recomp taught us: [other-recomps](other-
 | 7 | Settings as a mod package, pixel aspect, adaptive | done: package `soe.enhancement.widescreen`, one feature per mode (each with its own options; the experimental renderer gets a third); more options as their steps land | `mods/preloaded/packages/`, [README](README.md#settings) |
 | 8 | Floating menu window, Mode 7 | open | [menus-and-gates](menus-and-gates.md), [mode7](mode7.md) |
 | 9 | Experiments E1..E5 | after the bound C of each consumer | [modes](modes.md), [bindings](bindings.md) |
-| 10 | **Experimental**: own field renderer, any width **and height**, full control of what the view shows; enemies by E6 (whole room alive, 6 in the 4:3 view) | renderer open; E6 built (launcher *Widescreen (experimental)*: extended drawing + E6), lags in crowded rooms | below; [enemies](enemies.md#the-whole-room-alive-six-in-the-43-view-experiment-e6) |
+| 10 | **Experimental**: own field renderer, any width **and height**, full control of what the view shows; enemies by E6 (whole room alive, 6 in the 4:3 view) | renderer open; E6 built (launcher *Widescreen (experimental)*: extended drawing + E6) at full speed | below; [enemies](enemies.md#the-whole-room-alive-six-in-the-43-view-experiment-e6) |
 
 ## Step 1: what the first approach does
 
@@ -102,8 +102,8 @@ framework change, no guest write.
     They are drawn in their standing frame: record `$8E:(+$60)`, stand id `+$32`, animation record
     `$C4:id` at facing `+$22` (`$90:8124`), the script's first set-sprite command; their palette
     slot `+$0C` is already set, so live CGRAM colours apply.
-  * **Experimental:** vanilla extended plus E6 ([enemies](enemies.md#e6-as-built)): the whole room alive, at most 6 in
-    the 4:3 view, held ones drawn grey there too. Its own plugin `soe.widescreen.alive` (ordinary, it changes the
+  * **Experimental:** vanilla extended plus E6 ([enemies](enemies.md#e6-as-built)): the room alive around the wide
+    view as far as the frame time allows, at most 6 in the 4:3 view, held ones drawn grey there too. Its own plugin `soe.widescreen.alive` (ordinary, it changes the
     game). Step 10's own renderer is still open.
   `SOE_WS_MODE=vanilla|extended` overrides; `SOE_WS_SPRITES_CENTER=1` draws the extras in the centre
   too (under native OAM) and `SOE_WS_SPRITES_SHIFT=<px>` shifts them, to check placement.
@@ -160,4 +160,5 @@ viewport" lives (fog, ghosts, HUD placement, floating menus become passes of one
 | 2026-11-09 | Greyscale, village walk at 32:9 | the margin villager is grey, the centre unchanged; WRAM identical to Colour at 3 dumps. Replays not rerun (no long runs while the C bindings are being worked on) |
 | 2026-11-09 | E6: `ctest` replays 01/02, recorded and widescreen, with the `$8F:C40F` hook in and E6 off | 6 / 6 pass |
 | 2026-11-09 | E6 on, replay 02 (rooms `0x31`, `0x02`, `0x32`, `0x03`, `0x46`) | runs to the end, same rooms, 5 field frames behind; hook took the E6 path 6002 times |
-| 2026-11-09 | E6 on, replay 06 in the flower field `0x38` (cap 6 and 3), and through the launcher's feature (no env) | [enemies](enemies.md#e6-as-built): all awake, cap held, counts consistent; game logic at ~55 % speed |
+| 2026-11-09 | E6 on, replay 06 in the flower field `0x38` (cap 6 and 3), and through the launcher's feature (no env) | [enemies](enemies.md#e6-as-built): all awake, cap held, counts consistent; game logic at ~55 % speed (now the *Always* option) |
+| 2026-11-09 | E6 *Keep the speed* (default), replay 06 in `0x38` through the launcher feature (isolated copy of the build with its own `state.toml`), 16:9 | 8–14 awake, `$0B19` +1189 per 1200 frames (vanilla +1195); wide frames show the margin enemies; `ctest` replays 01/02 pass with E6 off |

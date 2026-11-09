@@ -1,6 +1,6 @@
 /*
- * Widescreen experiment E6: the whole room alive, at most `cap` entities in the 4:3 view
- * (docs/widescreen/enemies.md, "The whole room alive, six in the 4:3 view"). Changes the game.
+ * Widescreen experiment E6: the room alive around the view, at most `cap` entities in the 4:3 view
+ * (docs/widescreen/enemies.md, "E6 as built"). Changes the game.
  */
 #ifndef SOE_WS_ALIVE_H
 #define SOE_WS_ALIVE_H
@@ -19,7 +19,8 @@ enum {
 };
 uint16_t SoeAliveDecide(uint16_t slot, uint16_t cam_x, uint16_t cam_y);
 
-/* E6 is on (the mod's experimental feature or SOE_WS_ALIVE=1): held entities are drawn in the centre too. */
+/* E6 is on: only the mod's experimental feature turns it on (SOE_WS_ALIVE=0 turns it off). Held entities are
+ * then drawn in the centre too. */
 int SoeAliveEnabled(void);
 
 #endif

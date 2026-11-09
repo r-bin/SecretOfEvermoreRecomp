@@ -41,7 +41,7 @@ Vanilla, plus renderer-side "ghosts":
 | E3 Wide targeting | `$8C:8658` window widened | `$8C:8658` | ring-menu cursor can pick margin enemies; local |
 | E4 Frozen tableau | asleep entities drawn at their real frame and position, no AI | renderer only | none to game state; looks like hybrid without fading |
 | E5 Whole room alive | nothing sleeps, budget forced high | `$8F:C40F`, `$8F:DC34` | [enemies](enemies.md#keep-the-whole-room-alive-experiment-e5) |
-| E6 Whole room alive, six in view | E5, plus at most 6 entities in the 4:3 view (others held asleep at its edge), 4 slots kept for scripts, spawner untouched | `$8F:C40F`, `$8F:DC34` | [enemies](enemies.md#the-whole-room-alive-six-in-the-43-view-experiment-e6); built 2026-11-09 (launcher: *Widescreen (experimental)*); lags in crowded rooms |
+| E6 Room alive, six in view | everything around the wide view awake (an area that follows the frame time, up to the whole room), at most 6 in the 4:3 view (others held asleep at its edge), 4 slots kept for scripts, spawner untouched | `$8F:C40F`, `$8F:DC34` | [enemies](enemies.md#the-whole-room-alive-six-in-the-43-view-experiment-e6); built 2026-11-09 (launcher: *Widescreen (experimental)*); far ones sleep when the frame is full |
 
 The spawner (`$8F:DDBB`) is never widened in any mode (E6 only steers its budget gate).
 

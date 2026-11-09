@@ -47,7 +47,7 @@ and the tree is `soe://tags/widescreen/` (`src/games/evermore/resources/tags/tag
 | Pixel aspect | 8:7, 1:1, 4:3 CRT (separate from the view aspect, as in MMX) | 8:7 | [other-recomps](other-recomps.md) |
 | Edges (parallax, room and camera-limit edges) | clip to terrain box / mirror / extend / off | clip | [backgrounds-and-parallax](backgrounds-and-parallax.md), [camera-and-limits](camera-and-limits.md) |
 | Small rooms / limit boxes narrower than the view | pillarbox / mirror / clip | pillarbox | [camera-and-limits](camera-and-limits.md) |
-| Mode | one launcher feature per mode, each with its own options: vanilla / vanilla extended (entities drawn from WRAM) / experimental (own renderer, later) | none (off) | [progress](progress.md) |
+| Mode | one launcher feature per mode, each with its own options: vanilla / vanilla extended (entities drawn from WRAM) / experimental (extended + E6: the room alive, 6 in the 4:3 view; own renderer later) | none (off) | [progress](progress.md), [enemies](enemies.md#e6-as-built) |
 | Foreground (BG1) | camera limits / as far as the terrain (matters with Edges = whole room) | camera limits | [progress](progress.md) |
 | Characters in the margins (vanilla extended) | colour / greyscale | colour | [progress](progress.md) |
 | UI placement | vanilla / edges / safe area / custom | vanilla | [hud-and-adaptive-ui](hud-and-adaptive-ui.md) |
@@ -71,7 +71,7 @@ anything that changes the game registers as an ordinary plugin. Manifest format:
 
 Kill switches (rule P14), each forcing the vanilla path: `SOE_WS_PREFILL`, `SOE_WS_EDGES`,
 `SOE_WS_HUD`, `SOE_WS_FOG`, `SOE_WS_GHOSTS`, `SOE_WS_MENU`, `SOE_WS_CUTSCENE`, `SOE_WS_MODE7`,
-`SOE_WS_OAM` (E1), `SOE_WS_WAKE` (E2), `SOE_WS_TARGET` (E3), `SOE_WS_ALIVE` (E6, built; E5 is E6 without the cap).
+`SOE_WS_OAM` (E1), `SOE_WS_WAKE` (E2), `SOE_WS_TARGET` (E3), `SOE_WS_ALIVE=0` (E6, built: only the experimental feature turns it on; E5 is E6 *Always* without the cap).
 
 ## Status per topic
 

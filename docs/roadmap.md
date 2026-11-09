@@ -114,7 +114,7 @@ in the C are enough (`src/soe_cost.c`). Details: [progress-internal.md](progress
 |---|---|---|
 | 🟡 | **Measure on weaker machines.** About half the time is the PPU's per-pixel renderer; only Apple Silicon is measured | Numbers for one low-end PC and a handheld-class device |
 | 🟢 | **Optional faster mode** if a target falls short, with the accurate build kept as the default | Only after a measured need |
-| 👤 | **Widescreen E6 lags** in crowded rooms: the whole flower field awake runs the game logic at about 55 % speed ([widescreen/enemies.md](widescreen/enemies.md#e6-as-built)) | The owner picks a CPU clock multiplier (framework change) or far entities thinking less often; then E6 runs at full speed in `0x38` |
+| 🟢 | **Widescreen E6, whole room at full speed:** E6 keeps the speed by letting far entities sleep (an active area that follows the frame time); the *Always* option keeps all awake at ~55 % speed in `0x38` ([widescreen/enemies.md](widescreen/enemies.md#e6-as-built)). The whole room at full speed needs more CPU per frame: a clock multiplier in the framework (upstream proposal) that leaves the APU's rate alone | The owner wants it; a framework PR |
 
 ## 9. Upstream reports for snesrecomp
 
