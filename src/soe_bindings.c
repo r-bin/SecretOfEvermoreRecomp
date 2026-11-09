@@ -56,6 +56,10 @@ void sprite_sorting_canopy_occlusion_and_render_depth_bind(soe_regs r);
 void direction_index_from_signed_byte_pair_bind(soe_regs r);
 void anim_start_record_bind(soe_regs r);
 void companion_waypoint_history_poll_bind(soe_regs r);
+void audio_master_volume_fade_tick_bind(soe_regs r);
+void elevation_vector_shear_step_bind(soe_regs r);
+void elevation_manhattan_distance_eval_bind(soe_regs r);
+void elevation_compass_direction_resolve_bind(soe_regs r);
 #include "raycast.h"
 #include "spare_time.h"
 
@@ -67,7 +71,11 @@ uint16_t soe_multiply(uint16_t factors) {
 }
 #endif
 
-enum { RNG, PLANE, TILE, POOL, DEPTH, RAY, SPARE, WAIT, DMA, ANIM, OAM_INSERT, SPRITE_SORT, DIR_PAIR, ANIM_START, WAYPOINT_POLL, BINDINGS };
+enum {
+    RNG, PLANE, TILE, POOL, DEPTH, RAY, SPARE, WAIT, DMA, ANIM, OAM_INSERT, SPRITE_SORT, DIR_PAIR, ANIM_START, WAYPOINT_POLL,
+    AUDIO_FADE, SHEAR_STEP, MANHATTAN_DIST, COMPASS_DIR,
+    BINDINGS
+};
 static struct { const char *name; unsigned long long c, across, compiled; bool mutate; } s_bind[BINDINGS] = {
     { "random_number_generator" }, { "update_entity_plane" }, { "eval_tile_collision" },
     { "init_entity_pool" }, { "entity_sprite_depth" }, { "companion_metatile_raycast_line_stepper" },
@@ -75,6 +83,8 @@ static struct { const char *name; unsigned long long c, across, compiled; bool m
     { "vram_dma_upload_tile_block" }, { "map_anim_tile_channel_tick_and_vram_stream" },
     { "oam_depth_sorted_sprite_insert_node" }, { "sprite_sorting_canopy_occlusion_and_render_depth" },
     { "direction_index_from_signed_byte_pair" }, { "anim_start_record" }, { "companion_waypoint_history_poll" },
+    { "audio_master_volume_fade_tick" }, { "elevation_vector_shear_step" },
+    { "elevation_manhattan_distance_eval" }, { "elevation_compass_direction_resolve" },
 };
 static int s_stats = -1;
 static void print_stats(void) {
@@ -129,6 +139,7 @@ static RecompReturn leave_rtl(CpuState *cpu) {
     const uint32_t rpc = ((g_ram[(uint16_t)(s0 + 1)] | (uint16_t)g_ram[(uint16_t)(s0 + 2)] << 8) + 1u) & 0xFFFFu;
     const uint8_t rpb = g_ram[(uint16_t)(s0 + 3)];
     cpu->open_bus = rpb;
+    cpu->PB = rpb;
     cpu->S = (uint16_t)(s0 + 3);
     if (interp_bridge_return_targets_owner(s0, cpu->S) || (interp_bridge_in_lle_scheduler() && rpc == 0x9821u))
         return interp_bridge_lle_yield_unwind(cpu, (uint32_t)rpb << 16 | rpc);
@@ -1062,3 +1073,131 @@ RecompReturn HleCompanionWaypointHistoryPoll(CpuState *cpu) {
 #endif
     return run_rom_bytes(cpu, WAYPOINT_POLL, 0xA723, 0xA724, plain ? poll_first : NULL);
 }
+
+/* $8E:E5FC, first instruction: LDA $0106. */
+static void audio_fade_first(CpuState *cpu) {
+    Cost c = { 0 };
+    abs16(&c, (uint32_t)cpu->DB << 16 | 0x0106);
+    cpu->A = (uint16_t)(g_ram[0x0106] | g_ram[0x0107] << 8);
+    set_nz16(cpu, cpu->A);
+    cpu->open_bus = (uint8_t)(cpu->A >> 8);
+    charge(cpu, &c);
+}
+
+/*
+ * $8E:E5FC audio_master_volume_fade_tick (RTL; knowledge/routines/audio_master_volume_fade_tick.md).
+ * Updates master audio volume / brightness fading towards target byte $0B83. Charged from SOE_AT marks.
+ */
+RecompReturn HleAudioMasterVolumeFadeTick(CpuState *cpu) {
+    stats_init();
+    const bool plain = wide_a(cpu) && db_in_wram(cpu);
+#ifdef SOE_RECONSTRUCTED_C
+    cpu_mirrors_to_p(cpu);
+    if (plain && !(cpu->P & CPU_P_D) && fits(cpu, 350u, AUDIO_FADE)) {
+        soe_regs_t r = { cpu->A, cpu->X, cpu->Y, cpu->D, cpu->DB, cpu->P };
+        SoeCostTrace t;
+        soe_cost_begin((uint32_t)cpu->PB << 16 | 0xE5FC, cpu->D, cpu->DB, true, !cpu->x_flag, cpu->S);
+        audio_master_volume_fade_tick_bind(&r);
+        soe_cost_end(&t);
+        const Cost c = { t.cycles, t.fetches, t.data };
+        take_regs(cpu, &r);
+        charge(cpu, &c);
+        if (s_bind[AUDIO_FADE].mutate) g_ram[0x0106] ^= 1;
+        s_bind[AUDIO_FADE].c++;
+        return leave_rtl(cpu);
+    }
+#endif
+    return run_rom_bytes(cpu, AUDIO_FADE, 0xE5FC, 0xE5FF, plain ? audio_fade_first : NULL);
+}
+
+/* $8F:A963 / $8F:A97D / $8F:A999, first instruction: LDA $12 (8-bit A). */
+static void shear_first(CpuState *cpu) {
+    const uint16_t addr = (uint16_t)(cpu->D + 0x12);
+    Cost c = { 0 };
+    insn(&c, (cpu->D & 0xFF) ? 4 : 3, 2);
+    c.data += extra(addr);
+    const uint8_t b = g_ram[addr & 0x1FFF];
+    cpu->A = (uint16_t)((cpu->A & 0xFF00) | b);
+    cpu->P = (uint8_t)((cpu->P & ~(CPU_P_N | CPU_P_Z)) | (b == 0 ? CPU_P_Z : 0) | (b & 0x80 ? CPU_P_N : 0));
+    cpu->open_bus = b;
+    charge(cpu, &c);
+}
+
+/*
+ * $8F:A963 elevation_vector_shear_step (RTS; knowledge/routines/elevation_vector_shear_step.md).
+ * min(|dx|, |dy|) of signed DP $12, $13; stores |dx| to DP $14. Charged from SOE_AT marks.
+ */
+RecompReturn HleElevationVectorShearStep(CpuState *cpu) {
+    stats_init();
+    const bool plain = !cpu->emulation && cpu->m_flag && dp_in_wram(cpu, 0x14);
+#ifdef SOE_RECONSTRUCTED_C
+    cpu_mirrors_to_p(cpu);
+    if (plain && !(cpu->P & CPU_P_D) && fits(cpu, 250u, SHEAR_STEP)) {
+        soe_regs_t r = { cpu->A, cpu->X, cpu->Y, cpu->D, cpu->DB, cpu->P };
+        SoeCostTrace t;
+        soe_cost_begin((uint32_t)cpu->PB << 16 | 0xA963, cpu->D, cpu->DB, false, !cpu->x_flag, cpu->S);
+        elevation_vector_shear_step_bind(&r);
+        soe_cost_end(&t);
+        const Cost c = { t.cycles, t.fetches, t.data };
+        take_regs(cpu, &r);
+        charge(cpu, &c);
+        if (s_bind[SHEAR_STEP].mutate) cpu->A ^= 1;
+        s_bind[SHEAR_STEP].c++;
+        return leave_rts(cpu);
+    }
+#endif
+    return run_rom_bytes_frame(cpu, SHEAR_STEP, 0xA963, 0xA965, plain ? shear_first : NULL, 2);
+}
+
+/*
+ * $8F:A97D elevation_manhattan_distance_eval (RTS; knowledge/routines/elevation_manhattan_distance_eval.md).
+ * Evaluates Manhattan distance |dx| + |dy| from signed DP $12, $13. Charged from SOE_AT marks.
+ */
+RecompReturn HleElevationManhattanDistanceEval(CpuState *cpu) {
+    stats_init();
+    const bool plain = !cpu->emulation && cpu->m_flag && dp_in_wram(cpu, 0x14);
+#ifdef SOE_RECONSTRUCTED_C
+    cpu_mirrors_to_p(cpu);
+    if (plain && !(cpu->P & CPU_P_D) && fits(cpu, 250u, MANHATTAN_DIST)) {
+        soe_regs_t r = { cpu->A, cpu->X, cpu->Y, cpu->D, cpu->DB, cpu->P };
+        SoeCostTrace t;
+        soe_cost_begin((uint32_t)cpu->PB << 16 | 0xA97D, cpu->D, cpu->DB, false, !cpu->x_flag, cpu->S);
+        elevation_manhattan_distance_eval_bind(&r);
+        soe_cost_end(&t);
+        const Cost c = { t.cycles, t.fetches, t.data };
+        take_regs(cpu, &r);
+        charge(cpu, &c);
+        if (s_bind[MANHATTAN_DIST].mutate) cpu->A ^= 1;
+        s_bind[MANHATTAN_DIST].c++;
+        return leave_rts(cpu);
+    }
+#endif
+    return run_rom_bytes_frame(cpu, MANHATTAN_DIST, 0xA97D, 0xA97F, plain ? shear_first : NULL, 2);
+}
+
+/*
+ * $8F:A999 elevation_compass_direction_resolve (RTS; knowledge/routines/elevation_compass_direction_resolve.md).
+ * Resolves 4-way compass direction from signs of DP $12, $13. Charged from SOE_AT marks.
+ */
+RecompReturn HleElevationCompassDirectionResolve(CpuState *cpu) {
+    stats_init();
+    const bool plain = !cpu->emulation && cpu->m_flag && dp_in_wram(cpu, 0x13);
+#ifdef SOE_RECONSTRUCTED_C
+    cpu_mirrors_to_p(cpu);
+    if (plain && !(cpu->P & CPU_P_D) && fits(cpu, 250u, COMPASS_DIR)) {
+        soe_regs_t r = { cpu->A, cpu->X, cpu->Y, cpu->D, cpu->DB, cpu->P };
+        SoeCostTrace t;
+        soe_cost_begin((uint32_t)cpu->PB << 16 | 0xA999, cpu->D, cpu->DB, false, !cpu->x_flag, cpu->S);
+        elevation_compass_direction_resolve_bind(&r);
+        soe_cost_end(&t);
+        const Cost c = { t.cycles, t.fetches, t.data };
+        take_regs(cpu, &r);
+        charge(cpu, &c);
+        if (s_bind[COMPASS_DIR].mutate) cpu->A ^= 2;
+        s_bind[COMPASS_DIR].c++;
+        return leave_rts(cpu);
+    }
+#endif
+    return run_rom_bytes_frame(cpu, COMPASS_DIR, 0xA999, 0xA99B, plain ? shear_first : NULL, 2);
+}
+

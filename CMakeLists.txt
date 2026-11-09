@@ -60,7 +60,9 @@ set(SOE_BOUND_C 80/80859B_random_number_generator.c 8F/8FA914_update_entity_plan
     8F/8F9817_field_spare_time_loop.c 80/80858C_wait_for_nmi.c 80/808650_vram_dma_upload_tile_block.c
     90/90A1B4_map_anim_tile_channel_tick_and_vram_stream.c 80/80960A_oam_depth_sorted_sprite_insert_node.c
     8F/8FC6C5_sprite_sorting_canopy_occlusion_and_render_depth.c 8F/8FAA51_direction_index_from_signed_byte_pair.c
-    90/908124_anim_start_record.c 8F/8FA723_companion_waypoint_history_poll.c)
+    90/908124_anim_start_record.c 8F/8FA723_companion_waypoint_history_poll.c
+    8E/8EE5FC_audio_master_volume_fade_tick.c 8F/8FA963_elevation_vector_shear_step.c
+    8F/8FA97D_elevation_manhattan_distance_eval.c 8F/8FA999_elevation_compass_direction_resolve.c)
 foreach(f ${SOE_BOUND_C})
     target_sources(SecretOfEvermoreSNESRecomp PRIVATE "${SOE_RECONSTRUCTED_C}/${f}")
     set_source_files_properties("${SOE_RECONSTRUCTED_C}/${f}" PROPERTIES COMPILE_DEFINITIONS SOE_COST)

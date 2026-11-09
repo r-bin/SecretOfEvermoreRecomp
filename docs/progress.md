@@ -17,8 +17,8 @@ native only).
 - **S-DSP state:** output samples, voices, envelopes, BRR buffers and echo, once per NMI; not the audio stream.
 - **Picture:** the 224 rendered lines, pixel for pixel, with brightness scaled as MesenCE scales it (`--fade`; play keeps
   snesrecomp's rule, see below).
-- **Native:** instructions that ran compiled or as C, not in the interpreter. 15 routines are bound to reconstructed C; 14 of
-  them take their C path on these replays (`anim_start_record` never does). Per routine: `run-stats.mts --stats`.
+- **Native:** instructions that ran compiled or as C, not in the interpreter. 19 routines are bound to reconstructed C; 18 of
+  them take their C path on these replays (`anim_start_record` falls back to compiled bytes). Per routine: `run-stats.mts --stats`.
 
 **What differs, and why**
 - **S-DSP state at NMIs 1-320** on both: the boot and the Squaresoft logo, which plays no sound. Until a voice is first keyed on

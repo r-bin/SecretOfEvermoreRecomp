@@ -14,10 +14,10 @@
  * - Target Routine:   anim_start_record ($908124) [RTL]
  * - Test Method:      G1 differential testing (trampoline + 4th MB bridge in snes9x / cpu65816)
  * - Initial ROM ASM:  36 instructions (86 bytes)
- * - Compiled C ASM:   434 instructions [Calypsi 65816 -O1 --speed]
- * - Code Expansion:   12.1x instructions vs ROM
+ * - Compiled C ASM:   440 instructions [Calypsi 65816 -O1 --speed]
+ * - Code Expansion:   12.2x instructions vs ROM
  * - ASM Closeness:    100% state parity per call (A, X, Y, S, D, DB, P, WRAM, I/O order match ROM)
- * - Rating Hash:      6aff2f8f97d42997
+ * - Rating Hash:      c8a907dfdfa79659
  * - Rating Status:    VALID (unmodified since rating)
  */
 #include "soe.h"

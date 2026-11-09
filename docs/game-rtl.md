@@ -225,6 +225,10 @@ SOE_PC_COUNTS=<file>` writes how often each PC ran.
 | `$8F:C6C5` `sprite_sorting_canopy_occlusion_and_render_depth` | `reconstructed-c/8F/8FC6C5_sprite_sorting_canopy_occlusion_and_render_depth.c` | same |
 | `$8F:AA51` `direction_index_from_signed_byte_pair` | `reconstructed-c/8F/8FAA51_direction_index_from_signed_byte_pair.c` | same |
 | `$8F:A723` `companion_waypoint_history_poll` | `reconstructed-c/8F/8FA723_companion_waypoint_history_poll.c` | same |
+| `$8E:E5FC` `audio_master_volume_fade_tick` | `reconstructed-c/8E/8EE5FC_audio_master_volume_fade_tick.c` | Replay 01 bit-for-bit sync, G1-rated |
+| `$8F:A963` `elevation_vector_shear_step` | `reconstructed-c/8F/8FA963_elevation_vector_shear_step.c` | Replay 01 bit-for-bit sync, G1-rated |
+| `$8F:A97D` `elevation_manhattan_distance_eval` | `reconstructed-c/8F/8FA97D_elevation_manhattan_distance_eval.c` | Replay 01 bit-for-bit sync, G1-rated |
+| `$8F:A999` `elevation_compass_direction_resolve` | `reconstructed-c/8F/8FA999_elevation_compass_direction_resolve.c` | Replay 01 bit-for-bit sync, G1-rated |
 
 ---
 
