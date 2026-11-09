@@ -28,4 +28,9 @@ int SoeAliveFreeTime(void);
  * ($59/$5B), outside it only while fewer than `cap` characters are in the view. 1 whenever E6 is off. */
 int SoeAliveMayAggro(uint16_t slot, uint16_t cam_x, uint16_t cam_y);
 
+/* The spawn record ($5DC3..) the spawner $8F:DDBB should spawn now, 0 for none this frame, kAliveSpawnRom when E6 is
+ * off (the ROM routine runs). */
+enum { kAliveSpawnRom = 0xFFFF };
+uint16_t SoeAliveSpawnPick(uint16_t cam_x, uint16_t cam_y);
+
 #endif

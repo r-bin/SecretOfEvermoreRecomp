@@ -18,6 +18,12 @@
  *    vanilla; one outside it takes the party as a target only while fewer than `cap` characters are in the view (the
  *    Boy and the Dog counted, as the game's budget counts them). Otherwise it goes the ROM's own way for "no target":
  *    it wanders or keeps its default action, and one already chasing from outside lets go.
+ *  - Spawners fill the room (SoeAliveSpawnPick, at the spawner $8F:DDBB): vanilla spawns a record's enemy only when
+ *    its point is 16..48 px outside the 4:3 screen and its timer has run out, so spawned enemies pop in at the edge.
+ *    Here timers and the ring are ignored: in the first 90 logic frames of a room (the fade-in) every record with a
+ *    count left spawns wherever it is; later only where the player cannot see it (outside the wide view). A record
+ *    waits while 4 or more enemies stand in a 4:3-sized box around its point (density), and while the budget or the
+ *    room cap ($1074 < $2435) say no. One spawn per frame, by the ROM's own spawn code ($8F:DE43).
  *
  * Stateless: every decision follows from WRAM at the call. The ROM code does every change of state; this file only
  * picks the branch. Not gated on the widescreen field gate: a menu or a narrow room in between would let vanilla put
@@ -25,7 +31,8 @@
  *
  * Settings: the mod feature "experimental" (options cap, count). SOE_WS_ALIVE=0 switches E6 off (kill switch),
  * SOE_WS_FREE=0 only its free time; nothing switches E6 on but the feature. Test knobs: SOE_WS_ALIVE_RESERVE=<n>
- * (default 4), SOE_WS_ALIVE_DEBUG=1 prints count and budget every 60th frame.
+ * (default 4), SOE_WS_ALIVE_DEBUG=1 prints count and budget every 60th frame, SOE_WS_ALIVE_AFTER=<$0B19> keeps E6 off
+ * until that logic frame (a vanilla replay stays in sync up to there, then E6 takes over).
  */
 #include "soe_ws_alive.h"
 
@@ -35,6 +42,7 @@
 
 #include "common_rtl.h"
 #include "mod_runtime.h"
+#include "widescreen.h"
 
 enum {
     kSlotFirst = 0x3DE5, kSlotEnd = 0x4E89, kStride = 0x8E,   /* the 30 slots the round robin visits */
@@ -46,13 +54,19 @@ enum {
     kFlags = 0x10, kX = 0x1A, kY = 0x1C, kHp = 0x2A, kNode = 0x6C, kRecord = 0x60, kSpawnRecord = 0x8C,
     kAwake = 0x0100, kAsleep = 0x0200,
     kViewWidth = 256, kViewHeight = 224,   /* the 4:3 view at the rendered camera $59/$5B */
+    kFieldCounter = 0x0B19, kRoomCap = 0x2435, kLiveCount = 0x1074,
+    /* spawn records: 60 of 16 bytes, +$02/+$04 point, +$0C count left */
+    kSpawnFirst = 0x5DC3, kSpawnEnd = 0x6183, kSpawnStride = 0x10, kSpawnX = 0x02, kSpawnY = 0x04, kSpawnCount = 0x0C,
+    kSpawnDensity = 4,       /* enemies in a 4:3-sized box around the point that make a record wait */
+    kEntryFrames = 90,       /* logic frames after a room change in which spawns may be in sight (the fade-in) */
+    kSightMargin = 16,       /* a spawn point this close to the wide view counts as in sight */
 };
 
 #define kModPackage "soe.enhancement.widescreen"
 #define kModFeature "experimental"
 
 static struct { int on, cap, enemies_only; } s_mod;
-static struct { int read, off, free_off, reserve, debug; } s_env;
+static struct { int read, off, free_off, reserve, debug; long after; } s_env;
 static int s_steered;   /* $1076 holds our value: put vanilla's back when E6 stops */
 
 static uint16_t W(uint32_t a) { return (uint16_t)(g_ram[a] | g_ram[a + 1] << 8); }
@@ -72,12 +86,13 @@ static void ReadEnv(void)
     s_env.free_off = EnvInt("SOE_WS_FREE", 1) == 0;
     s_env.reserve = EnvInt("SOE_WS_ALIVE_RESERVE", 4);
     s_env.debug = EnvInt("SOE_WS_ALIVE_DEBUG", 0);
+    s_env.after = EnvInt("SOE_WS_ALIVE_AFTER", 0);
 }
 
 int SoeAliveEnabled(void)
 {
     ReadEnv();
-    return s_mod.on && !s_env.off;
+    return s_mod.on && !s_env.off && (!s_env.after || (long)(g_ram[0x0B19] | g_ram[0x0B1A] << 8) >= s_env.after);
 }
 
 int SoeAliveFreeTime(void)
@@ -171,6 +186,45 @@ int SoeAliveMayAggro(uint16_t slot, uint16_t cam_x, uint16_t cam_y)
 {
     if (!SoeAliveEnabled() || slot < kSlotFirst || slot >= kSlotEnd) return 1;
     return InView(slot, cam_x, cam_y) || ViewCount(cam_x, cam_y) < Cap();
+}
+
+/* Enemies (not friendly, not on the party's side) awake or asleep within a 4:3-sized box centred on (x, y). */
+static int EnemiesAround(uint16_t x, uint16_t y)
+{
+    int n = 0;
+    for (uint32_t e = kSlotFirst; e < kSlotEnd; e += kStride) {
+        const uint16_t f = W(e + kFlags);
+        if (!(f & (kAwake | kAsleep)) || (f & 0x0006)) continue;
+        int dx = (int16_t)(W(e + kX) - x), dy = (int16_t)(W(e + kY) - y);
+        if (dx >= -kViewWidth / 2 && dx < kViewWidth / 2 && dy >= -kViewHeight / 2 && dy < kViewHeight / 2) n++;
+    }
+    return n;
+}
+
+static int InSight(uint16_t x, uint16_t y, uint16_t cam_x, uint16_t cam_y)
+{
+    int dx = (int16_t)(x - cam_x), dy = (int16_t)(y - cam_y);
+    int side = (g_ws_extra > 0 ? g_ws_extra : 0) + kSightMargin;
+    return dx >= -side && dx < kViewWidth + side && dy >= -kSightMargin && dy < kViewHeight + kSightMargin;
+}
+
+uint16_t SoeAliveSpawnPick(uint16_t cam_x, uint16_t cam_y)
+{
+    static uint16_t s_room = 0xFFFF, s_room_field;
+    if (!SoeAliveEnabled()) return kAliveSpawnRom;
+    const uint16_t room = W(kRoomId), field = W(kFieldCounter);
+    if (room != s_room) s_room = room, s_room_field = field;
+    const int entry = (uint16_t)(field - s_room_field) < kEntryFrames;
+    SteerBudget();
+    if (W(kAwakeCount) >= W(kBudget) || (int16_t)W(kLiveCount) >= (int16_t)W(kRoomCap)) return 0;
+    for (uint32_t r = kSpawnFirst; r < kSpawnEnd; r += kSpawnStride) {
+        if (!W(r + kSpawnCount)) continue;
+        const uint16_t x = W(r + kSpawnX), y = W(r + kSpawnY);
+        if (!entry && InSight(x, y, cam_x, cam_y)) continue;
+        if (EnemiesAround(x, y) >= kSpawnDensity) continue;
+        return (uint16_t)r;
+    }
+    return 0;
 }
 
 static void ModReset(void)
