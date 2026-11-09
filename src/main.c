@@ -29,6 +29,7 @@
 #include "game_rtl.h"
 #include "soe_widescreen.h"
 void SoeAfterConfig(void);   /* src/game_rtl.c */
+void SoePrepareFrame(int drawable_w, int drawable_h, int *frame_w, int *frame_h);   /* src/game_rtl.c */
 #include "snesrecomp_rom_identity.h"  /* generated from rom_identity.txt */
 
 #ifndef __ANDROID__
@@ -62,7 +63,7 @@ static const SnesDesktopHostGame kGameHost = {
     /* Widescreen is the mod package soe.enhancement.widescreen (Mods page), not the legacy
      * launcher switch, so widescreen_supported stays 0 (src/soe_widescreen.c). */
     .native_widescreen   = 1,
-    .prepare_frame       = SoeWsPrepareFrame,
+    .prepare_frame       = SoePrepareFrame,
     .begin_sim_frame     = SoeWsBeginFrame,
     .end_sim_frame       = SoeWsEndFrame,
     .window_base_width   = SoeWsWindowBaseWidth,

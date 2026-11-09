@@ -316,7 +316,11 @@ static int s_left, s_right;
 void SoeWsBeginFrame(unsigned number)
 {
     s_left = s_right = 0;
-    if (!g_ppu || g_ws_extra <= 0) return;
+    if (!g_ppu) return;
+    if (g_ws_extra <= 0) {   /* no margins (widescreen off, Mode 7): nothing of ours in the PPU */
+        SoeWsSpritesReset();
+        return;
+    }
 
     static uint16_t s_room = 0xffff;
     uint16_t room = Ram16(kRoomId);

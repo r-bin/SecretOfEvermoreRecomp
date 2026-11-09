@@ -121,8 +121,7 @@ These issues should be submitted to the [RetroPortingToolKit/snesrecomp](https:/
    key (its own key on QWERTZ), and `NextLineStripComments` (`runner/src/util.c`) cuts every line at the first `#`,
    so `Turbo = #` reads as unbound and no error is printed (found 2026-11-09, Turbo on `#` stopped working).
    No other name reaches it either: the config is parsed before SDL knows the layout, so `'` is the US apostrophe.
-   Ours (`src/soe_keys.c`): an SDL event filter sends the `#` key as F13 to the host, launcher and hotkey editor
-   (which then writes `F13`), and a config's `= #` is rewritten to `= F13` once at start.
+   No workaround in the glue (the owner's choice, 2026-11-09): the fix belongs in the reader.
    Upstream: only a `#` that starts a line starts a comment, or the writer quotes the name and the reader unquotes it.
 
 ---

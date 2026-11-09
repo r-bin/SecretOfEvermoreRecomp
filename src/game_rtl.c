@@ -30,7 +30,8 @@
 #include "snes/saveload.h"
 #include "snes/snes.h"
 #include "soe_frame_driver.h"
-#include "soe_keys.h"
+#include "soe_widescreen.h"
+#include "desktop/host_main.h"
 
 extern CpuState g_cpu;
 extern Snes *g_snes;
@@ -462,7 +463,14 @@ void SoeAfterConfig(void) {
      * replay). Set here because RtlReadSram runs after after_config. */
     const char *save_root = getenv("SOE_COMPARE_SAVE_ROOT");
     if (save_root && *save_root) RtlSetSaveRoot(save_root);
-    SoeKeysInstall();   /* the # key as a hotkey (src/soe_keys.c) */
+}
+
+/* The host's prepare_frame, before each field is drawn. The reference renderer above is for mode 4;
+ * a Mode 7 field gets the framework's own renderer, the one its HD Mode 7 path is built with, and
+ * nothing meant for the other modes. The PPU's mode here is the one the next field starts with. */
+void SoePrepareFrame(int drawable_w, int drawable_h, int *frame_w, int *frame_h) {
+    snesrecomp_desktop_set_new_renderer(g_ppu && (g_ppu->bgmode & 7) == 7);
+    SoeWsPrepareFrame(drawable_w, drawable_h, frame_w, frame_h);
 }
 
 /*
