@@ -196,23 +196,26 @@ Spawner rooms first, then a boss arena and a town.
 ### E6 as built
 
 `src/soe_ws_alive.c` (decisions), `HleEntitySleepWake`, `HleFieldTickFree*`, `HleAiPickTarget`,
-`HleEnemyAiCheckAggro`, `HleAiStationaryPlayer`, `HleSpawner` in `src/soe_bindings.c` (hooks), free time in
+`HleEnemyAiCheckAggro`, `HleAiStationaryPlayer`, `HleSpawnerSpawn` in `src/soe_bindings.c` (hooks), free time in
 `src/soe_frame_driver.c`. Only the launcher's *Widescreen (experimental)* turns it on; `SOE_WS_ALIVE=0` is the kill
 switch (`tests/replay_recorded.sh` sets it), `SOE_WS_FREE=0` switches off only the free time. Options: *Crowd in the
 4:3 view* (3–30, default 6), *Count* (everyone / enemies only). Test knobs: `SOE_WS_ALIVE_RESERVE`,
 `SOE_WS_ALIVE_DEBUG=1`, `SOE_FREE_STATS=1`, `SOE_WS_ALIVE_AFTER=<$0B19>` (E6 off until that logic frame, so a vanilla
 replay stays in sync up to there).
 
-* **Spawners fill the room, no pop-in** (owner, 2026-11-09). `hle_func` at the spawner `$8F:DDBB`: with E6 on the
-  record is E6's, timers and the 16..48 px ring are ignored. In the first 90 logic frames of a room (the fade-in)
-  every record with a count left spawns wherever its point is; later only points out of sight (outside the wide view
-  plus 16 px). A record waits while 4 or more enemies (awake or asleep, not friendly) stand in a 256 × 224 box around
-  its point, and while the budget or the room cap (`$1074` < `$2435`) say no. The helper does the ROM's `INC $6185`
-  and `PHA` of the loop count and the ROM's spawn code runs from `$DE43` (`PLA`, record in X); one spawn per frame.
-  Checked with synthetic records in `0x38` (that room places its enemies directly, and no spawner room is reachable
-  from replay 06's save: the village guards its east exit): poked after the window, the in-sight record kept its
-  count, out-of-sight ones spawned, one stopped at the density limit; poked inside the window, the in-sight one
-  spawned too.
+* **Spawners as in vanilla, with a density gate and ghosts** (owner, 2026-11-10: a walk through the map should feel
+  like vanilla's; filling the room on entry put 20 enemies in front of the player). The ROM's spawner decides when and
+  where (timer, the ring 16..48 px off the 4:3 screen). `hle_func` at its spawn step `$8F:DE43`: with E6 on, a record
+  with 4 or more spawner-made enemies (`+$8C` ≠ 0, alive) in a 256 × 224 box around its point is skipped (the ROM goes
+  on at `$DE3B`, its loop's next record, same stack). Vanilla keeps that number down with its budget and by taking far
+  ones back; E6 takes nobody back, so the gate keeps it sparse locally, and walking through again spawns more where it
+  is thin. Records with a count left are drawn as **ghosts** in the margins (`src/soe_ws_sprites.c`): a stippled dark
+  silhouette of the character's standing frame at the point; when it spawns, the enemy takes its place; inside the 4:3
+  view no ghost is drawn, so one that does not spawn there just is not seen. Checked with synthetic records in `0x38`
+  (no spawner room is reachable from replay 06's save; the village guards its east exit): a count-6 record in the ring
+  spawned on vanilla's timers (60–90 frames apart) and stopped at 4; a record outside the ring stayed a ghost in the
+  32:9 margin (frame dump). Superseded: filling the room during the first 90 frames, and later spawns anywhere out of
+  sight (2026-11-09).
 
 * **Nobody sleeps.** `hle_func` at `$8F:C40F`: E6 off, the ROM routine; on, the helper does `LDY $4C` and the ROM code
   goes on at `$C450` (RTS: an awake entity stays awake) or `$C4B1` (wake). Asleep with `+$10 & $0078`, HP 0,

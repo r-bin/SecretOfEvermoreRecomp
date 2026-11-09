@@ -28,6 +28,10 @@
  *                 eight facings at 2*facing, bit 6 four at $90:815B[facing]; $90:8124), facing +$22;
  *                 its script's first set-sprite command (0x22..0x2B: bank = cmd + $A8) is the frame
  *                 (everscript-vscode maps/character-animation.ts, resolveCharacterSprite)
+ *   ghosts        widescreen E6 only: a spawn record (60 at $5DC3, 16 bytes) with a count left (+$0C) is drawn at
+ *                 its point (+$02/+$04) as a stippled dark silhouette of its character's standing frame (record
+ *                 +$00), in the margins only: when it spawns there the enemy takes its place; one that has not
+ *                 spawned when the 4:3 view reaches it simply is not drawn there
  *
  * Timing: the field drawn at begin_sim_frame shows the OAM built a frame earlier, while WRAM already
  * holds the next positions. So each frame draws the snapshot taken at the previous call, against
@@ -48,7 +52,9 @@ enum {
     kSlotFirst = 0x3DE5, kSlotEnd = 0x4FE5,
     kBoy = 0x4E89, kDog = 0x4F37,
     kProjectiles = 0x6387, kProjectileCount = 8, kProjectileStride = 44,
-    kMaxItems = 64,          /* sprites (main, shadow, projectile) per frame */
+    kSpawnFirst = 0x5DC3, kSpawnEnd = 0x6183, kSpawnStride = 0x10,
+    kGhostColour = 0x1084,   /* BGR555 dark grey of a ghost's pixels */
+    kMaxItems = 96,          /* sprites (main, shadow, projectile, ghost) per frame */
     kMaxSide = 128,          /* largest sprite edge drawn */
 };
 
@@ -58,6 +64,7 @@ typedef struct Item {
     uint8_t palette_slot;    /* entity +$0C */
     uint8_t priority;        /* OBJ priority: 3 over the canopy, 2 under it */
     int16_t sort;            /* room y: lower is further back */
+    uint8_t ghost;           /* a spawn record not spawned yet: a stippled silhouette */
 } Item;
 
 typedef struct Snapshot {
@@ -107,6 +114,7 @@ static void Add(Snapshot *s, uint32_t sprite, int x, int y, uint8_t slot, uint8_
     s->item[s->count].palette_slot = slot;
     s->item[s->count].priority = priority;
     s->item[s->count].sort = (int16_t)sort;
+    s->item[s->count].ghost = 0;
     s->count++;
 }
 
@@ -182,8 +190,20 @@ static void SnapshotEntity(Snapshot *s, uint32_t e)
     if (!(hide & 0x8000)) Add(s, main, x, y - (z >> 4), slot, priority, y);
 }
 
-/* Every live entity, both lists, then the Boy and the Dog, then the projectiles. */
-static void TakeSnapshot(Snapshot *s)
+/* Spawn records with a count left, as ghosts at their points. */
+static void SnapshotGhosts(Snapshot *s)
+{
+    for (uint32_t r = kSpawnFirst; r < kSpawnEnd; r += kSpawnStride) {
+        if (!W(r + 0x0C) || W(r) < 0x8000) continue;
+        const uint32_t sprite = StandingSprite(W(r), 4);   /* facing down */
+        const int x = (int16_t)W(r + 0x02), y = (int16_t)W(r + 0x04), before = s->count;
+        Add(s, sprite, x, y, 0, 2, y);
+        if (s->count > before) s->item[before].ghost = 1;
+    }
+}
+
+/* Every live entity, both lists, then the Boy and the Dog, then the projectiles (and the ghosts). */
+static void TakeSnapshot(Snapshot *s, int ghosts)
 {
     uint8_t seen[(kSlotEnd - kSlotFirst) / 8 + 1];
     memset(seen, 0, sizeof seen);
@@ -210,6 +230,7 @@ static void TakeSnapshot(Snapshot *s)
         int x = (int16_t)W(e + 0x14) >> 4, y = (int16_t)W(e + 0x16) >> 4, z = (int16_t)W(e + 0x18) >> 4;
         Add(s, (uint32_t)g_ram[e + 0x08] << 16 | W(e + 0x06), x, y - z, g_ram[e + 0x0C], 3, y);
     }
+    if (ghosts) SnapshotGhosts(s);
 }
 
 /* One 8x8 or 16x16 block as 4-bit indices (row-major). */
@@ -288,14 +309,16 @@ static int Compose(const Item *it, int grey, uint16_t *px, int *ox, int *oy, int
         int size = DecodeBlock(block, flags & 1, ix);
         if (!size) continue;
         int pal = (((flags & 0x0C) + (it->palette_slot & 0x0E)) >> 1) & 7;
-        if (pal >= 4) *math = 1;
+        if (pal >= 4 && !it->ghost) *math = 1;
         for (int r = 0; r < size; r++)
             for (int q = 0; q < size; q++) {
                 int v = ix[((flags & 0x80) ? size - 1 - r : r) * size + ((flags & 0x40) ? size - 1 - q : q)];
                 if (!v) continue;
-                uint16_t bgr = g_ppu->cgram[128 + pal * 16 + v] & 0x7FFF;
-                if (grey) bgr = Grey(bgr);
-                px[(cy - y0 + r) * (*w) + (cx - x0 + q)] = (uint16_t)(0x8000 | bgr);
+                const int dx = cx - x0 + q, dy = cy - y0 + r;
+                if (it->ghost && ((dx + dy) & 1)) continue;   /* stipple: every other pixel */
+                uint16_t bgr = it->ghost ? kGhostColour : g_ppu->cgram[128 + pal * 16 + v] & 0x7FFF;
+                if (grey && !it->ghost) bgr = Grey(bgr);
+                px[dy * (*w) + dx] = (uint16_t)(0x8000 | bgr);
             }
     }
     *ox = -x0, *oy = -y0;
@@ -308,13 +331,13 @@ void SoeWsSpritesReset(void)
     if (g_ppu) PpuSetExtraObjects(g_ppu, NULL, 0);
 }
 
-void SoeWsSpritesFrame(int enabled, int grey, int cam_x, int cam_y, int left, int right)
+void SoeWsSpritesFrame(int enabled, int grey, int ghosts, int cam_x, int cam_y, int left, int right)
 {
     if (!g_ppu) return;
     if (s_center < 0) { const char *c = getenv("SOE_WS_SPRITES_CENTER"); s_center = c && *c == '1';
                       const char *d = getenv("SOE_WS_DEBUG"); s_debug = d && *d == '1';
                       const char *sh = getenv("SOE_WS_SPRITES_SHIFT"); s_shift = sh ? atoi(sh) : 0; }
-    TakeSnapshot(&s_next);
+    TakeSnapshot(&s_next, ghosts);
     PpuSetExtraObjects(g_ppu, NULL, 0);
     if (enabled && s_prev.room == s_next.room && (left || right)) {
         /* Back to front by room y; a lower order wins, so the front one gets the lowest. */

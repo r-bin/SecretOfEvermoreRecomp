@@ -7,9 +7,9 @@
 
 /* Called once per frame from the widescreen begin_sim_frame on field frames. `enabled` 0 still
  * takes the snapshot (so switching on mid-room has last frame's state) but draws nothing; `grey`
- * draws them in grey (the colours still follow CGRAM, so fades apply). Camera and margins are
- * those of the field being drawn. */
-void SoeWsSpritesFrame(int enabled, int grey, int cam_x, int cam_y, int left, int right);
+ * draws them in grey (the colours still follow CGRAM, so fades apply); `ghosts` (widescreen E6) adds the spawn
+ * records still to spawn as dark silhouettes. Camera and margins are those of the field being drawn. */
+void SoeWsSpritesFrame(int enabled, int grey, int ghosts, int cam_x, int cam_y, int left, int right);
 /* Drops the snapshot and the PPU's extra objects (room change, non-field frames). */
 void SoeWsSpritesReset(void);
 

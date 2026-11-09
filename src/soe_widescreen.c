@@ -30,6 +30,7 @@
  */
 #include "soe_widescreen.h"
 #include "soe_ws_sprites.h"
+#include "soe_ws_alive.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -364,7 +365,7 @@ void SoeWsBeginFrame(unsigned number)
     }
     PpuSetExtraSideSpace(g_ppu, left, right, 0);
     s_left = left, s_right = right;
-    SoeWsSpritesFrame(ExtendedMode(), GreyLook(), cam_x, cam_y, left, right);
+    SoeWsSpritesFrame(ExtendedMode(), GreyLook(), SoeAliveEnabled(), cam_x, cam_y, left, right);
 
     if (!EnvFlag("SOE_WS_PREFILL", 1) || cells_w == 0) return;
     WsShadowSetWorld(0, (uint32_t)bg1_x, (uint32_t)bg1_y);
