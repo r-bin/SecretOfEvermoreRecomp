@@ -117,6 +117,11 @@ These issues should be submitted to the [RetroPortingToolKit/snesrecomp](https:/
    scratch path, 2026-11-03). The snapshot restores the CPU's registers but sets the beam's clock to the CPU's
    current one, so a state loaded at launch runs on a clock it did not have (§2, "Save state loaded at launch").
    Upstream: a PATH_MAX buffer that refuses what does not fit; save the master clock and its anchors with the state.
+11. **A hotkey on the `#` key is lost:** the launcher's hotkey editor writes `SDL_GetKeyName`, which is `#` for that
+   key (its own key on QWERTZ), and `NextLineStripComments` (`runner/src/util.c`) cuts every line at the first `#`,
+   so `Turbo = #` reads as unbound and no error is printed (found 2026-11-09, Turbo on `#` stopped working).
+   Workaround: write the key's other SDL name; on QWERTZ macOS `'` resolves to the `#` key (SDL3, checked).
+   Upstream: only a `#` that starts a line starts a comment, or the writer quotes the name and the reader unquotes it.
 
 ---
 

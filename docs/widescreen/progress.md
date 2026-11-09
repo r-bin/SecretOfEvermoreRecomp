@@ -11,10 +11,10 @@ files here; what the MMX recomp and SoE-Recomp taught us: [other-recomps](other-
 | 1 | **First approach: field backgrounds** | working, verified headless (below) | `src/soe_widescreen.c` |
 | 2 | Gate: menu pages, cutscenes, "player in control" | open | [menus-and-gates](menus-and-gates.md), [cutscenes](cutscenes.md) |
 | 3 | HUD placement (vanilla / edges / safe area) | open | [hud-and-adaptive-ui](hud-and-adaptive-ui.md) |
-| 4 | Edges option (clip / mirror / extend), small rooms | open (clip to the camera limits is in step 1) | [backgrounds-and-parallax](backgrounds-and-parallax.md), [camera-and-limits](camera-and-limits.md) |
+| 4 | Edges option (clip / mirror / extend), small rooms | open; in step 1: clip to the camera limits, and the foreground (BG1) clipped to them on its own | [backgrounds-and-parallax](backgrounds-and-parallax.md), [camera-and-limits](camera-and-limits.md) |
 | 5 | Fog of war | open | [fog-of-war](fog-of-war.md) |
 | 6 | **Vanilla extended**: entities drawn in the margins from WRAM; then ghosts for not-yet-active entities | entities done (`src/soe_ws_sprites.c`); never-activated entities (no frame yet) and ghosts open | [modes](modes.md) |
-| 7 | Settings as a mod package, pixel aspect, adaptive | done: package `soe.enhancement.widescreen` (view, room edges); more options as their steps land | `mods/preloaded/packages/`, [README](README.md#settings) |
+| 7 | Settings as a mod package, pixel aspect, adaptive | done: package `soe.enhancement.widescreen`, one feature per mode (each with its own options; the experimental renderer gets a third); more options as their steps land | `mods/preloaded/packages/`, [README](README.md#settings) |
 | 8 | Floating menu window, Mode 7 | open | [menus-and-gates](menus-and-gates.md), [mode7](mode7.md) |
 | 9 | Experiments E1..E5 | after the bound C of each consumer | [modes](modes.md), [bindings](bindings.md) |
 | 10 | **Experimental**: own field renderer, any width **and height**, full control of what the view shows | open, next | below |
@@ -70,7 +70,15 @@ framework change, no guest write.
   (`$0ADB`). Kill switch `SOE_WS_PREFILL=0`. `SOE_WS_CHECK=1` compares the rule with the game's
   own tilemap words for the cells on screen; `SOE_WS_DEBUG=1` prints the gate and the
   framework's margin statistics every 60 frames.
-* **Modes** (mod option *Mode*; both keep WRAM identical to no widescreen):
+* **Foreground** (option on both modes): with *Room edges = Whole room*, BG1 (canopy, roofs, the
+  front rim of a hut) is cut to the camera-limit box `$23E9..$23EF` while BG2 goes on: cells wholly
+  outside the box get the word the room set-up clears both maps with (`$7F:8000`, transparent on
+  BG1). *As far as the terrain* draws BG1 wherever the grid has it. `SOE_WS_FOREGROUND=limits|terrain`.
+  Parallax rooms (camera mode 1, room `0x4B`) are still pillarboxed; there BG1 needs its own scroll
+  and authored area ([backgrounds-and-parallax](backgrounds-and-parallax.md)).
+* **Modes** (one launcher feature each, *Widescreen (vanilla)* and *Widescreen (vanilla extended)*;
+  both claim the plugin `soe.widescreen`, so enabling one turns the other off; both keep WRAM
+  identical to no widescreen):
   * **Vanilla:** sprites exactly as the game draws them. The game never places one at X ≥ 256 and
     lets far entities sleep, so characters appear at the old edge.
   * **Vanilla extended** (default): `src/soe_ws_sprites.c` also draws, in the margins only, every
@@ -81,7 +89,9 @@ framework change, no guest write.
     the PPU as extra objects (`PpuSetExtraObjects`): composed like OBJ under every native entry, with
     live CGRAM colours. Drawn from the snapshot of the previous frame, because that is the state the
     drawn field shows. Map objects, opened chests and cut grass are tiles of the room grid and come
-    with the margin prefill.
+    with the margin prefill. Option *Characters in the margins*: Colour, or Greyscale (Rec. 601 luma
+    of the live CGRAM colour, so fades still apply), which marks what the game itself does not draw;
+    `SOE_WS_LOOK=grey`.
   * **Experimental:** step 10 (own renderer).
   `SOE_WS_MODE=vanilla|extended` overrides; `SOE_WS_SPRITES_CENTER=1` draws the extras in the centre
   too (under native OAM) and `SOE_WS_SPRITES_SHIFT=<px>` shifts them, to check placement.
@@ -127,3 +137,5 @@ viewport" lives (fog, ghosts, HUD placement, floating menus become passes of one
 | 2026-11-09 | Vanilla extended, village walk: guest state vs widescreen off (5 dumps; vanilla, extended, extended with centre check) | identical |
 | 2026-11-09 | Placement: extras drawn in the centre under native OAM vs the vanilla picture, 7 frames | 0 differing pixels; control with a 8 px shift: 361–1083 per frame. Position, frame timing, palette and priority match the game's own sprites |
 | 2026-11-09 | 32:9 village frame, vanilla vs extended | extended shows a villager in the left margin that vanilla does not draw |
+| 2026-11-09 | Foreground option, hut `0x51`, whole room, 21:9: Camera limits vs As far as the terrain | 2880 pixels differ, all at screen x 0–63, left of the box edge (x 96): the neighbouring hut's front layer is cut, its terrain stays; WRAM identical |
+| 2026-11-09 | Greyscale, village walk at 32:9 | the margin villager is grey, the centre unchanged; WRAM identical to Colour at 3 dumps. Replays not rerun (no long runs while the C bindings are being worked on) |

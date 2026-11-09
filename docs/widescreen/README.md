@@ -47,7 +47,9 @@ and the tree is `soe://tags/widescreen/` (`src/games/evermore/resources/tags/tag
 | Pixel aspect | 8:7, 1:1, 4:3 CRT (separate from the view aspect, as in MMX) | 8:7 | [other-recomps](other-recomps.md) |
 | Edges (parallax, room and camera-limit edges) | clip to terrain box / mirror / extend / off | clip | [backgrounds-and-parallax](backgrounds-and-parallax.md), [camera-and-limits](camera-and-limits.md) |
 | Small rooms / limit boxes narrower than the view | pillarbox / mirror / clip | pillarbox | [camera-and-limits](camera-and-limits.md) |
-| Mode | vanilla / vanilla extended (entities drawn from WRAM) / experimental (own renderer, later) | vanilla extended | [progress](progress.md) |
+| Mode | one launcher feature per mode, each with its own options: vanilla / vanilla extended (entities drawn from WRAM) / experimental (own renderer, later) | none (off) | [progress](progress.md) |
+| Foreground (BG1) | camera limits / as far as the terrain (matters with Edges = whole room) | camera limits | [progress](progress.md) |
+| Characters in the margins (vanilla extended) | colour / greyscale | colour | [progress](progress.md) |
 | UI placement | vanilla / edges / safe area / custom | vanilla | [hud-and-adaptive-ui](hud-and-adaptive-ui.md) |
 | Fog of war | off / dim / fog / black, strength, feather, ghosts through fog | off | [fog-of-war](fog-of-war.md) |
 | Cutscenes | keep / vanilla enemies / 4:3 | 4:3 | [cutscenes](cutscenes.md) |

@@ -184,8 +184,16 @@ static int DecodeBlock(int id, int large, uint8_t *out)
     return size;
 }
 
+/* BGR555 to the grey of the same brightness (Rec. 601 weights). */
+static uint16_t Grey(uint16_t bgr)
+{
+    int r = bgr & 31, g = bgr >> 5 & 31, b = bgr >> 10 & 31;
+    int y = (r * 77 + g * 150 + b * 29 + 128) >> 8;
+    return (uint16_t)(y | y << 5 | y << 10);
+}
+
 /* Compose one sprite into `px` (BGR555 | $8000, 0 = transparent); returns 0 when nothing to draw. */
-static int Compose(const Item *it, uint16_t *px, int *ox, int *oy, int *w, int *h, int *math)
+static int Compose(const Item *it, int grey, uint16_t *px, int *ox, int *oy, int *w, int *h, int *math)
 {
     int count = RomU8(it->sprite), first = RomU8(it->sprite + 1);
     if (count <= 0 || first < 0 || count > 64) return 0;
@@ -218,6 +226,7 @@ static int Compose(const Item *it, uint16_t *px, int *ox, int *oy, int *w, int *
                 int v = ix[((flags & 0x80) ? size - 1 - r : r) * size + ((flags & 0x40) ? size - 1 - q : q)];
                 if (!v) continue;
                 uint16_t bgr = g_ppu->cgram[128 + pal * 16 + v] & 0x7FFF;
+                if (grey) bgr = Grey(bgr);
                 px[(cy - y0 + r) * (*w) + (cx - x0 + q)] = (uint16_t)(0x8000 | bgr);
             }
     }
@@ -231,7 +240,7 @@ void SoeWsSpritesReset(void)
     if (g_ppu) PpuSetExtraObjects(g_ppu, NULL, 0);
 }
 
-void SoeWsSpritesFrame(int enabled, int cam_x, int cam_y, int left, int right)
+void SoeWsSpritesFrame(int enabled, int grey, int cam_x, int cam_y, int left, int right)
 {
     if (!g_ppu) return;
     if (s_center < 0) { const char *c = getenv("SOE_WS_SPRITES_CENTER"); s_center = c && *c == '1';
@@ -252,7 +261,7 @@ void SoeWsSpritesFrame(int enabled, int cam_x, int cam_y, int left, int right)
             const Item *it = &s_prev.item[index[k]];
             int ox, oy, w, h, math;
             uint16_t *px = s_pixels[drawn];
-            if (!Compose(it, px, &ox, &oy, &w, &h, &math)) continue;
+            if (!Compose(it, grey, px, &ox, &oy, &w, &h, &math)) continue;
             int sx = it->x - ox - cam_x + s_shift, sy = it->y - oy - cam_y;
             if (sx + w <= -left || sx >= 256 + right || sy + h <= 0 || sy >= 224) continue;
             /* Margins only: the 4:3 centre is the game's own picture. SOE_WS_SPRITES_CENTER=1 draws

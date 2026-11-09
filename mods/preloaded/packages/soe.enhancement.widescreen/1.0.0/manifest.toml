@@ -3,7 +3,7 @@ id = "soe.enhancement.widescreen"
 version = "1.0.0"
 name = "Widescreen"
 author = "r-bin"
-description = "Shows more of each room to the sides. Only the picture changes: the game runs exactly as in 4:3, enemies appear where they always did, menus and other screens stay 4:3."
+description = "Shows more of each room to the sides. Only the picture changes: the game runs exactly as in 4:3. Menus and other screens stay 4:3. Pick one mode; each has its own settings."
 license = "MIT"
 resolver = "declarative"
 save_compatibility = "shared"
@@ -14,8 +14,16 @@ rom_sha256 = "17c864a76d498feb6479eee8e7d6807b951c66225033228622bb66754baab1db"
 
 [[feature]]
 id = "widescreen"
-name = "Widescreen"
-description = "Extend the field to the sides with the room's own map. Presentation only (src/soe_widescreen.c)."
+name = "Widescreen (vanilla)"
+description = "The room's map to the sides; characters appear where the game draws them, at the old screen edge. Presentation only (src/soe_widescreen.c)."
+group = "Display"
+default_enabled = false
+presentation_only = true
+
+[[feature]]
+id = "extended"
+name = "Widescreen (vanilla extended)"
+description = "Like vanilla, and the characters and projectiles the game keeps in memory are drawn in the margins too. The game still runs exactly as in 4:3 (src/soe_ws_sprites.c)."
 group = "Display"
 default_enabled = false
 presentation_only = true
@@ -45,20 +53,6 @@ label = "32:9"
 
 [[option]]
 feature = "widescreen"
-id = "mode"
-label = "Mode"
-description = "Both keep the game exactly as in 4:3. Vanilla shows what the game draws: characters appear at the old screen edge. Vanilla extended also draws, in the margins, the characters and projectiles the game keeps in memory but does not draw there."
-type = "choice"
-default = "extended"
-[[option.choice]]
-value = "vanilla"
-label = "Vanilla"
-[[option.choice]]
-value = "extended"
-label = "Vanilla extended"
-
-[[option]]
-feature = "widescreen"
 id = "edges"
 label = "Room edges"
 description = "Camera limits shows only the part of the map the game shows (one hut of a hut map); Whole room shows everything the room's map holds."
@@ -71,6 +65,89 @@ label = "Camera limits"
 value = "room"
 label = "Whole room"
 
+[[option]]
+feature = "widescreen"
+id = "foreground"
+label = "Foreground (canopy, roofs)"
+description = "Camera limits stops the foreground layer at the area the game can show, also when Room edges shows the whole room; As far as the terrain draws it wherever the room's map has it."
+type = "choice"
+default = "limits"
+[[option.choice]]
+value = "limits"
+label = "Camera limits"
+[[option.choice]]
+value = "terrain"
+label = "As far as the terrain"
+
+[[option]]
+feature = "extended"
+id = "aspect"
+label = "View aspect ratio"
+description = "Adaptive follows the window's shape; the others fix the view. Pixel shape comes from Settings > Display Aspect."
+type = "choice"
+default = "adaptive"
+[[option.choice]]
+value = "adaptive"
+label = "Adaptive"
+[[option.choice]]
+value = "16:10"
+label = "16:10"
+[[option.choice]]
+value = "16:9"
+label = "16:9"
+[[option.choice]]
+value = "21:9"
+label = "21:9"
+[[option.choice]]
+value = "32:9"
+label = "32:9"
+
+[[option]]
+feature = "extended"
+id = "edges"
+label = "Room edges"
+description = "Camera limits shows only the part of the map the game shows (one hut of a hut map); Whole room shows everything the room's map holds."
+type = "choice"
+default = "limits"
+[[option.choice]]
+value = "limits"
+label = "Camera limits"
+[[option.choice]]
+value = "room"
+label = "Whole room"
+
+[[option]]
+feature = "extended"
+id = "foreground"
+label = "Foreground (canopy, roofs)"
+description = "Camera limits stops the foreground layer at the area the game can show, also when Room edges shows the whole room; As far as the terrain draws it wherever the room's map has it."
+type = "choice"
+default = "limits"
+[[option.choice]]
+value = "limits"
+label = "Camera limits"
+[[option.choice]]
+value = "terrain"
+label = "As far as the terrain"
+
+[[option]]
+feature = "extended"
+id = "look"
+label = "Characters in the margins"
+description = "Colour draws them as the game would; Greyscale marks them as drawn by the widescreen mode, outside the game's own view."
+type = "choice"
+default = "colour"
+[[option.choice]]
+value = "colour"
+label = "Colour"
+[[option.choice]]
+value = "grey"
+label = "Greyscale"
+
 [[plugin]]
 feature = "widescreen"
+id = "soe.widescreen"
+
+[[plugin]]
+feature = "extended"
 id = "soe.widescreen"

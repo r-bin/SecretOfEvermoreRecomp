@@ -19,8 +19,12 @@
  * Presentation only: reads WRAM and the PPU, writes neither. Addresses and their
  * evidence: everscript-vscode docs/entities/off-screen-behaviour.md, tag `widescreen`.
  *
+ * Each mode is its own feature of the package (one plugin, so enabling one turns the other off),
+ * with its own options: `widescreen` (vanilla) and `extended` (vanilla extended).
+ *
  * Test overrides (win over the mod): SOE_WIDESCREEN=0|1, SOE_WS_ASPECT=W:H|adaptive,
- * SOE_WS_WIDTH=<px>, SNESRECOMP_WS_EXTRA=<px per side>, SOE_WS_EDGES=limits|room|off.
+ * SOE_WS_WIDTH=<px>, SNESRECOMP_WS_EXTRA=<px per side>, SOE_WS_EDGES=limits|room|off,
+ * SOE_WS_FOREGROUND=limits|terrain, SOE_WS_MODE=vanilla|extended, SOE_WS_LOOK=colour|grey.
  * Kill switch SOE_WS_PREFILL=0 (draw the raw ring). SOE_WS_CHECK=1 compares the prefill rule
  * with the game's own tilemap words for the on-screen cells and prints the result.
  */
@@ -52,6 +56,9 @@ enum {
     kScrollBg1V = 0x0110,
     kScrollBg2H = 0x0112,
     kScrollBg2V = 0x0114,
+    kLimitTop = 0x23EB,
+    kLimitBottom = 0x23EF,
+    kBlankCell = 0x8000,    /* $7F:8000, the tile word the room set-up clears both maps with */
 };
 
 static uint16_t Ram16(uint32_t a) { return (uint16_t)(g_ram[a] | g_ram[a + 1] << 8); }
@@ -63,14 +70,28 @@ static int EnvFlag(const char *name, int dflt)
     return v && *v ? atoi(v) != 0 : dflt;
 }
 
-/* The mod package and its feature; the plugin id is the manifest's [[plugin]] id. */
+/* The mod package and its features, one per mode; both claim the plugin "soe.widescreen". */
 #define kModPackage "soe.enhancement.widescreen"
-#define kModFeature "widescreen"
+#define kModVanilla "widescreen"
+#define kModExtended "extended"
 
 enum Edges { kEdgesLimits, kEdgesRoom, kEdgesOff };
+/* BG1, the canopy in front: clipped to the camera-limit box, or shown as far as the terrain. */
+enum Foreground { kForegroundLimits, kForegroundTerrain };
 
 /* Settings from the mod, read on activation. */
-static struct { int on; char aspect[16]; enum Edges edges; int extended; } s_mod;
+static struct {
+    int on, extended, grey;
+    char aspect[16];
+    enum Edges edges;
+    enum Foreground foreground;
+} s_mod;
+
+static int OptionIs(const char *feature, const char *option, const char *value)
+{
+    char v[32];
+    return snes_mod_runtime_feature_option_value_c(kModPackage, feature, option, v, sizeof v) && !strcmp(v, value);
+}
 
 /* The mod alone decides; the legacy config flag `Widescreen` is not read. */
 static void ModReset(void)
@@ -82,17 +103,14 @@ static void ModActivate(void)
 {
     char v[32];
     s_mod.on = 1;
+    s_mod.extended = snes_mod_runtime_feature_enabled_c(kModPackage, kModExtended);
+    const char *feature = s_mod.extended ? kModExtended : kModVanilla;
     strcpy(s_mod.aspect, "adaptive");
-    if (snes_mod_runtime_feature_option_value_c(kModPackage, kModFeature, "aspect", v, sizeof v))
+    if (snes_mod_runtime_feature_option_value_c(kModPackage, feature, "aspect", v, sizeof v))
         snprintf(s_mod.aspect, sizeof s_mod.aspect, "%s", v);
-    s_mod.edges = kEdgesLimits;
-    if (snes_mod_runtime_feature_option_value_c(kModPackage, kModFeature, "edges", v, sizeof v) &&
-        !strcmp(v, "room"))
-        s_mod.edges = kEdgesRoom;
-    s_mod.extended = 1;
-    if (snes_mod_runtime_feature_option_value_c(kModPackage, kModFeature, "mode", v, sizeof v) &&
-        !strcmp(v, "vanilla"))
-        s_mod.extended = 0;
+    s_mod.edges = OptionIs(feature, "edges", "room") ? kEdgesRoom : kEdgesLimits;
+    s_mod.foreground = OptionIs(feature, "foreground", "terrain") ? kForegroundTerrain : kForegroundLimits;
+    s_mod.grey = s_mod.extended && OptionIs(feature, "look", "grey");
 }
 
 /* Presentation only: this code changes what is drawn and touches no CPU, WRAM, VRAM, OAM,
@@ -109,7 +127,8 @@ static int Enabled(void)
 {
     const char *v = getenv("SOE_WIDESCREEN");
     if (v && *v) return atoi(v) != 0;
-    return s_mod.on || snes_mod_runtime_feature_enabled_c(kModPackage, kModFeature);
+    return s_mod.on || snes_mod_runtime_feature_enabled_c(kModPackage, kModVanilla) ||
+           snes_mod_runtime_feature_enabled_c(kModPackage, kModExtended);
 }
 
 /* Vanilla extended: entities drawn in the margins from WRAM (src/soe_ws_sprites.c). SOE_WS_MODE
@@ -126,6 +145,21 @@ static enum Edges EdgesMode(void)
     const char *v = getenv("SOE_WS_EDGES");
     if (v && *v) return !strcmp(v, "room") ? kEdgesRoom : !strcmp(v, "off") || !strcmp(v, "0") ? kEdgesOff : kEdgesLimits;
     return s_mod.edges;
+}
+
+static enum Foreground ForegroundMode(void)
+{
+    const char *v = getenv("SOE_WS_FOREGROUND");
+    if (v && *v) return !strcmp(v, "terrain") ? kForegroundTerrain : kForegroundLimits;
+    return s_mod.foreground;
+}
+
+/* Margin characters in grey: SOE_WS_LOOK=grey|colour overrides the mod. */
+static int GreyLook(void)
+{
+    const char *v = getenv("SOE_WS_LOOK");
+    if (v && *v) return !strcmp(v, "grey");
+    return s_mod.grey;
 }
 
 /* Horizontal:vertical size of one SNES pixel as presented (config DisplayAspect). */
@@ -224,7 +258,15 @@ static void CheckOnScreenCells(int cam_x, int cam_y, int cells_w, int cells_h)
                 (unsigned long long)s_check.same, (unsigned long long)s_check.differ);
 }
 
-static void PrefillColumns(int x0, int x1, int cam_y, int cells_w, int cells_h)
+/* Room pixels BG1 may show; cells wholly outside get the blank word. */
+typedef struct Box { int left, top, right, bottom; } Box;
+
+static int CellOutside(const Box *box, int cx, int cy)
+{
+    return cx * 16 + 16 <= box->left || cx * 16 >= box->right || cy * 16 + 16 <= box->top || cy * 16 >= box->bottom;
+}
+
+static void PrefillColumns(int x0, int x1, int cam_y, int cells_w, int cells_h, const Box *fg)
 {
     for (int cx = x0 >> 4; cx <= (x1 - 1) >> 4; cx++) {
         if (cx < 0 || cx >= cells_w) continue;
@@ -232,8 +274,11 @@ static void PrefillColumns(int x0, int x1, int cam_y, int cells_w, int cells_h)
             /* Force, not Prefill: the room set-up clears the whole ring by DMA, and the
              * shadow keeps those blank uploads as authoritative history that Prefill
              * never replaces. The grid is the live source of the same words. */
-            for (int layer = 0; layer < 2; layer++)
-                WsShadowForceTile(layer, (uint32_t)cx, (uint32_t)cy, CellTileWord(layer, cx, cy, cells_w));
+            for (int layer = 0; layer < 2; layer++) {
+                uint16_t word = layer == 0 && fg && CellOutside(fg, cx, cy) ? Ram16(kBank7F + kBlankCell)
+                                                                           : CellTileWord(layer, cx, cy, cells_w);
+                WsShadowForceTile(layer, (uint32_t)cx, (uint32_t)cy, word);
+            }
     }
 }
 
@@ -290,14 +335,19 @@ void SoeWsBeginFrame(unsigned number)
     }
     PpuSetExtraSideSpace(g_ppu, left, right, 0);
     s_left = left, s_right = right;
-    SoeWsSpritesFrame(ExtendedMode(), cam_x, cam_y, left, right);
+    SoeWsSpritesFrame(ExtendedMode(), GreyLook(), cam_x, cam_y, left, right);
 
     if (!EnvFlag("SOE_WS_PREFILL", 1) || cells_w == 0) return;
     WsShadowSetWorld(0, (uint32_t)bg1_x, (uint32_t)bg1_y);
     WsShadowSetWorld(1, (uint32_t)bg2_x, (uint32_t)bg2_y);
     WsShadowFrame(g_ppu);
-    PrefillColumns(cam_x - left, cam_x, cam_y, cells_w, cells_h);
-    PrefillColumns(cam_x + 256, cam_x + 256 + right, cam_y, cells_w, cells_h);
+    /* With the margins cut to the limit box BG1 already is; past it (whole room) the canopy can
+     * stop at the box while the terrain goes on. */
+    Box box = {(int16_t)Ram16(kLimitLeft), (int16_t)Ram16(kLimitTop), (int16_t)Ram16(kLimitRight),
+               (int16_t)Ram16(kLimitBottom)};
+    const Box *fg = ForegroundMode() == kForegroundLimits ? &box : NULL;
+    PrefillColumns(cam_x - left, cam_x, cam_y, cells_w, cells_h, fg);
+    PrefillColumns(cam_x + 256, cam_x + 256 + right, cam_y, cells_w, cells_h, fg);
     if (EnvFlag("SOE_WS_CHECK", 0)) CheckOnScreenCells(cam_x, cam_y, cells_w, cells_h);
     if (EnvFlag("SOE_WS_DEBUG", 0) && number % 60 == 0) {
         WsShadowMarginStat st;
