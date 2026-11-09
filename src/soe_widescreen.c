@@ -266,7 +266,8 @@ static void CheckOnScreenCells(int cam_x, int cam_y, int cells_w, int cells_h)
                 (unsigned long long)s_check.same, (unsigned long long)s_check.differ);
 }
 
-/* Room pixels BG1 may show; cells wholly outside get the blank word. */
+/* Room pixels a layer may show, in that layer's own coordinates; cells wholly outside get the
+ * blank word. */
 typedef struct Box { int left, top, right, bottom; } Box;
 
 static int CellOutside(const Box *box, int cx, int cy)
@@ -274,17 +275,26 @@ static int CellOutside(const Box *box, int cx, int cy)
     return cx * 16 + 16 <= box->left || cx * 16 >= box->right || cy * 16 + 16 <= box->top || cy * 16 >= box->bottom;
 }
 
-static void PrefillColumns(int x0, int x1, int cam_y, int cells_w, int cells_h, const Box *fg)
+/* Fill one layer's margin cells from the room grid, at the layer's own scroll: BG1 is not always
+ * at the camera (in 0x31, Podunk 1965, it runs 271 px right and 11 px down of BG2), and the grid
+ * is sampled where that layer looks. BG1 cells outside the grid or outside `clip` are blank
+ * (transparent); BG2 outside the grid is never in an open margin. */
+static void PrefillLayer(int layer, int scroll_x, int scroll_y, int left, int right, int cells_w, int cells_h,
+                         const Box *clip)
 {
-    for (int cx = x0 >> 4; cx <= (x1 - 1) >> 4; cx++) {
-        if (cx < 0 || cx >= cells_w) continue;
-        for (int cy = cam_y >> 4; cy <= (cam_y + 224) >> 4 && cy < cells_h; cy++)
-            /* Force, not Prefill: the room set-up clears the whole ring by DMA, and the
-             * shadow keeps those blank uploads as authoritative history that Prefill
-             * never replaces. The grid is the live source of the same words. */
-            for (int layer = 0; layer < 2; layer++) {
-                uint16_t word = layer == 0 && fg && CellOutside(fg, cx, cy) ? Ram16(kBank7F + kBlankCell)
-                                                                           : CellTileWord(layer, cx, cy, cells_w);
+    const int spans[2][2] = {{scroll_x - left, scroll_x}, {scroll_x + 256, scroll_x + 256 + right}};
+    const uint16_t blank = Ram16(kBank7F + kBlankCell);
+    for (int s = 0; s < 2; s++) {
+        if (spans[s][1] <= spans[s][0]) continue;
+        for (int cx = spans[s][0] >> 4; cx <= (spans[s][1] - 1) >> 4; cx++)
+            for (int cy = scroll_y >> 4; cy <= (scroll_y + 224) >> 4; cy++) {
+                int inside = cx >= 0 && cx < cells_w && cy >= 0 && cy < cells_h;
+                if (!inside && layer != 0) continue;
+                /* Force, not Prefill: the room set-up clears the whole ring by DMA, and the
+                 * shadow keeps those blank uploads as authoritative history that Prefill
+                 * never replaces. The grid is the live source of the same words. */
+                uint16_t word = !inside || (clip && CellOutside(clip, cx, cy)) ? blank
+                                                                                : CellTileWord(layer, cx, cy, cells_w);
                 WsShadowForceTile(layer, (uint32_t)cx, (uint32_t)cy, word);
             }
     }
@@ -349,13 +359,14 @@ void SoeWsBeginFrame(unsigned number)
     WsShadowSetWorld(0, (uint32_t)bg1_x, (uint32_t)bg1_y);
     WsShadowSetWorld(1, (uint32_t)bg2_x, (uint32_t)bg2_y);
     WsShadowFrame(g_ppu);
-    /* With the margins cut to the limit box BG1 already is; past it (whole room) the canopy can
-     * stop at the box while the terrain goes on. */
-    Box box = {(int16_t)Ram16(kLimitLeft), (int16_t)Ram16(kLimitTop), (int16_t)Ram16(kLimitRight),
-               (int16_t)Ram16(kLimitBottom)};
-    const Box *fg = ForegroundMode() == kForegroundLimits ? &box : NULL;
-    PrefillColumns(cam_x - left, cam_x, cam_y, cells_w, cells_h, fg);
-    PrefillColumns(cam_x + 256, cam_x + 256 + right, cam_y, cells_w, cells_h, fg);
+    /* Foreground = camera limits: BG1 shows only what it can show in the game, the limit box moved
+     * by BG1's offset from the camera; past it (whole room, or BG1 off the camera) the terrain
+     * goes on without it. */
+    int dx = bg1_x - cam_x, dy = bg1_y - cam_y;
+    Box box = {(int16_t)Ram16(kLimitLeft) + dx, (int16_t)Ram16(kLimitTop) + dy, (int16_t)Ram16(kLimitRight) + dx,
+               (int16_t)Ram16(kLimitBottom) + dy};
+    PrefillLayer(0, bg1_x, bg1_y, left, right, cells_w, cells_h, ForegroundMode() == kForegroundLimits ? &box : NULL);
+    PrefillLayer(1, bg2_x, bg2_y, left, right, cells_w, cells_h, NULL);
     if (EnvFlag("SOE_WS_CHECK", 0)) CheckOnScreenCells(cam_x, cam_y, cells_w, cells_h);
     if (EnvFlag("SOE_WS_DEBUG", 0) && number % 60 == 0) {
         WsShadowMarginStat st;

@@ -70,10 +70,16 @@ framework change, no guest write.
   (`$0ADB`). Kill switch `SOE_WS_PREFILL=0`. `SOE_WS_CHECK=1` compares the rule with the game's
   own tilemap words for the cells on screen; `SOE_WS_DEBUG=1` prints the gate and the
   framework's margin statistics every 60 frames.
-* **Foreground** (option on both modes): with *Room edges = Whole room*, BG1 (canopy, roofs, the
-  front rim of a hut) is cut to the camera-limit box `$23E9..$23EF` while BG2 goes on: cells wholly
-  outside the box get the word the room set-up clears both maps with (`$7F:8000`, transparent on
-  BG1). *As far as the terrain* draws BG1 wherever the grid has it. `SOE_WS_FOREGROUND=limits|terrain`.
+* **Each layer at its own scroll:** BG1 is not always at the camera. In `0x31` (Podunk 1965,
+  camera mode 2) it runs 271 px right and 11 px down of BG2 (frame 3000 of replay 02: camera 723/8,
+  BG1 994/19), so the hedges in front come from other grid cells than the ground. The margins are
+  filled per layer from that layer's drawn scroll; filled at the camera's cells, BG1's margin kept
+  the cleared ring and the hedges stopped at the old edge (user's screenshot).
+* **Foreground** (option on both modes): BG1 (canopy, hedges, roofs, the front rim of a hut) is
+  cut to the camera-limit box `$23E9..$23EF` moved by BG1's offset from the camera, i.e. to what
+  BG1 can show in the game; BG2 goes on. Cells outside the box or the grid get the word the room
+  set-up clears both maps with (`$7F:8000`, transparent on BG1). *As far as the terrain* draws BG1
+  wherever the grid has it. `SOE_WS_FOREGROUND=limits|terrain`.
   Parallax rooms (camera mode 1, room `0x4B`) are still pillarboxed; there BG1 needs its own scroll
   and authored area ([backgrounds-and-parallax](backgrounds-and-parallax.md)).
 * **Modes** (one launcher feature each, *Widescreen (vanilla)* and *Widescreen (vanilla extended)*;
@@ -145,4 +151,5 @@ viewport" lives (fog, ghosts, HUD placement, floating menus become passes of one
 | 2026-11-09 | Never-animated entities, village at 32:9 (14 of 17 listed entities had sprite 0) | a villager and a small creature stand in the left margin; WRAM identical |
 | 2026-11-09 | Flower room `0x38` and jungle `0x31` (camera mode 2) through replay 02 | were pillarboxed (gate: camera mode 0 only); now wide, the wave continuous across x 96; replay 02 in sync (396 checkpoints) |
 | 2026-11-09 | Mode 7 (replay 02, room `0x46`, frames 20400–20900), user report: black window | software path draws it pillarboxed; the black is the GPU HD Mode 7 path (`Mode7Enabled`) with a widened frame, not reproducible headless (no GL). Mode 7 frames are now 256 wide, identical to widescreen off (dump compared); on screen not yet confirmed |
+| 2026-11-09 | Podunk 1965 (`0x31`), user's screenshot: hedges cut at the old right edge | BG1 runs 271 px off the camera; per-layer prefill: hedges continue into both margins; replay 02 in sync with both foreground settings; hut and village frames byte-identical to the build before |
 | 2026-11-09 | Greyscale, village walk at 32:9 | the margin villager is grey, the centre unchanged; WRAM identical to Colour at 3 dumps. Replays not rerun (no long runs while the C bindings are being worked on) |
