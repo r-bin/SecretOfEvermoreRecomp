@@ -13,7 +13,7 @@ files here; what the MMX recomp and SoE-Recomp taught us: [other-recomps](other-
 | 3 | HUD placement (vanilla / edges / safe area) | open | [hud-and-adaptive-ui](hud-and-adaptive-ui.md) |
 | 4 | Edges option (clip / mirror / extend), small rooms | open; in step 1: clip to the camera limits, and the foreground (BG1) clipped to them on its own | [backgrounds-and-parallax](backgrounds-and-parallax.md), [camera-and-limits](camera-and-limits.md) |
 | 5 | Fog of war | open | [fog-of-war](fog-of-war.md) |
-| 6 | **Vanilla extended**: entities drawn in the margins from WRAM; then ghosts for not-yet-active entities | entities done (`src/soe_ws_sprites.c`); never-activated entities (no frame yet) and ghosts open | [modes](modes.md) |
+| 6 | **Vanilla extended**: entities drawn in the margins from WRAM; then ghosts for not-yet-active entities | entities done (`src/soe_ws_sprites.c`), never-animated ones in their standing frame; ghosts open | [modes](modes.md) |
 | 7 | Settings as a mod package, pixel aspect, adaptive | done: package `soe.enhancement.widescreen`, one feature per mode (each with its own options; the experimental renderer gets a third); more options as their steps land | `mods/preloaded/packages/`, [README](README.md#settings) |
 | 8 | Floating menu window, Mode 7 | open | [menus-and-gates](menus-and-gates.md), [mode7](mode7.md) |
 | 9 | Experiments E1..E5 | after the bound C of each consumer | [modes](modes.md), [bindings](bindings.md) |
@@ -91,7 +91,11 @@ framework change, no guest write.
     drawn field shows. Map objects, opened chests and cut grass are tiles of the room grid and come
     with the margin prefill. Option *Characters in the margins*: Colour, or Greyscale (Rec. 601 luma
     of the live CGRAM colour, so fades still apply), which marks what the game itself does not draw;
-    `SOE_WS_LOOK=grey`.
+    `SOE_WS_LOOK=grey`. Entities the camera has not reached yet wait in the asleep list with sprite
+    pointer 0 (they are not hidden: `+$12` is clear), so the villagers popped in at the old edge.
+    They are drawn in their standing frame: record `$8E:(+$60)`, stand id `+$32`, animation record
+    `$C4:id` at facing `+$22` (`$90:8124`), the script's first set-sprite command; their palette
+    slot `+$0C` is already set, so live CGRAM colours apply.
   * **Experimental:** step 10 (own renderer).
   `SOE_WS_MODE=vanilla|extended` overrides; `SOE_WS_SPRITES_CENTER=1` draws the extras in the centre
   too (under native OAM) and `SOE_WS_SPRITES_SHIFT=<px>` shifts them, to check placement.
@@ -138,4 +142,7 @@ viewport" lives (fog, ghosts, HUD placement, floating menus become passes of one
 | 2026-11-09 | Placement: extras drawn in the centre under native OAM vs the vanilla picture, 7 frames | 0 differing pixels; control with a 8 px shift: 361–1083 per frame. Position, frame timing, palette and priority match the game's own sprites |
 | 2026-11-09 | 32:9 village frame, vanilla vs extended | extended shows a villager in the left margin that vanilla does not draw |
 | 2026-11-09 | Foreground option, hut `0x51`, whole room, 21:9: Camera limits vs As far as the terrain | 2880 pixels differ, all at screen x 0–63, left of the box edge (x 96): the neighbouring hut's front layer is cut, its terrain stays; WRAM identical |
+| 2026-11-09 | Never-animated entities, village at 32:9 (14 of 17 listed entities had sprite 0) | a villager and a small creature stand in the left margin; WRAM identical |
+| 2026-11-09 | Flower room `0x38` and jungle `0x31` (camera mode 2) through replay 02 | were pillarboxed (gate: camera mode 0 only); now wide, the wave continuous across x 96; replay 02 in sync (396 checkpoints) |
+| 2026-11-09 | Mode 7 (replay 02, room `0x46`, frames 20400–20900), user report: black window | software path draws it pillarboxed; the black is the GPU HD Mode 7 path (`Mode7Enabled`) with a widened frame, not reproducible headless (no GL). Mode 7 frames are now 256 wide, identical to widescreen off (dump compared); on screen not yet confirmed |
 | 2026-11-09 | Greyscale, village walk at 32:9 | the margin villager is grey, the centre unchanged; WRAM identical to Colour at 3 dumps. Replays not rerun (no long runs while the C bindings are being worked on) |

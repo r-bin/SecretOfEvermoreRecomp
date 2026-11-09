@@ -203,10 +203,14 @@ static int WantedWidth(int drawable_w, int drawable_h)
     return WidthForAspect(16.0 / 9.0);
 }
 
+/* Mode 7 frames are drawn 256 wide, exactly as without widescreen: the host's GPU HD Mode 7
+ * (Mode7Enabled) captures the whole widened PPU line, and with it the user saw a black window
+ * (2026-11-09; the software path drew it fine, pillarboxed). The PPU's mode at this point is the
+ * one the next field starts with. */
 void SoeWsPrepareFrame(int drawable_w, int drawable_h, int *frame_w, int *frame_h)
 {
     *frame_h = 224;
-    *frame_w = Enabled() ? WantedWidth(drawable_w, drawable_h) : 256;
+    *frame_w = Enabled() && !(g_ppu && (g_ppu->bgmode & 7) == 7) ? WantedWidth(drawable_w, drawable_h) : 256;
 }
 
 /* The host opens the window before the first frame decides its width, so it asks here:
@@ -219,16 +223,20 @@ int SoeWsWindowBaseWidth(int frame_w)
 
 /* A field frame carries the exact register set the field set-up `$8E:E08B` writes: BGMODE $39
  * (mode 1, BG3 priority, 16x16 tiles on BG1 and BG2 only), maps BG1 $00 / BG2 $04 / BG3 $08,
- * BG12NBA $22; plus camera mode 0 and a camera-limit box at least one screen wide. Anything
- * else (intro and title screens, menu pages, Mode 7, other camera modes) is pillarboxed: the
- * intro logo is mode 1 with 16x16 tiles too, but BGMODE $79, both BGs on map $00, no room. */
+ * BG12NBA $22; plus camera mode 0 or 2 and a camera-limit box at least one screen wide. Camera
+ * mode 2 (heat shimmer `$90:9D45`: 0x22 0x31 0x38 0x41 0x5B 0x6A, the jungle and the flowers)
+ * scrolls both layers with the camera plus an HDMA wave; the margins take the PPU's per-line
+ * scroll, so they wave with the centre. Anything else (intro and title screens, menu pages,
+ * Mode 7, parallax and lighting modes 1, 4, 5) is pillarboxed: the intro logo is mode 1 with
+ * 16x16 tiles too, but BGMODE $79, both BGs on map $00, no room. */
 static int IsFieldFrame(void)
 {
     if (g_ppu->bgmode != 0x39 || g_ppu->bgXsc[0] != 0x00 || g_ppu->bgXsc[1] != 0x04 ||
         g_ppu->bgXsc[2] != 0x08 || (g_ppu->bgTileAdr & 0xff) != 0x22)
         return 0;
     int left = (int16_t)Ram16(kLimitLeft), right = (int16_t)Ram16(kLimitRight);
-    return Ram16(kCameraMode) == 0 && right - left >= 256 && g_ram[kRoomCellsW] != 0;
+    int mode = Ram16(kCameraMode);
+    return (mode == 0 || mode == 2) && right - left >= 256 && g_ram[kRoomCellsW] != 0;
 }
 
 static uint16_t CellTileWord(int layer, int cx, int cy, int cells_w)

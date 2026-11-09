@@ -22,6 +22,12 @@
  *                 hi bit 7 = groups of 16 bytes behind a mask byte whose bits mark zero words
  *   attribute     $80:9433: (chunk flags & $CC) + the character's word, so the OAM palette is
  *                 ((flags & $0C) + (slot & $0E)) >> 1
+ *   never animated an entity spawned but not yet reached by the camera waits in the asleep list
+ *                 with sprite pointer 0 (not hidden: +$12 is clear). Drawn in its standing frame:
+ *                 record $8E:(+$60), +$32 = stand id, animation record $C4:id (+3 flags: bit 7
+ *                 eight facings at 2*facing, bit 6 four at $90:815B[facing]; $90:8124), facing +$22;
+ *                 its script's first set-sprite command (0x22..0x2B: bank = cmd + $A8) is the frame
+ *                 (everscript-vscode maps/character-animation.ts, resolveCharacterSprite)
  *
  * Timing: the field drawn at begin_sim_frame shows the OAM built a frame earlier, while WRAM already
  * holds the next positions. So each frame draws the snapshot taken at the previous call, against
@@ -67,9 +73,12 @@ static uint16_t s_pixels[kMaxItems][kMaxSide * kMaxSide];
 
 static uint16_t W(uint32_t a) { return (uint16_t)(g_ram[a] | g_ram[a + 1] << 8); }
 
+/* ROM by bus address; $80-$BF:8000-FFFF mirror $C0-$FF (HiROM). */
 static const uint8_t *Rom(uint32_t bus)
 {
-    return (bus >> 16) >= 0xC0 ? RomPtr(bus) : NULL;
+    uint32_t bank = bus >> 16;
+    if (bank >= 0x80 && bank < 0xC0 && (bus & 0x8000)) bus += 0x400000;
+    return (bus >> 16) >= 0xC0 && (bus >> 16) <= 0xFF ? RomPtr(bus) : NULL;
 }
 static int RomU8(uint32_t bus) { const uint8_t *p = Rom(bus); return p ? *p : -1; }
 static int RomU16(uint32_t bus)
@@ -101,11 +110,70 @@ static void Add(Snapshot *s, uint32_t sprite, int x, int y, uint8_t slot, uint8_
     s->count++;
 }
 
+/* Animation script command widths ($90:8000 handlers; everscript-vscode maps/animation-opcodes.ts),
+ * 0 = unknown or a jump: the walk stops there rather than guess. Holds 0x01..0x1E and the
+ * set-sprite family 0x22..0x2B are handled before the table. */
+static int CommandLength(int c)
+{
+    static const uint8_t kLen[0x5D] = {
+        [0x00] = 1, [0x1f] = 3, [0x20] = 2, [0x21] = 1, [0x2c] = 4, [0x2e] = 2, [0x2f] = 2, [0x30] = 1,
+        [0x31] = 3, [0x32] = 4, [0x33] = 5, [0x34] = 6, [0x35] = 3, [0x36] = 4, [0x37] = 2, [0x38] = 2,
+        [0x39] = 4, [0x3a] = 4, [0x3c] = 9, [0x3d] = 5, [0x3e] = 9, [0x3f] = 3, [0x40] = 3, [0x41] = 1,
+        [0x42] = 2, [0x43] = 1, [0x44] = 1, [0x45] = 3, [0x46] = 3, [0x47] = 5, [0x48] = 1, [0x49] = 3,
+        [0x4a] = 3, [0x4b] = 3, [0x4c] = 6, [0x4d] = 3, [0x4e] = 1, [0x4f] = 1, [0x50] = 5, [0x51] = 1,
+        [0x52] = 1, [0x53] = 1, [0x54] = 3, [0x55] = 1, [0x56] = 3, [0x58] = 1, [0x59] = 7, [0x5a] = 2,
+        [0x5b] = 1, [0x5c] = 1,
+    };
+    if (c >= 0x01 && c <= 0x1e) return 1;
+    return c < (int)sizeof kLen ? kLen[c] : 0;
+}
+
+/* The sprite a character stands as at `facing`, or 0. Cached: records and scripts are ROM. */
+static uint32_t StandingSprite(uint16_t record, int facing)
+{
+    static struct { uint16_t record; uint8_t facing; uint32_t sprite; } cache[64];
+    static int used;
+    facing &= 0x0e;
+    for (int i = 0; i < used; i++)
+        if (cache[i].record == record && cache[i].facing == facing) return cache[i].sprite;
+    uint32_t sprite = 0, secondary = 0;
+    int id = RomU16(0x8E0000u | (uint16_t)(record + 0x32));
+    if (id > 0) {
+        uint32_t anim = 0xC40000u + (uint32_t)id;
+        int flags = RomU8(anim + 3);
+        if (flags & 0x80) anim += 2u * (uint32_t)facing;
+        else if (flags & 0x40) anim += (uint32_t)RomU16(0x90815Bu + (uint32_t)facing);
+        int lo = RomU16(anim), bank = RomU8(anim + 2);
+        uint32_t p = (uint32_t)bank << 16 | (uint32_t)lo;
+        for (int i = 0; i < 64 && lo >= 0 && bank >= 0; i++) {
+            int c = RomU8(p) & 0x7f;
+            if (c < 0) break;
+            if (c >= 0x22 && c <= 0x2b) { sprite = (uint32_t)(c + 0xA8) << 16 | (uint32_t)RomU16(p + 1); break; }
+            if (c == 0x57) {   /* segmented: the first group's sprite */
+                if (RomU8(p + 1) > 0) sprite = (uint32_t)RomU8(p + 5) << 16 | (uint32_t)RomU16(p + 3);
+                break;
+            }
+            if (c == 0x2c && !secondary) secondary = (uint32_t)RomU8(p + 3) << 16 | (uint32_t)RomU16(p + 1);
+            if (c == 0x2d) break;
+            int len = CommandLength(c);
+            if (!len || c == 0x3b) break;
+            p += (uint32_t)len;
+        }
+    }
+    if (!sprite) sprite = secondary;
+    if (used < (int)(sizeof cache / sizeof cache[0])) {
+        cache[used].record = record, cache[used].facing = (uint8_t)facing, cache[used].sprite = sprite;
+        used++;
+    }
+    return sprite;
+}
+
 static void SnapshotEntity(Snapshot *s, uint32_t e)
 {
     uint16_t hide = W(e + 0x12);
     uint32_t main = (uint32_t)g_ram[e + 0x08] << 16 | W(e + 0x06);
     uint32_t shadow = (uint32_t)g_ram[e + 0x0B] << 16 | W(e + 0x09);
+    if (!main && !shadow && W(e + 0x60) >= 0x8000) main = StandingSprite(W(e + 0x60), g_ram[e + 0x22]);
     uint8_t priority;
     if (!Depth(e, &priority)) return;
     int x = (int16_t)W(e + 0x1A), y = (int16_t)W(e + 0x1C), z = (int16_t)W(e + 0x1E);
