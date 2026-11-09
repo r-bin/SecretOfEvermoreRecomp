@@ -11,6 +11,6 @@ current. When a note and a guide disagree, the guide is right.
 | [lessons-from-mmx-and-lufia2.md](lessons-from-mmx-and-lufia2.md) | What Mega Man X Recompiled and Lufia II Recompiled do for accuracy, and what it means here |
 | [great-recomp-gap-analysis.md](great-recomp-gap-analysis.md) | What a finished port needs beyond accuracy: pins, whole-game proof, releases, CI, mods |
 | [snesmod-addons.md](snesmod-addons.md) | Ideas: `.snesmod` packages, addons and options |
-| [enhancements.md](enhancements.md) | Ideas: widescreen, translations, overlays |
+| [enhancements.md](enhancements.md) | Ideas: translations, overlays (widescreen moved to [../widescreen/](../widescreen/README.md)) |
 | [experimental-renderer.md](experimental-renderer.md) | Ideas: lighting, HD Mode 7, interpolation, CRT simulation |
 | [evs-script-debugging.md](evs-script-debugging.md) | Idea: debugging everscript `.evs` scripts in the native build |

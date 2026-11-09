@@ -10,41 +10,12 @@ in-game map overlays, and native randomizer plugins.
 
 ## 1. Widescreen Support (16:9 and 21:9)
 
-### 1.1 Is Widescreen an `.snesmod`?
-Widescreen is an **architectural hybrid**:
-- **Engine Logic (C/C++):** Extending the PPU render buffer (e.g. from 256px to 426px width for 16:9),
-  prefilling margin tiles, and adjusting entity culling is native code within the Game RTL and runner.
-- **Player Configuration (.snesmod):** Exposed as a user-configurable feature in `manifest.toml`,
-  allowing players to toggle widescreen and select their preferred aspect ratio (16:9, 16:10, 21:9)
-  directly from the launcher UI.
-
-### 1.2 Evermore-Specific Widescreen Invariants
-Following the engine doctrines established in `snesrecomp` (see `docs/WIDESCREEN_PATTERNS.md`):
-
-#### Invariant 1: Scroll Phase from the PPU, Not WRAM Mirrors
-Evermore maintains camera coordinates in WRAM (`$7E00E2` X-position, `$7E00E4` Y-position),
-but updates the PPU scroll registers (`$210D/$210E`) via NMI shadows (`$7E010E/$7E0110`).
-- **Rule:** Never calculate widescreen pixel phase from the WRAM camera mirror. During camera pan
-  transitions, WRAM and the PPU differ by 1 pixel for a single frame. Calculating margins from WRAM
-  creates visible vertical seams ("pillar cut in half" artifact). Always sample `g_ppu->hScroll[]`.
-
-#### Invariant 2: Prefilling Margins from Evermore Room Data
-The SNES PPU only renders 256 pixels horizontally. In vanilla hardware, off-screen columns are
-streamed into VRAM just before the camera crosses a tile boundary.
-- **The Advantage in Evermore:** Evermore rooms are pre-allocated 16-bit metatile grids up to
-  4096×4096 pixels. The recompiled runner can directly read the decompressed room grid in memory
-  (`WsShadowPrefillTile`) to render margin columns on the very first frame, with zero pop-in.
-
-#### Invariant 3: World Clamping in Small Rooms
-In bounded rooms smaller than the widescreen viewport (e.g. interior huts, the raptor arena):
-- **Rule:** Never fold the screen at the native 256px boundary. Instead, clamp rendering to the
-  authored world edges (`PpuSetWidescreenLayerWorldMirrorBand`), mirroring or padding only when
-  the camera reaches the true map boundary.
-
-#### Invariant 4: HUD & Ring Menu Pinning
-- **Gameplay Layers (BG1, BG2):** Rendered across the full 16:9 / 21:9 viewport.
-- **HUD & Ring Menu:** The player's top status display and circular Ring Menu must be anchored to
-  the 4:3 safe area or pinned to the screen corners, rather than stretching across the ultra-wide field.
+Moved and rewritten from the game's code: [../widescreen/README.md](../widescreen/README.md)
+(2026-11-09). Two claims of the earlier text here were wrong: the camera is not `$7E00E2/E4` but
+DP `$BF`/`$C1` (target) and `$59`/`$5B` (rendered), and rooms are not "up to 4096×4096": the header
+allows 255 cells (4080 px), the largest vanilla room is 128 × 125 cells (2048 × 2000 px). The
+"prefill from the room grid" and "clamp at world edges" ideas stand; the clamp must use the active
+camera limits `$23E9..$23EF`, which scripts narrow (see `../widescreen/camera-and-limits.md`).
 
 ---
 

@@ -141,7 +141,7 @@ All are mods that leave vanilla intact, and none starts before the mod hook laye
 |---|---|---|
 | 🟡 | Mod hook layer | Change a decision where it is used, not a value other routines compare later |
 | 🟡 | Rewind and a save-state browser | Save states already work |
-| 🟡 | Widescreen | Needs room prefill and HUD pinning; sprites past the original edge are culled by the game |
+| 🟡 | Widescreen | Researched: [widescreen/README.md](widescreen/README.md). Needs room prefill clipped to the camera limits, HUD placement, a menu/field gate; sprites past the original edge are culled by the game |
 | 🟡 | Fix for the 5-status-effects bug | Cause known: [everscript-vscode docs/5-status-effects-bug.md](https://github.com/r-bin/everscript-vscode/blob/develop/docs/5-status-effects-bug.md) |
 | 🟢 | Quality of life: hotkeys, hitbox overlay, translations | |
 | 🟢 | MSU-1 music | Sound port commands are known |
