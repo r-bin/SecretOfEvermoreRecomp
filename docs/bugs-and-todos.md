@@ -120,7 +120,9 @@ These issues should be submitted to the [RetroPortingToolKit/snesrecomp](https:/
 11. **A hotkey on the `#` key is lost:** the launcher's hotkey editor writes `SDL_GetKeyName`, which is `#` for that
    key (its own key on QWERTZ), and `NextLineStripComments` (`runner/src/util.c`) cuts every line at the first `#`,
    so `Turbo = #` reads as unbound and no error is printed (found 2026-11-09, Turbo on `#` stopped working).
-   Workaround: write the key's other SDL name; on QWERTZ macOS `'` resolves to the `#` key (SDL3, checked).
+   No other name reaches it either: the config is parsed before SDL knows the layout, so `'` is the US apostrophe.
+   Ours (`src/soe_keys.c`): an SDL event filter sends the `#` key as F13 to the host, launcher and hotkey editor
+   (which then writes `F13`), and a config's `= #` is rewritten to `= F13` once at start.
    Upstream: only a `#` that starts a line starts a comment, or the writer quotes the name and the reader unquotes it.
 
 ---

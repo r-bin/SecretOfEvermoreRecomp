@@ -30,6 +30,7 @@
 #include "snes/saveload.h"
 #include "snes/snes.h"
 #include "soe_frame_driver.h"
+#include "soe_keys.h"
 
 extern CpuState g_cpu;
 extern Snes *g_snes;
@@ -461,6 +462,7 @@ void SoeAfterConfig(void) {
      * replay). Set here because RtlReadSram runs after after_config. */
     const char *save_root = getenv("SOE_COMPARE_SAVE_ROOT");
     if (save_root && *save_root) RtlSetSaveRoot(save_root);
+    SoeKeysInstall();   /* the # key as a hotkey (src/soe_keys.c) */
 }
 
 /*
