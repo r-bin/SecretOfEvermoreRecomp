@@ -46,8 +46,13 @@ framework change, no guest write.
 * **Black outside:** margin columns the PPU is not asked to draw (room or limit edge, pillarbox)
   are blacked in `end_sim_frame`. Left alone they showed whatever the PPU composed there, e.g.
   a room's per-line colour bands (HDMA colour math) as smeared rows.
-* **Gate:** field frames only (BG mode 1, 16 × 16 tiles on BG1 and BG2, camera mode `$241F` = 0);
-  everything else is pillarboxed: menu pages, Mode 7, the 9 rooms with other camera modes.
+* **Gate:** field frames only: the exact register set the field set-up `$8E:E08B` writes
+  (BGMODE `$39`, maps BG1 `$00` / BG2 `$04` / BG3 `$08`, BG12NBA `$22`), camera mode `$241F` = 0
+  and a camera-limit box at least 256 px wide. Everything else is pillarboxed: intro and logo
+  screens, menu pages, Mode 7, the 9 rooms with other camera modes. (A looser gate, "mode 1 with
+  16 × 16 tiles", let the Squaresoft logo through: BGMODE `$79`, both BGs on map `$00`; its
+  texture layer showed unmasked in the left margin.) The title screen is drawn over a real
+  room, so it widens; whether title and cutscenes should is step 2.
 * **Edges:** each margin stops at the active camera-limit box `$23E9..$23EF` (room `0x51` shows one
   hut). Kill switch `SOE_WS_EDGES=0`.
 * **Prefill:** BG1 and BG2 margin cells from the room grid in bank `$7F` through
@@ -94,3 +99,4 @@ viewport" lives (fog, ghosts, HUD placement, floating menus become passes of one
 | 2026-11-09 | Seam while walking (village, 16:9): best vertical alignment of the last margin column with the first 4:3 column | old build: 3 lines off at the left border; new: 0 at both borders, lower mismatch (3581 vs 6307, 8870 vs 10334) |
 | 2026-11-09 | Guest state, widescreen on (21:9) vs off, new build, 4 dumps | identical |
 | 2026-11-09 | Smeared rows past the map (user's screenshot, a room with HDMA colour bands) | blacked by construction; not reproduced headless (no such room on the test route) |
+| 2026-11-09 | Gate, intro to village (frames 120–2490 every 60) | logo screens pillarboxed (both margins black); intro room, title over its room and the village widened; guest state on vs off identical |
