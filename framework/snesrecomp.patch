@@ -1,33 +1,3 @@
-diff --git a/cosim/CMakeLists.txt b/cosim/CMakeLists.txt
-index 27f98c67..d14ec8f5 100644
---- a/cosim/CMakeLists.txt
-+++ b/cosim/CMakeLists.txt
-@@ -102,6 +102,7 @@ add_executable(smw_cosim_ref
-     ${RUNSNES}/snes/cpu.c
-     ${RUNSNES}/snes/dma.c
-     ${RUNSNES}/snes/dsp.c
-+    ${RUNSNES}/snes/dsp_clock.c
-     ${RUNSNES}/snes/dsp1.c
-     ${RUNSNES}/snes/dsp1_hle.c
-     ${RUNSNES}/snes/joypad.c
-diff --git a/cosim/ref_driver.c b/cosim/ref_driver.c
-index b3aa831d..28ab8758 100644
---- a/cosim/ref_driver.c
-+++ b/cosim/ref_driver.c
-@@ -49,6 +49,13 @@ static uint64_t s_joy_strobe_writes;
- void RtlApuLock(void)   {}
- void RtlApuUnlock(void) {}
- void rtl_sync_apu_to_cpu_locked(void) {}
-+void rtl_sync_apu_for_access_locked(uint16_t adr) { (void)adr; }
-+void rtl_port_log_cpu(uint16_t adr, char rw, uint8_t v) { (void)adr; (void)rw; (void)v; }
-+/* The access-exact timing hooks: no master-clock APU timeline here, no
-+ * interpreter access clock beyond the reference's own instruction start. */
-+bool rtl_apu_master_clock(void) { return false; }
-+uint64_t rtl_cpu_master_now(void) { return g_ref_master_cycles; }
-+uint32_t interp_bridge_access_lead(uint16_t adr, uint32_t fallback) { (void)adr; return fallback; }
- /* No host audio replacement in the reference: APU port reads pass through. */
- uint8 rtl_apu_port_observers_read(uint16 reg, uint8 value) { (void)reg; return value; }
- /* Accurate reference: latch the CPU->APU port immediately (hardware behaviour),
 diff --git a/recompiler/v2/bus_exact.py b/recompiler/v2/bus_exact.py
 new file mode 100644
 index 00000000..2f1e1037
@@ -315,7 +285,7 @@ index 72ddd6a4..377e05f5 100644
          "  } while (cpu->A != 0xFFFF);",
          "}",
 diff --git a/recompiler/v2/emit_function.py b/recompiler/v2/emit_function.py
-index e9567c0d..defb89ea 100644
+index 301e594d..9e185e7e 100644
 --- a/recompiler/v2/emit_function.py
 +++ b/recompiler/v2/emit_function.py
 @@ -35,6 +35,7 @@ from v2.decoder import (  # noqa: E402
@@ -346,17 +316,17 @@ index e9567c0d..defb89ea 100644
      if cfg.entry not in cfg.blocks:
          return None
  
-@@ -689,7 +692,8 @@ def emit_function(rom: bytes, bank: int, start: int,
+@@ -693,7 +696,8 @@ def emit_function(rom: bytes, bank: int, start: int,
      hook_by_pc24 = {pc24 & 0xFFFFFF: name
                      for pc24, name in (entry_hooks or {}).items()
                      if ((pc24 >> 16) & 0xFF) == bank}
--    cfg = build_cfg(graph, instruction_blocks=get_rom_mapping() == ROM_MAP_SA1,
-+    cfg = build_cfg(graph, instruction_blocks=(get_rom_mapping() == ROM_MAP_SA1
+-    cfg = build_cfg(graph, instruction_blocks=instruction_blocks or get_rom_mapping() == ROM_MAP_SA1,
++    cfg = build_cfg(graph, instruction_blocks=(instruction_blocks or get_rom_mapping() == ROM_MAP_SA1
 +                                        or bus_exact.enabled()),
                      extra_leader_pcs={pc24 & 0xFFFF for pc24 in hook_by_pc24})
  
      # A tight, side-effect-free memory poll cannot execute atomically under
-@@ -1562,6 +1566,12 @@ def emit_function(rom: bytes, bank: int, start: int,
+@@ -1568,6 +1572,12 @@ def emit_function(rom: bytes, bank: int, start: int,
                      f"(uint8)RECOMP_RETURN_SKIP_{skip}, \"{func_name}\");"
                  )
  
@@ -369,7 +339,7 @@ index e9567c0d..defb89ea 100644
              if ii in skip_emit_idx:
                  if ii in nlr_pla_insn_indices:
                      lines.append(
-@@ -1576,8 +1586,17 @@ def emit_function(rom: bytes, bank: int, start: int,
+@@ -1582,8 +1592,17 @@ def emit_function(rom: bytes, bank: int, start: int,
                  continue
              # Axis-2 step C dynamics: charge runtime-only modifiers (D.l != 0,
              # abs,X/Y read page-cross) for this instruction before its effect.
@@ -389,7 +359,7 @@ index e9567c0d..defb89ea 100644
              for op in ir_ops:
                  if isinstance(op, CondBranch):
                      # Cond branch: block has TWO successors: fall-through (0)
-@@ -1595,7 +1614,7 @@ def emit_function(rom: bytes, bank: int, start: int,
+@@ -1601,7 +1620,7 @@ def emit_function(rom: bytes, bank: int, start: int,
                          # code runs e=0).
                          lines.append(
                              f"if ({pred}) {{ cpu->cycles += 1; "
@@ -398,7 +368,7 @@ index e9567c0d..defb89ea 100644
                      if fall is not None:
                          lines.append(_goto_or_return(fall, source_pc24=blk_pc24)
                                       + " /* fall-through */")
-@@ -1997,6 +2016,7 @@ def emit_function(rom: bytes, bank: int, start: int,
+@@ -2003,6 +2022,7 @@ def emit_function(rom: bytes, bank: int, start: int,
                      # ReadReg, ALU, Read/Write, etc. — non-terminating.
                      for ln in emit_op(op, getattr(di_insn, 'addr', None)):
                          lines.append(ln)
@@ -406,7 +376,7 @@ index e9567c0d..defb89ea 100644
          # NLR with no terminator IR (block IR was pure-PullReg, like
          # $01:A3CB's [PLA, PLA, fall-through]). The SKIP setter wasn't
          # injected during the per-insn loop because there was no
-@@ -2163,6 +2183,15 @@ def emit_function(rom: bytes, bank: int, start: int,
+@@ -2169,6 +2189,15 @@ def emit_function(rom: bytes, bank: int, start: int,
      src.append(f'  if (cpu_take_tailcall_return_context(&_entry_s, &_hrv)) {{')
      src.append(f'    cpu->host_return_valid = _hrv;')
      src.append(f'  }}')
@@ -422,7 +392,7 @@ index e9567c0d..defb89ea 100644
      # Debug bisection guard (codegen-flag gated): after the prologue has
      # established the ACTUAL invocation's _entry_s/_hrv (incl. tail-call
      # context), tier the whole body to the interpreter if this node's PC is in
-@@ -2205,6 +2234,19 @@ def emit_function(rom: bytes, bank: int, start: int,
+@@ -2215,6 +2244,19 @@ def emit_function(rom: bytes, bank: int, start: int,
      # resolved to a SKIP_N non-local return (cpu_resolve_ancestor_skip).
      # Index by the just-pushed g_recomp_stack_top; pop is implicit (top--).
      src.append(f'  if (g_recomp_stack_top >= 1) g_cpu_entry_s[g_recomp_stack_top - 1] = _entry_s;')
@@ -442,7 +412,7 @@ index e9567c0d..defb89ea 100644
      # `entry_hook`: observational host callbacks (docs/ENTRY_HOOK.md).
      for hook_name in sorted({hook_by_pc24[(bank << 16) | (key.pc & 0xFFFF)]
                               for key in block_order
-@@ -2247,6 +2289,8 @@ def emit_function(rom: bytes, bank: int, start: int,
+@@ -2259,6 +2301,8 @@ def emit_function(rom: bytes, bank: int, start: int,
          # Once per execution of the hooked instruction: after the deadline
          # check (a yield there hands the instruction, and with it the report,
          # to the interpreter) and before the block's cycles are charged.
@@ -451,15 +421,15 @@ index e9567c0d..defb89ea 100644
          if block_pc24 in hook_by_pc24:
              src.append(f'    {hook_by_pc24[block_pc24]}(cpu, 0x{block_pc24:06X}u);')
          # Cartridge coprocessors observe CPU bus accesses no earlier than this
-@@ -2262,7 +2306,7 @@ def emit_function(rom: bytes, bank: int, start: int,
-         # Axis-5: also charge the region-weighted MASTER clocks (CPU cycles x
-         # code-region speed) into cpu->master_cycles, which paces the SPC700.
-         _cyc_const = _block_cycle_const(block_per_insn_ir.get(key, []))
+@@ -2300,7 +2344,7 @@ def emit_function(rom: bytes, bank: int, start: int,
+                            f'0x{block_pc24:06X}u, _entry_s, _hrv); }} /* MMIO remains authoritative LLE */')
+             _fetch_last = rom_offset(bank, (_insn.addr + _insn.length - 1) & 0xFFFF)
+             src.append(f'    cpu->open_bus = 0x{rom[_fetch_last]:02X}u; /* last opcode/operand fetch */')
 -        if _cyc_const:
 +        if _cyc_const and not bus_exact.enabled():
              src.append(f'    cpu->cycles += {_cyc_const};')
              _spd_expr, _spd_const = _block_speed(bank, key.pc)
-             if _spd_const is not None:
+             if _paced_plan is not None:
 diff --git a/recompiler/v2/emitter_helpers.py b/recompiler/v2/emitter_helpers.py
 index 90cd16d7..dfd64e35 100644
 --- a/recompiler/v2/emitter_helpers.py
@@ -474,7 +444,7 @@ index 90cd16d7..dfd64e35 100644
          "  cpu->PB = _saved_pb;",
          "}",
 diff --git a/recompiler/v2/program_emit.py b/recompiler/v2/program_emit.py
-index 705afaf7..7b5b23b4 100644
+index 6a750a02..ac7748de 100644
 --- a/recompiler/v2/program_emit.py
 +++ b/recompiler/v2/program_emit.py
 @@ -36,6 +36,7 @@ from .decoder import (
@@ -536,16 +506,16 @@ index 705afaf7..7b5b23b4 100644
  def _stable_hash(value) -> str:
      data = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
      return hashlib.sha256(data).hexdigest()
-@@ -762,6 +807,8 @@ def _bank_cache_key(bank: int, manifest: ProgramManifest, rom_digest: str,
-             if ((pc24 >> 16) & 0xFF) == bank
-         ),
+@@ -766,6 +811,8 @@ def _bank_cache_key(bank: int, manifest: ProgramManifest, rom_digest: str,
          "hle": bool(enable_hle),
+         "instruction_blocks": bool(instruction_blocks),
+         "region_paced": bool(region_paced),
 +        # Emission switches read from the environment change every body.
 +        "bus_exact": [bus_exact.enabled(), bus_exact.resume_enabled()],
          "sharding": [int(shard_threshold_bytes), int(shard_pc_span)],
          "module_prefix": module_prefix or "",
      })
-@@ -1011,7 +1058,8 @@ def emit_program(*, rom: bytes, parsed, manifest: ProgramManifest,
+@@ -1019,7 +1066,8 @@ def emit_program(*, rom: bytes, parsed, manifest: ProgramManifest,
              staging / "dispatch_v2.c",
              emit_dispatch_table(manifest, emitted, name_for_pc, inline_arg_map,
                                  ram_routines=_collect_ram_routines(parsed),
@@ -555,31 +525,6 @@ index 705afaf7..7b5b23b4 100644
          write_if_changed(
              staging / "unresolved_stubs_v2.c",
              "/* Manifest-driven generation: unresolved execution remains LLE. */\n")
-diff --git a/runner/runner.cmake b/runner/runner.cmake
-index f6e18ced..bed4e2de 100644
---- a/runner/runner.cmake
-+++ b/runner/runner.cmake
-@@ -320,6 +320,7 @@ set(SNESRECOMP_RUNNER_SOURCES
-     ${SNESRECOMP_RUNNER_ROOT}/src/snes/cpu.c
-     ${SNESRECOMP_RUNNER_ROOT}/src/snes/dma.c
-     ${SNESRECOMP_RUNNER_ROOT}/src/snes/dsp.c
-+    ${SNESRECOMP_RUNNER_ROOT}/src/snes/dsp_clock.c
-     ${SNESRECOMP_RUNNER_ROOT}/src/snes/dsp1.c
-     ${SNESRECOMP_RUNNER_ROOT}/src/snes/dsp1_hle.c
-     ${SNESRECOMP_RUNNER_ROOT}/src/snes/joypad.c
-diff --git a/runner/src/audio_trace.c b/runner/src/audio_trace.c
-index fd4118e5..95ac72dc 100644
---- a/runner/src/audio_trace.c
-+++ b/runner/src/audio_trace.c
-@@ -1,3 +1,8 @@
-+/* Expose POSIX clocks when this module is compiled in strict C11 mode. */
-+#if !defined(_WIN32) && !defined(_POSIX_C_SOURCE)
-+#define _POSIX_C_SOURCE 200809L
-+#endif
-+
- #include <stdio.h>
- #include <stdlib.h>
- #include <string.h>
 diff --git a/runner/src/common_cpu_infra.c b/runner/src/common_cpu_infra.c
 index c1539db2..ae2d8a9f 100644
 --- a/runner/src/common_cpu_infra.c
@@ -718,132 +663,10 @@ index 06bbf03d..2b8de8bd 100644
  /* Architectural interrupt handlers may cross AOT/LLE boundaries before their
   * terminal RTI.  Keep that host-boundary context independent of any one
 diff --git a/runner/src/common_rtl.c b/runner/src/common_rtl.c
-index 3ceccbe6..04ed9cbc 100644
+index ca145807..81ee22c9 100644
 --- a/runner/src/common_rtl.c
 +++ b/runner/src/common_rtl.c
-@@ -293,6 +293,79 @@ static int16 g_audio_last_output_l;
- static int16 g_audio_last_output_r;
- static void rtl_sync_apu_frame_boundary(void);
- 
-+/* Master-clock APU timeline. Off by default; SNESRECOMP_APU_MASTER_CLOCK=1 or
-+ * RtlApuUseMasterClock turns it on. The SPC's time is the CPU's master clock
-+ * since power-on scaled to the SMP's 2 x 1,025,280 half-cycles per
-+ * 21,477,270 master clocks (MesenCE, bsnes), with no per-frame rebasing,
-+ * relative catch-up or boot path: a CPU write is queued at the SPC cycle that
-+ * first sees it, a CPU read runs the SPC through the last cycle whose writes
-+ * it sees. `lead` is the master clocks from the CPU's instruction start to its
-+ * port access (RtlSetCpuAccessClockHook adds host stalls). Edges measured on
-+ * MesenCE (Secret of Evermore's sound uploads): an SPC access sees a CPU write
-+ * from 2 half-cycles on, a CPU read sees SPC writes up to its own half-cycle.
-+ * SNESRECOMP_APU_KR / _KW (half-cycles) move the two edges for experiments. */
-+#define RTL_SMP_HALF_PER_SEC 2050560ull
-+#define RTL_MASTER_PER_SEC 21477270ull
-+static int s_apu_master = -1;
-+static uint32_t s_apu_lead;
-+static int s_apu_kr, s_apu_kw;
-+static int64_t s_apu_spc_offset;
-+bool rtl_apu_master_clock(void) {
-+  if (s_apu_master < 0) {
-+    const char *e = getenv("SNESRECOMP_APU_MASTER_CLOCK");
-+    s_apu_master = e && e[0] == '1';
-+    if ((e = getenv("SNESRECOMP_APU_LEAD"))) s_apu_lead = (uint32_t)atoi(e);
-+    s_apu_kr = (e = getenv("SNESRECOMP_APU_KR")) ? atoi(e) : 0;
-+    s_apu_kw = (e = getenv("SNESRECOMP_APU_KW")) ? atoi(e) : 0;
-+  }
-+  return s_apu_master;
-+}
-+uint64_t rtl_cpu_master_now(void) { return g_cpu.master_cycles; }
-+
-+void RtlApuUseMasterClock(bool on, uint32_t lead) {
-+  rtl_apu_master_clock();
-+  s_apu_master = on;
-+  if (!getenv("SNESRECOMP_APU_LEAD")) s_apu_lead = lead;
-+}
-+static RtlCpuAccessClockHook s_cpu_access_clock;
-+void RtlSetCpuAccessClockHook(RtlCpuAccessClockHook hook) { s_cpu_access_clock = hook; }
-+/* The port the access in progress touches ($2140-$2143), 0 for a sync with no
-+ * access (the interpreter's flushes, frame ends): the interpreter knows that
-+ * access's own cycle; anything else uses the instruction-wide lead. */
-+static uint16_t s_apu_access_adr;
-+static bool s_apu_access_write;
-+static uint64_t rtl_apu_half_ticks(void) {
-+  extern uint32_t interp_bridge_access_lead(uint16_t adr, uint32_t fallback);
-+  uint32_t lead = s_apu_access_adr ? interp_bridge_access_lead(s_apu_access_adr, s_apu_lead) : s_apu_lead;
-+  /* A write lands at the end of its 6-clock bus cycle, 4 after the sample point. */
-+  if (s_apu_access_write) lead += 4;
-+  uint64_t m = s_cpu_access_clock ? s_cpu_access_clock(g_cpu.master_cycles, lead)
-+                                  : g_cpu.master_cycles + lead;
-+  return (m / RTL_MASTER_PER_SEC) * RTL_SMP_HALF_PER_SEC +
-+         (m % RTL_MASTER_PER_SEC) * RTL_SMP_HALF_PER_SEC / RTL_MASTER_PER_SEC;
-+}
-+/* SPC cycle c starts at half-cycle 2c. A state load or reset leaves portClock
-+ * elsewhere: re-anchor when the two are far apart. */
-+static int64_t rtl_apu_spc_cycle(int64_t half) {
-+  int64_t c = half / 2 - s_apu_spc_offset;
-+  int64_t d = c - (int64_t)g_snes->apu->portClock;
-+  if (d > (1 << 22) || d < -4096) {
-+    s_apu_spc_offset += d;
-+    c -= d;
-+  }
-+  return c;
-+}
-+/* A write at half-cycle h is seen by SPC accesses from half-cycle h + 2 on. */
-+static uint64_t rtl_apu_write_target(void) {
-+  int64_t c = rtl_apu_spc_cycle((int64_t)rtl_apu_half_ticks() + 3 + s_apu_kr);
-+  return c < 0 ? 0 : (uint64_t)c;
-+}
-+/* A read at half-cycle h sees SPC writes made by half-cycle h. */
-+static uint64_t rtl_apu_read_last(void) {
-+  int64_t c = rtl_apu_spc_cycle((int64_t)rtl_apu_half_ticks() - s_apu_kw);
-+  return c < 0 ? 0 : (uint64_t)c;
-+}
-+
- static uint64_t rtl_apu_guest_cycle(void) {
-   if (g_extended_frame_timing)
-     return rtl_apu_clock_now(&g_apu_frame_clock, g_cpu.master_cycles);
-@@ -342,11 +415,9 @@ static uint64_t fp_fnv1a(const uint8_t *p, size_t n) {
-  * v8: multitap chunk (seats, IOBit lines, per-bank shift counters, latched
-  *     automatic-read words). Older files load with no multitap configured,
-  *     which is the pre-multitap two-pad machine exactly. */
--#define RTL_SAV_VERSION 10u /* RDNMI pending latch; v9 added Super FX state. */
--/* 4 and 5 described a Snes tail layout this struct no longer has; see
-- * snes_saveload(). Loading one would mis-map the interrupt fields, so
-- * they are rejected by the header check instead. */
--#define RTL_SAV_VERSION_MIN 6u
-+#define RTL_SAV_VERSION 11u /* Canonical access-exact SPC/DSP timing state. */
-+/* States are build-specific. Older blobs lack required live DSP phases. */
-+#define RTL_SAV_VERSION_MIN 11u
- /* Independent of sizes supplied by an untrusted snapshot or title payload. */
- #define RTL_SAV_MAX_SIZE (16u * 1024u * 1024u)
- 
-@@ -450,11 +521,25 @@ size_t RtlStateBytesRemaining(SaveLoadInfo *sli) {
-  * private containers for those writes. Peripheral walkers are stream-only. */
- static void snapshot_check_func(SaveLoadInfo *sli, void *data, size_t n) {
-   MemorySli *m = (MemorySli *)sli;
--  (void)data;
-   if (m->error || m->position > m->capacity || n > m->capacity - m->position) {
-     m->error = true;
-     return;
-   }
-+  if (g_snes && g_snes->apu && g_snes->apu->dsp &&
-+      data == &g_snes->apu->dsp->clk && n == sizeof(DspClock)) {
-+    DspClock clock;
-+    memcpy(&clock, m->data + m->position, sizeof(clock));
-+    if (clock.step >= 32 || clock.echoHistPos >= 8) {
-+      m->error = true;
-+      return;
-+    }
-+    for (unsigned i = 0; i < 8; ++i) {
-+      if (clock.v[i].bufPos > 8 || (clock.v[i].bufPos & 3)) {
-+        m->error = true;
-+        return;
-+      }
-+    }
-+  }
-   m->position += n;
- }
- 
-@@ -1827,15 +1912,26 @@ uint8 ReadRegOpenBus(uint16 reg, uint8 open_bus) {
+@@ -1916,8 +1916,13 @@ uint8 ReadRegOpenBus(uint16 reg, uint8 open_bus) {
    if (reg >= 0x2000 && reg < 0x2008) {
      return !s_guest_scope_active && msu1_enabled() ? msu1_read(reg) : open_bus;
    }
@@ -859,172 +682,8 @@ index 3ceccbe6..04ed9cbc 100644
      snes_sync_master_clock(g_snes, g_cpu.master_cycles);
    if (reg >= 0x3000 && reg < 0x3300 && g_snes->cart->type == CART_SUPERFX) {
      cart_sync_coprocessors(g_snes->cart, g_cpu.master_cycles);
-     return cart_read(g_snes->cart, 0, reg);
-   }
-   if (reg >= 0x2100 && reg < 0x2140) {
--    return ppu_read(g_ppu, reg & 0xff);
-+    uint8 v = ppu_read(g_ppu, reg & 0xff);
-+    if (reg == 0x2137) v = open_bus;  /* SLHV drives no data: the read sees open bus (MesenCE) */
-+    /* SNESRECOMP_PPU_READ_LOG=1: "[ppur] <reg> <val> <cpu clock>" per PPU register read (a probe). */
-+    static int ppur_log = -1;
-+    if (ppur_log < 0) ppur_log = getenv("SNESRECOMP_PPU_READ_LOG") != NULL;
-+    if (ppur_log) fprintf(stderr, "[ppur] %04X %02X %llu\n", reg, v, (unsigned long long)g_cpu.master_cycles);
-+    return v;
-   } else if (reg >= 0x2140 && reg < 0x2180) {
-     // APU read — route through emulator (real SPC700 outPorts).
-     return snes_read(g_snes, reg);
-@@ -1879,12 +1975,16 @@ uint16 ReadRegWord(uint16 reg) {
-     void RtlApuLock(void); void RtlApuUnlock(void);
-     extern Snes *g_snes;
-     RtlApuLock();
--    rtl_sync_apu_to_cpu_locked();
-+    void rtl_sync_apu_for_access_locked(uint16_t adr);
-+    rtl_sync_apu_for_access_locked(reg);
-     uint8_t lo = g_snes->apu->outPorts[(reg & 0x3)];
-+    if (rtl_apu_master_clock()) rtl_sync_apu_for_access_locked((uint16_t)(reg + 1));
-     uint8_t hi = g_snes->apu->outPorts[((reg + 1) & 0x3)];
-     RtlApuUnlock();
-     lo = rtl_apu_port_observers_read(reg, lo);
-     hi = rtl_apu_port_observers_read(reg + 1, hi);
-+    { void rtl_port_log_cpu(uint16 adr, char rw, uint8 v);
-+      rtl_port_log_cpu(reg, 'R', lo); rtl_port_log_cpu(reg + 1, 'R', hi); }
-     g_cpu.open_bus = hi;
-     return (uint16_t)lo | ((uint16_t)hi << 8);
-   }
-@@ -2081,6 +2181,20 @@ void rtl_accumulate_apu_catchup(void) {
- uint64_t apuw_prof_calls = 0;
- double apuw_prof_ms = 0.0;
- #endif
-+/* SNESRECOMP_PORT_LOG=1: every CPU access to $2140, "[pl] C<R|W> <val> <master clock>". */
-+void rtl_port_log_cpu(uint16 adr, char rw, uint8 v) {
-+  extern int g_apu_port_log;
-+  if (g_apu_port_log < 0) g_apu_port_log = getenv("SNESRECOMP_PORT_LOG") != NULL;
-+  if (g_apu_port_log && (adr & 0x3f) < 4) {
-+    const Apu *a = g_snes->apu;
-+    uint64_t spc = rtl_apu_master_clock() ? (rw == 'W' ? a->portLastTarget : a->holdTarget)
-+        : !g_apu_frame_time_valid ? a->portClock
-+        : rw == 'W' ? a->portLastTarget : a->holdTarget;
-+    fprintf(stderr, "[pl] C%c %02X %llu %llu %u\n", rw, v, (unsigned long long)g_cpu.master_cycles,
-+            (unsigned long long)spc, (unsigned)(adr & 3));
-+  }
-+}
-+
- void RtlApuWrite(uint16 adr, uint8 val) {
-   if (s_guest_scope_active) return;
-   assert(adr >= 0x2140 && adr <= 0x217f);
-@@ -2106,6 +2220,21 @@ void RtlApuWrite(uint16 adr, uint8 val) {
-   }
- #endif
- 
-+  if (rtl_apu_master_clock()) {
-+    RtlApuLock();
-+    audio_trace_on_cpu_port_write(port, val);
-+    s_apu_access_adr = adr;
-+    s_apu_access_write = true;
-+    uint64_t target = rtl_apu_write_target();
-+    s_apu_access_write = false;
-+    s_apu_access_adr = 0;
-+    while (!apu_enqueuePortWriteAt(g_snes->apu, port, val, target))
-+      apu_cycle(g_snes->apu);
-+    rtl_port_log_cpu(adr, 'W', val);
-+    RtlApuUnlock();
-+    return;
-+  }
-+
-   RtlApuLock();
-   if (!g_apu_frame_time_valid) {
-     rtl_accumulate_apu_catchup();
-@@ -2123,6 +2252,7 @@ void RtlApuWrite(uint16 adr, uint8 val) {
-     while (!apu_schedulePortWrite(g_snes->apu, port, val, guest_cycle))
-       apu_cycle(g_snes->apu);
-   }
-+  rtl_port_log_cpu(adr, 'W', val);
-   RtlApuUnlock();
- #ifdef SNESRECOMP_INTERP_PROFILE
-   { extern uint64_t apuw_prof_calls; extern double apuw_prof_ms;
-@@ -2153,6 +2283,37 @@ static bool rtl_run_apu_to_guest_cycle_locked(uint64_t target) {
-   return synced;
- }
- 
-+/* Master-clock timeline (RtlApuUseMasterClock): a CPU port access or sync
-+ * runs the SPC through the last cycle whose writes it sees. */
-+static void rtl_apu_master_sync_locked(void) {
-+  { static long long watch = -2;
-+    if (watch == -2) { const char *e = getenv("SNESRECOMP_SYNC_WATCH"); watch = e ? atoll(e) : -1; }
-+    if (watch >= 0 && (long long)g_cpu.master_cycles >= watch - 200 && (long long)g_cpu.master_cycles <= watch + 200)
-+      fprintf(stderr, "[sync] master=%llu portClock=%llu last=%llu out0=%02X pc=%04X\n",
-+              (unsigned long long)g_cpu.master_cycles, (unsigned long long)g_snes->apu->portClock,
-+              (unsigned long long)rtl_apu_read_last(), g_snes->apu->outPorts[0], g_snes->apu->spc->pc); }
-+  g_snes->apu->holdTarget = rtl_apu_read_last();
-+  if (!apu_runThroughCycle(g_snes->apu, g_snes->apu->holdTarget, 1u << 22))
-+    fprintf(stderr, "[apu] CPU-port master-clock sync timed out\n");
-+  g_snes->apu->holdTarget = rtl_apu_read_last();
-+}
-+
-+/* The same at a frame end: guest time is the master clock, so there is no
-+ * minimum frame of SPC time. */
-+static void rtl_apu_master_frame_end_locked(void) {
-+  if (g_extended_frame_timing)
-+    (void)rtl_apu_clock_finish(&g_apu_frame_clock, g_cpu.master_cycles);
-+  if (!apu_runThroughCycle(g_snes->apu, rtl_apu_read_last(), 1u << 24))
-+    fprintf(stderr, "[apu] frame-boundary master-clock sync timed out\n");
-+}
-+
-+/* A CPU read of an APU port: sync to that access's own clock. */
-+void rtl_sync_apu_for_access_locked(uint16_t adr) {
-+  s_apu_access_adr = adr;
-+  rtl_sync_apu_to_cpu_locked();
-+  s_apu_access_adr = 0;
-+}
-+
- void rtl_sync_apu_to_cpu_locked(void) {
- #ifdef SNESRECOMP_INTERP_PROFILE
-   { extern uint64_t apus_prof_calls; extern double apus_prof_ms;
-@@ -2160,6 +2321,10 @@ void rtl_sync_apu_to_cpu_locked(void) {
-     apus_prof_calls++; }
-   clock_t _t1 = clock();
- #endif
-+  if (rtl_apu_master_clock()) {
-+    rtl_apu_master_sync_locked();
-+    return;
-+  }
-   if (!g_apu_frame_time_valid) {
-     rtl_accumulate_apu_catchup();
-     snes_catchupApu(g_snes);
-@@ -2348,6 +2513,11 @@ static void rtl_sync_apu_frame_boundary(void) {
-     _t0 = snesrecomp_host_now_ns();
-   }
-   RtlApuLock();
-+  if (rtl_apu_master_clock()) {
-+    rtl_apu_master_frame_end_locked();
-+    RtlApuUnlock();
-+    return;
-+  }
-   audio_trace_set_producer(AUDIO_TRACE_PRODUCER_CPU);
-   uint64_t before = g_snes->apu->portClock;
-   /* RtlRunFrame has already incremented snes_frame_counter. This is the exact
-diff --git a/runner/src/common_rtl.h b/runner/src/common_rtl.h
-index bce73a72..46899b32 100644
---- a/runner/src/common_rtl.h
-+++ b/runner/src/common_rtl.h
-@@ -498,6 +498,15 @@ int  RtlGetMultitap(int port);
- /* Seats reachable in the current configuration: 2, 5, or 8. */
- int  RtlPlayerCount(void);
- 
-+/* Master-clock APU timeline (see common_rtl.c); lead: master clocks from an
-+ * instruction's start to its port access. */
-+void RtlApuUseMasterClock(bool on, uint32_t lead);
-+/* The master clock of a port access by the instruction starting at `start`,
-+ * `lead` clocks in: a host that places stalls (DRAM refresh) adds those that
-+ * fall before the access. */
-+typedef uint64_t (*RtlCpuAccessClockHook)(uint64_t start, uint32_t lead);
-+void RtlSetCpuAccessClockHook(RtlCpuAccessClockHook hook);
-+bool rtl_apu_master_clock(void);
- void RtlApuWrite(uint16 adr, uint8 val);
- 
- /* APU port write observers: called for every guest write to $2140-$217F
 diff --git a/runner/src/cpu_state.c b/runner/src/cpu_state.c
-index 97b4509f..dc7df3df 100644
+index 72515994..ec9b622a 100644
 --- a/runner/src/cpu_state.c
 +++ b/runner/src/cpu_state.c
 @@ -31,6 +31,7 @@
@@ -1067,7 +726,7 @@ index 97b4509f..dc7df3df 100644
  /* Master clocks for ONE bus access at a 24-bit address (region speed).
   * Mirrors Recompiler/snes_cycles.py::region_speed exactly. The LLE
   * (interp_bridge.c bridge_region_speed) and the AOT paced accessors below
-@@ -443,6 +469,7 @@ uint8 cpu_read8(CpuState *cpu, uint8 bank, uint16 addr) {
+@@ -447,6 +473,7 @@ uint8 cpu_read8(CpuState *cpu, uint8 bank, uint16 addr) {
      if (off >= 0) return cpu_latch_read8(cpu, cpu->ram[off]);
      if (is_hw_reg(bank, addr)) {
          cpu_pace_cycles(addr);
@@ -1075,7 +734,7 @@ index 97b4509f..dc7df3df 100644
          cpu_hw_log(addr, 1, 0);
          return cpu_latch_read8(cpu, ReadRegOpenBus(addr, cpu->open_bus));
      }
-@@ -492,6 +519,7 @@ uint16 cpu_read16(CpuState *cpu, uint8 bank, uint16 addr) {
+@@ -496,6 +523,7 @@ uint16 cpu_read16(CpuState *cpu, uint8 bank, uint16 addr) {
          uint8 lo;
          uint8 hi;
          cpu_pace_cycles_word(addr);
@@ -1083,7 +742,7 @@ index 97b4509f..dc7df3df 100644
          cpu_hw_log(addr, 1, 0);
          if (addr >= 0x2140 && addr <= 0x217F)
              return cpu_latch_read16(cpu, ReadRegWord(addr));
-@@ -617,7 +645,7 @@ void cpu_write8(CpuState *cpu, uint8 bank, uint16 addr, uint8 v) {
+@@ -621,7 +649,7 @@ void cpu_write8(CpuState *cpu, uint8 bank, uint16 addr, uint8 v) {
  #endif
          return;
      }
@@ -1092,7 +751,7 @@ index 97b4509f..dc7df3df 100644
      if (g_snes && g_snes->cart && g_snes->cart->type == CART_SUPERFX) {
          cart_write(g_snes->cart, bank, addr, v); return;
      }
-@@ -704,6 +732,7 @@ void cpu_write16(CpuState *cpu, uint8 bank, uint16 addr, uint16 v) {
+@@ -708,6 +736,7 @@ void cpu_write16(CpuState *cpu, uint8 bank, uint16 addr, uint16 v) {
      }
      if (is_hw_reg(bank, addr)) {
          cpu_pace_cycles_word(addr);
@@ -1100,7 +759,7 @@ index 97b4509f..dc7df3df 100644
          cpu_hw_log(addr, 0, v);
          WriteRegWord(addr, v);
          cpu->open_bus = (uint8)(v >> 8);
-@@ -1355,6 +1384,72 @@ RecompReturn cpu_dispatch_pc_paired(CpuState *cpu, uint32 pc24, uint8 frame_size
+@@ -1374,6 +1403,72 @@ RecompReturn cpu_dispatch_pc_paired(CpuState *cpu, uint32 pc24, uint8 frame_size
      return fp(cpu);
  }
  
@@ -1174,13 +833,13 @@ index 97b4509f..dc7df3df 100644
   * Mirrors cpu_dispatch_pc_from's lookup + LoROM bank-mirror fallback so
   * the interpreter bounce never leaves LLE for a NULL manifest variant. */
 diff --git a/runner/src/cpu_state.h b/runner/src/cpu_state.h
-index a03fe972..997eae00 100644
+index 66a16c5a..f1d3d9b2 100644
 --- a/runner/src/cpu_state.h
 +++ b/runner/src/cpu_state.h
-@@ -422,6 +422,14 @@ void   cpu_write16(CpuState *cpu, uint8 bank, uint16 addr, uint16 v);
-  * interpreter's bridge shims use the plain accessors (they account
-  * transfers themselves). */
- uint32_t  cpu_region_speed(uint32_t adr);
+@@ -431,6 +431,14 @@ void cpu_add_aot_master_cycles(CpuState *cpu, uint64 clocks);
+  * reports completion, not elapsed time, and must never credit clocks again. */
+ extern void (*g_cpu_aot_instruction_boundary_hook)(CpuState *cpu);
+ void cpu_aot_instruction_boundary(CpuState *cpu);
 +/* Bus-exact generated code: clocks from the running compiled instruction's
 + * start to its data access (and to an RMW's write); AOT_NO_ACCESS outside. */
 +#define AOT_NO_ACCESS 0xFFFFFFFFu
@@ -1192,7 +851,7 @@ index a03fe972..997eae00 100644
  /* SNESRECOMP_WLOG_ADDR hook for direct-WRAM stores that bypass cpu_write8/16
   * (DMA A-bus writes in snes_write, WMDATA $2180). wa = g_ram offset. */
  void wlog_addr_note_direct(uint32_t wa, uint8_t v, const char *via);
-@@ -645,6 +653,33 @@ RecompReturn cpu_dispatch_call_pc_pushed(CpuState *cpu, uint32 pc24,
+@@ -654,6 +662,33 @@ RecompReturn cpu_dispatch_call_pc_pushed(CpuState *cpu, uint32 pc24,
   * is a registered function entry). Returns the callee's value. */
  RecompReturn cpu_dispatch_pc_paired(CpuState *cpu, uint32 pc24, uint8 frame_size);
  
@@ -1226,7 +885,7 @@ index a03fe972..997eae00 100644
  /* Read-only exact-AOT probe used by interpreter bounce and RTS rewriting.
   * A known LLE-only row intentionally returns false. */
  int cpu_dispatch_has_entry(CpuState *cpu, uint32 pc24);
-@@ -771,6 +806,10 @@ int interp_bridge_in_lle_scheduler(void);
+@@ -780,6 +815,10 @@ int interp_bridge_in_lle_scheduler(void);
  int interp_bridge_lle_master_deadline_reached(const CpuState *cpu);
  int interp_bridge_lle_unwind_pending(void);
  RecompReturn interp_bridge_lle_yield_unwind(CpuState *cpu, uint32 resume_pc24);
@@ -1508,1186 +1167,24 @@ index bbc1c1c5..a3ed6ee3 100644
  void SnesHdGpuDestroy(SnesHdGpu *gpu);
  void SnesHdGpuReset(SnesHdGpu *gpu);
  /* No full-resolution staging image. Allocation belongs to the host; this
-diff --git a/runner/src/netplay/snes_state_digest.c b/runner/src/netplay/snes_state_digest.c
-index b0e00a5f..84e0b70d 100644
---- a/runner/src/netplay/snes_state_digest.c
-+++ b/runner/src/netplay/snes_state_digest.c
-@@ -72,11 +72,15 @@ static void crc_sli_init(CrcSli *c)
-  * SDL audio thread, so it is host presentation state and can never agree
-  * between two peers.
-  *
-- * apu_saveload order: [Apu.ram .. Apu.pad+6) then dsp_saveload then
-- * spc_saveload. dsp_saveload emits [Dsp.ram .. end of Dsp), and the ring
-- * (sampleBuffer, sampleWrite, sampleRead) is that region's tail.
-+ * apu_saveload order: [Apu.ram .. Apu.pad+6), timer/DSP advance debt,
-+ * dsp_saveload, then spc_saveload. dsp_saveload first emits
-+ * [Dsp.ram .. end of Dsp), whose tail is the output ring, then the
-+ * canonical timing-model state. Include the debt in the stream offset so
-+ * excluding the ring cannot also exclude the final simulation fields.
-  */
--#define APU_REGS_BYTES (offsetof(Apu, pad) + 6u - offsetof(Apu, ram))
-+#define APU_REGS_BYTES (offsetof(Apu, pad) + 6u - offsetof(Apu, ram) \
-+                        + sizeof(((Apu *)0)->timerAhead) \
-+                        + sizeof(((Apu *)0)->dspAhead))
- #define DSP_REGION_BYTES (sizeof(Dsp) - offsetof(Dsp, ram))
- #define DSP_SIM_PREFIX_BYTES (offsetof(Dsp, sampleBuffer) - offsetof(Dsp, ram))
- 
-diff --git a/runner/src/snes/apu.c b/runner/src/snes/apu.c
-index 9e03a794..19135850 100644
---- a/runner/src/snes/apu.c
-+++ b/runner/src/snes/apu.c
-@@ -35,6 +35,78 @@ static const uint8_t bootRom[0x40] = {
-   0xf6, 0xda, 0x00, 0xba, 0xf4, 0xc4, 0xf4, 0xdd, 0x5d, 0xd0, 0xdb, 0x1f, 0x00, 0x00, 0xc0, 0xff
- };
- 
-+/* SNESRECOMP_SPC_ACCESS_CYCLES=0 restores instruction-start port timing.
-+ * SNESRECOMP_SPC_READ_BIAS / _WRITE_BIAS shift the cycle a port access is
-+ * taken to land on (SPC cycles, default 0). */
-+static int s_access_cycles = -1;
-+static int apu_accessCycles(void);
-+/* One SPC cycle of timer i, as apu_cycle runs it. */
-+static void apu_timerStep(Apu* apu, int i) {
-+  extern uint64_t g_apu_timer0_total_ticks;
-+  if(apu->timer[i].cycles == 0) {
-+    apu->timer[i].cycles = i == 2 ? 16 : 128;
-+    if(apu->timer[i].enabled) {
-+      apu->timer[i].divider++;
-+      if(apu->timer[i].divider == apu->timer[i].target) {
-+        apu->timer[i].divider = 0;
-+        apu->timer[i].counter++;
-+        apu->timer[i].counter &= 0xf;
-+        if (i == 0) g_apu_timer0_total_ticks++;
-+      }
-+    }
-+  }
-+  apu->timer[i].cycles--;
-+}
-+/* A timer access on cycle `k` of the running opcode sees the timers as they
-+ * are there: advance them to it now; apu_cycle skips what was done ahead. */
-+static void apu_timersTo(Apu* apu, uint8_t k) {
-+  if (!apu_accessCycles()) return;
-+  for (int i = 0; i < 3; i++)
-+    while (apu->timerAhead[i] < k) { apu_timerStep(apu, i); apu->timerAhead[i]++; }
-+}
-+/* A $F3 access on cycle `k` of the running opcode sees the per-clock S-DSP
-+ * as it is there (MesenCE steps it before each bus cycle's access). */
-+static void apu_dspTo(Apu* apu, uint8_t k) {
-+  if (!dsp_perClock() || !apu_accessCycles()) return;
-+  while (apu->dspAhead < k) { dsp_clock(apu->dsp); apu->dspAhead++; }
-+}
-+/* SNESRECOMP_PORT_LOG=1: every SPC access to $F4 on stderr, "[pl] S<R|W> <val> <spc cycle>". */
-+int g_apu_port_log = -1;
-+/* SNESRECOMP_DSP_LOG=1: every SPC access to $F3, "[pl] SD|SE <val> <spc cycle> <dsp reg>". */
-+static int s_dsp_log = -1;
-+static int apu_dspLog(void) { if (s_dsp_log < 0) s_dsp_log = getenv("SNESRECOMP_DSP_LOG") != NULL; return s_dsp_log; }
-+static void apu_portLog(Apu* apu, char rw, uint8_t v, unsigned port) {
-+  if (g_apu_port_log < 0) g_apu_port_log = getenv("SNESRECOMP_PORT_LOG") != NULL;
-+  if (g_apu_port_log)
-+    fprintf(stderr, "[pl] S%c %02X %llu %04X %02X %u %u\n", rw, v,
-+            (unsigned long long)(apu->portClock + apu->spc->accessCycle),
-+            apu->spc->opPc, apu->spc->op, apu->spc->accessCycle, port);
-+}
-+static int s_read_bias, s_write_bias;
-+static int apu_accessCycles(void) {
-+  if (s_access_cycles < 0) {
-+    const char *e = getenv("SNESRECOMP_SPC_ACCESS_CYCLES");
-+    s_access_cycles = !(e && e[0] == '0');
-+    e = getenv("SNESRECOMP_SPC_READ_BIAS");
-+    s_read_bias = e ? atoi(e) : 0;
-+    e = getenv("SNESRECOMP_SPC_WRITE_BIAS");
-+    s_write_bias = e ? atoi(e) : 0;
-+  }
-+  return s_access_cycles;
-+}
-+
-+/* Before an opcode starts at portClock: true if it must wait, because one of
-+ * its port accesses lands after the clock the CPU has reached. */
-+static bool apu_holdOpcode(Apu* apu) {
-+  if (!apu->holdActive) return false;
-+  if (apu->portClock + 16u <= apu->holdTarget) return false;  /* fits whole */
-+  int c = spc_probePortCycle(apu->spc);
-+  if (c < 0) return false;
-+  int bias = s_read_bias > s_write_bias ? s_read_bias : s_write_bias;
-+  int64_t at = (int64_t)apu->portClock + c + bias;
-+  return at > (int64_t)apu->holdTarget;
-+}
-+
- Apu* apu_init(void) {
-   Apu* apu = calloc(1, sizeof(Apu));  /* zero padding: saveload/co-sim hash determinism */
-   apu->spc = spc_init(apu);
-@@ -58,15 +130,27 @@ void apu_reset(Apu* apu) {
-   apu->cycles = 0;
-   memset(apu->inPorts, 0, sizeof(apu->inPorts));
-   memset(apu->outPorts, 0, sizeof(apu->outPorts));
-+  /* MesenCE's prescaler toggles every half period and clocks the stage-2
-+   * counter on the falling edge: a timer ticks on the last cycle of each
-+   * 128 (16) cycle period from power-on, not on the first. */
-+  const char *tp = getenv("SNESRECOMP_SPC_TIMER_PHASE");
-+  int timer_phase = tp ? atoi(tp) : (apu_accessCycles() ? 1 : 0);
-   for(int i = 0; i < 3; i++) {
--    apu->timer[i].cycles = 0;
-+    apu->timer[i].cycles = timer_phase ? (i == 2 ? 16 : 128) - timer_phase : 0;
-     apu->timer[i].divider = 0;
-     apu->timer[i].target = 0;
-     apu->timer[i].counter = 0;
-     apu->timer[i].enabled = false;
-   }
--  apu->cpuCyclesLeft = 7;
-+  /* Access-exact timing: the IPL's first $F4 access lands on SPC cycle 2400
-+   * from power-on (MesenCE), which a 3-cycle reset gives this core. */
-+  apu->cpuCyclesLeft = apu_accessCycles() ? 3 : 7;
-   apu->portClock = 0;
-+  apu->holdActive = false;
-+  apu->held = false;
-+  apu->holdTarget = 0;
-+  memset(apu->timerAhead, 0, sizeof(apu->timerAhead));
-+  apu->dspAhead = 0;
-   apu_clearPortQueue(apu);
- }
- 
-@@ -110,8 +194,14 @@ bool apu_schedulePortWrite(Apu* apu, uint8_t port, uint8_t val,
-   uint64_t target = apu->portTargetAnchor +
-                     (guest_cycle - apu->portGuestAnchor);
-   if (target < apu->portClock) {
--    apu->portGuestAnchor = guest_cycle;
--    apu->portTargetAnchor = apu->portClock;
-+    /* The SPC ran past the write's time inside an opcode that touched no port
-+     * (access-exact timing holds the others), so nothing saw the port in
-+     * between: apply it now and keep the mapping. Only a real lead (callback
-+     * audio) moves the mapping. */
-+    if (!apu_accessCycles() || apu->portClock - target > 64u) {
-+      apu->portGuestAnchor = guest_cycle;
-+      apu->portTargetAnchor = apu->portClock;
-+    }
-     target = apu->portClock;
-   }
-   if (target < apu->portLastTarget)
-@@ -138,6 +228,19 @@ static void apu_drainPortQueue(Apu* apu) {
-   }
- }
- 
-+/* A port read on cycle `cycle` of the running opcode sees the CPU writes due
-+ * by then. Writes are queued in time order, so taking them early is safe:
-+ * every later access of this opcode is later still. */
-+static void apu_drainPortQueueTo(Apu* apu, uint64_t clock) {
-+  while (apu->portQHead != apu->portQTail) {
-+    ApuPortWrite *w = &apu->portQueue[apu->portQHead & (APU_PORT_QUEUE_LEN - 1)];
-+    if (w->target_cycle > clock)
-+      break;
-+    apu_applyPortWrite(apu, w);
-+    apu->portQHead++;
-+  }
-+}
-+
- bool apu_runUntilPortQueueEmpty(Apu* apu, uint32_t max_cycles) {
-   while (apu->portQHead != apu->portQTail) {
-     if (!max_cycles) return false;
-@@ -162,19 +265,65 @@ bool apu_runToGuestCycle(Apu* apu, uint64_t guest_cycle,
-   if (target < apu->portLastTarget)
-     target = apu->portLastTarget;
- 
-+  apu->held = false;
-+  apu->holdActive = apu_accessCycles() != 0;
-+  apu->holdTarget = target;
-   for (;;) {
-+    if (apu->held) break;
-     /* Bus writes at the boundary precede that cycle's SPC work. Drain them
--     * directly: executing a cycle just to apply a due write advances past the
--     * target and makes a second write at the same guest time rebase. */
-+     * directly without advancing the SPC beyond the requested clock. */
-     apu_drainPortQueue(apu);
-     if (apu->portClock >= target)
--      return true;
--    if (!max_cycles) return false;
-+      break;
-+    if (!max_cycles) { apu->holdActive = false; return false; }
-     uint64_t distance = target - apu->portClock;
-     uint32_t span = distance > max_cycles ? max_cycles : (uint32_t)distance;
-     apu_runCycles(apu, span);
-     max_cycles -= span;
-   }
-+  apu->holdActive = false;
-+  apu->held = false;
-+  return true;
-+}
-+
-+bool apu_enqueuePortWriteAt(Apu* apu, uint8_t port, uint8_t val, uint64_t target) {
-+  if (apu_portQueueDepth(apu) >= APU_PORT_QUEUE_LEN)
-+    return false;
-+  /* Late only past opcodes that touch no port (the others are held). */
-+  if (target < apu->portClock) target = apu->portClock;
-+  /* Keep the queue in time order: a word write arrives high byte first but
-+   * lands low byte first. */
-+  uint32_t i = apu->portQTail;
-+  while (i != apu->portQHead &&
-+         apu->portQueue[(i - 1) & (APU_PORT_QUEUE_LEN - 1)].target_cycle > target) {
-+    apu->portQueue[i & (APU_PORT_QUEUE_LEN - 1)] = apu->portQueue[(i - 1) & (APU_PORT_QUEUE_LEN - 1)];
-+    i--;
-+  }
-+  ApuPortWrite *w = &apu->portQueue[i & (APU_PORT_QUEUE_LEN - 1)];
-+  w->target_cycle = target;
-+  w->port = (uint8_t)(port & 3);
-+  w->val = val;
-+  apu->portQTail++;
-+  if (target > apu->portLastTarget) apu->portLastTarget = target;
-+  return true;
-+}
-+
-+bool apu_runThroughCycle(Apu* apu, uint64_t last, uint32_t max_cycles) {
-+  apu_accessCycles();
-+  apu->held = false;
-+  apu->holdActive = true;
-+  apu->holdTarget = last;
-+  bool done = true;
-+  while (apu->portClock <= last && !apu->held) {
-+    if (!max_cycles) { done = false; break; }
-+    uint64_t distance = last + 1 - apu->portClock;
-+    uint32_t span = distance > max_cycles ? max_cycles : (uint32_t)distance;
-+    apu_runCycles(apu, span);
-+    max_cycles -= span;
-+  }
-+  apu->holdActive = false;
-+  apu->held = false;
-+  return done;
- }
- 
- bool apu_waitForTransferReady(Apu* apu, uint8_t request_port,
-@@ -235,6 +384,8 @@ void apu_port_sched_restore(Apu *apu, const ApuPortSched *in) {
- 
- void apu_saveload(Apu *apu, SaveLoadInfo *sli) {
-   sli->func(sli, apu->ram, offsetof(Apu, pad) + 6 - offsetof(Apu, ram));
-+  sli->func(sli, apu->timerAhead, sizeof(apu->timerAhead));
-+  sli->func(sli, &apu->dspAhead, sizeof(apu->dspAhead));
-   dsp_saveload(apu->dsp, sli);
-   spc_saveload(apu->spc, sli);
- }
-@@ -249,6 +400,13 @@ extern int g_spc_pc_max_seen;
- void apu_cycle(Apu* apu) {
-   apu_drainPortQueue(apu);
-   if(apu->cpuCyclesLeft == 0) {
-+    if (apu_holdOpcode(apu)) { apu->held = true; return; }
-+    { static long long lo = -2, hi = 0;
-+      if (lo == -2) { const char *e = getenv("SNESRECOMP_SPC_EXEC_LOG"); lo = -1; if (e) sscanf(e, "%lld-%lld", &lo, &hi); }
-+      if (lo >= 0 && (long long)apu->portClock >= lo && (long long)apu->portClock <= hi)
-+        fprintf(stderr, "[sx] %04X %llu %02X %02X %02X a=%02X y=%02X\n", apu->spc->pc, (unsigned long long)apu->portClock,
-+                apu->ram[apu->spc->pc], apu->ram[(uint16_t)(apu->spc->pc + 1)], apu->ram[(uint16_t)(apu->spc->pc + 2)],
-+                apu->spc->a, apu->spc->y); }
-     /* Sample PC right BEFORE running the opcode — so PC reflects the
-      * instruction we're about to execute, not the post-opcode PC. */
- #if SNESRECOMP_SPC_DIAGNOSTICS
-@@ -259,14 +417,21 @@ void apu_cycle(Apu* apu) {
-   }
-   apu->cpuCyclesLeft--;
- 
--  if((apu->cycles & 0x1f) == 0) {
-+  if (dsp_perClock()) {
-+    if (apu->dspAhead) apu->dspAhead--;
-+    else dsp_clock(apu->dsp);
-+  } else if((apu->cycles & 0x1f) == 0) {
-     // every 32 cycles
-+    uint8_t endx = apu->dsp->ram[0x7c];
-     dsp_cycle(apu->dsp);
-+    if (apu_dspLog() && (apu->dsp->ram[0x7c] & ~endx))
-+      fprintf(stderr, "[pl] SX %02X %llu 7C\n", apu->dsp->ram[0x7c] & ~endx, (unsigned long long)apu->portClock);
-   }
- 
-   // handle timers
-   extern uint64_t g_apu_timer0_total_ticks;
-   for(int i = 0; i < 3; i++) {
-+    if (apu->timerAhead[i]) { apu->timerAhead[i]--; continue; }
-     if(apu->timer[i].cycles == 0) {
-       apu->timer[i].cycles = i == 2 ? 16 : 128;
-       if(apu->timer[i].enabled) {
-@@ -294,7 +459,7 @@ void apu_runCycles(Apu* apu, uint32_t clocks) {
- #if SNESRECOMP_APU_NATIVE
-   apu_runCycles_native(apu, clocks);
- #else
--  while (clocks--) apu_cycle(apu);
-+  while (clocks-- && !apu->held) apu_cycle(apu);
- #endif
- }
- 
-@@ -315,13 +480,23 @@ uint8_t apu_cpuRead(Apu* apu, uint16_t adr) {
-       return apu->dspAdr;
-     }
-     case 0xf3: {
--      return dsp_read(apu->dsp, apu->dspAdr & 0x7f);
-+      if (!apu->spc->dry) apu_dspTo(apu, apu->spc->accessCycle);
-+      uint8_t v = dsp_read(apu->dsp, apu->dspAdr & 0x7f);
-+      if (apu_dspLog() && !apu->spc->dry)
-+        fprintf(stderr, "[pl] SD %02X %llu %02X\n", v,
-+                (unsigned long long)(apu->portClock + apu->spc->accessCycle), apu->dspAdr);
-+      return v;
-     }
-     case 0xf4:
-     case 0xf5:
-     case 0xf6:
-     case 0xf7: {
-+      if (apu_accessCycles() && apu->spc->accessCycle) {
-+        int64_t at = (int64_t)apu->portClock + apu->spc->accessCycle + s_read_bias;
-+        if (at > (int64_t)apu->portClock) apu_drainPortQueueTo(apu, (uint64_t)at);
-+      }
-       uint8_t v = apu->inPorts[adr - 0xf4];
-+      apu_portLog(apu, 'R', v, adr - 0xf4u);
-       audio_trace_on_spc_port_read((uint8_t)(adr - 0xf4), v);
- #if defined(SNESRECOMP_TRACE) && SNESRECOMP_TRACE
-       if (getenv("SNESRECOMP_SPC_PORT_TRACE")) {
-@@ -342,6 +517,7 @@ uint8_t apu_cpuRead(Apu* apu, uint16_t adr) {
-     case 0xfd:
-     case 0xfe:
-     case 0xff: {
-+      apu_timersTo(apu, apu->spc->accessCycle);
-       uint8_t ret = apu->timer[adr - 0xfd].counter;
-       apu->timer[adr - 0xfd].counter = 0;
-       return ret;
-@@ -394,6 +570,7 @@ void apu_cpuWrite(Apu* apu, uint16_t adr, uint8_t val) {
-       break; // test register
-     }
-     case 0xf1: {
-+      apu_timersTo(apu, apu->spc->accessCycle);
-       for(int i = 0; i < 3; i++) {
-         if(!apu->timer[i].enabled && (val & (1 << i))) {
-           apu->timer[i].divider = 0;
-@@ -417,6 +594,10 @@ void apu_cpuWrite(Apu* apu, uint16_t adr, uint8_t val) {
-       break;
-     }
-     case 0xf3: {
-+      if (apu_dspLog())
-+        fprintf(stderr, "[pl] SE %02X %llu %02X\n", val,
-+                (unsigned long long)(apu->portClock + apu->spc->accessCycle), apu->dspAdr);
-+      apu_dspTo(apu, apu->spc->accessCycle);
-       if(apu->dspAdr < 0x80) dsp_write(apu->dsp, apu->dspAdr, val);
-       break;
-     }
-@@ -424,6 +605,7 @@ void apu_cpuWrite(Apu* apu, uint16_t adr, uint8_t val) {
-     case 0xf5:
-     case 0xf6:
-     case 0xf7: {
-+      apu_portLog(apu, 'W', val, adr - 0xf4u);
-       audio_trace_on_spc_port_write((uint8_t)(adr - 0xf4), val);
-       apu->outPorts[adr - 0xf4] = val;
-       break;
-@@ -436,6 +618,7 @@ void apu_cpuWrite(Apu* apu, uint16_t adr, uint8_t val) {
-     case 0xfa:
-     case 0xfb:
-     case 0xfc: {
-+      apu_timersTo(apu, apu->spc->accessCycle);
-       apu->timer[adr - 0xfa].target = val;
-       break;
-     }
-diff --git a/runner/src/snes/apu.h b/runner/src/snes/apu.h
-index f3c72cc9..8c4b4e9c 100644
---- a/runner/src/snes/apu.h
-+++ b/runner/src/snes/apu.h
-@@ -47,8 +47,8 @@ struct Apu {
-   Timer timer[3];
-   uint8_t cpuCyclesLeft;
-   uint8_t pad[6];
--  /* Port event state must stay after pad: apu_saveload snapshots [ram,pad+6),
--   * and that savestate layout is frozen. Callback lead is host state, so the
-+  /* Port event state stays after the main [ram,pad+6) region. Canonical
-+   * timer/DSP advance debt is serialized separately. Callback lead is host state, so the
-    * queue and its mapping are deliberately reset rather than serialized. */
-   ApuPortWrite portQueue[APU_PORT_QUEUE_LEN];
-   uint32_t portQHead;
-@@ -59,6 +59,19 @@ struct Apu {
-   uint64_t portLastGuest;
-   uint64_t portLastTarget;
-   bool portTimeValid;
-+  /* Access-exact port timing (SNESRECOMP_SPC_ACCESS_CYCLES, default on).
-+   * The SPC core runs an opcode at its first clock; a CPU sync to holdTarget
-+   * leaves an opcode unstarted when one of its $F4-$F7 accesses falls after
-+   * that clock, and a port read first takes the CPU writes due by its own
-+   * cycle. Host state, not serialized. */
-+  bool holdActive;
-+  bool held;
-+  uint64_t holdTarget;
-+  /* Cycles each timer has already been advanced past portClock, by a timer
-+   * access on its own cycle inside the running opcode (apu.c). */
-+  uint8_t timerAhead[3];
-+  /* The same for the per-clock S-DSP (dsp_clock.c), stepped to a $F3 access's cycle. */
-+  uint8_t dspAhead;
- };
- 
- /*
-@@ -122,6 +135,13 @@ bool apu_waitForTransferReady(Apu* apu, uint8_t request_port,
-                               uint8_t request_value, uint32_t max_cycles);
- bool apu_finishHleTransfer(Apu* apu, uint16_t final_pc,
-                            uint32_t max_cycles);
-+/* Master-clock timeline (common_rtl.c, RtlApuUseMasterClock): queue a CPU
-+ * write that the SPC sees from SPC cycle `target` on, with no guest mapping.
-+ * False means the queue is full; advance the APU and retry. */
-+bool apu_enqueuePortWriteAt(Apu* apu, uint8_t port, uint8_t val, uint64_t target);
-+/* Run the SPC through cycle `last`: every opcode whose port accesses all land
-+ * by then runs, the first that would touch a port later waits. */
-+bool apu_runThroughCycle(Apu* apu, uint64_t last, uint32_t max_cycles);
- /* Drop pending events and reset the guest-to-SPC mapping. */
- void apu_clearPortQueue(Apu* apu);
- 
-diff --git a/runner/src/snes/apu_native.inc b/runner/src/snes/apu_native.inc
-index aec27f21..0a844f17 100644
---- a/runner/src/snes/apu_native.inc
-+++ b/runner/src/snes/apu_native.inc
-@@ -37,6 +37,7 @@ static void apu_runCycles_native(Apu *apu, uint32_t clocks) {
-   while (clocks) {
-     apu_drainPortQueue(apu);
-     if (!apu->cpuCyclesLeft) {
-+      if (apu_holdOpcode(apu)) { apu->held = true; return; }
- #if SNESRECOMP_SPC_DIAGNOSTICS
-       g_spc_pc_histogram[apu->spc->pc]++;
-       if (apu->spc->pc > g_spc_pc_max_seen)
-diff --git a/runner/src/snes/dsp.c b/runner/src/snes/dsp.c
-index f479165b..129ee0aa 100644
---- a/runner/src/snes/dsp.c
-+++ b/runner/src/snes/dsp.c
-@@ -107,6 +107,15 @@ void dsp_suspend_output_filter(Dsp *dsp, bool suspended) {
-   if (filter) filter->suspended = suspended;
- }
- 
-+Dsp* dsp_clock_output_filter(Dsp *dsp, uint8_t *voices) {
-+  DspOutputFilter *filter = dsp->output_filter;
-+  if (!filter || filter->voices == 0xff || filter->suspended) return NULL;
-+  *voices = filter->voices;
-+  memcpy(filter->mirror.clk.regs, dsp->clk.regs, sizeof(dsp->clk.regs));
-+  filter->mirror.clk.eon = dsp->clk.eon;
-+  return &filter->mirror;
-+}
-+
- static void output_voices(Dsp *dsp, int *left, int *right) {
-   DspOutputFilter *filter = dsp->output_filter;
-   if (!filter || filter->voices == 0xff || filter->suspended) return;
-@@ -215,6 +224,11 @@ void dsp_reset(Dsp* dsp) {
-   memset(dsp->sampleBuffer, 0, sizeof(dsp->sampleBuffer));
-   dsp->sampleWrite = 0;
-   dsp->sampleRead = 0;
-+  memset(dsp->konDelay, 0, sizeof(dsp->konDelay));
-+  memset(dsp->endPending, 0, sizeof(dsp->endPending));
-+  dsp->rateCounter = 0;
-+  dsp_clockReset(dsp);
-+  if (dsp_perClock()) dsp->ram[0x7c] = 0; // ENDX reads 0 after power-on (MesenCE)
- }
- 
- void dsp_output_ring_save(const Dsp *dsp, DspOutputRing *out) {
-@@ -246,6 +260,10 @@ uint32_t dsp_output_ring_write(const Dsp *dsp) {
- 
- void dsp_saveload(Dsp *dsp, SaveLoadInfo *sli) {
-   sli->func(sli, &dsp->ram, sizeof(Dsp) - offsetof(Dsp, ram));
-+  sli->func(sli, dsp->konDelay, sizeof(dsp->konDelay));
-+  sli->func(sli, &dsp->rateCounter, sizeof(dsp->rateCounter));
-+  sli->func(sli, dsp->endPending, sizeof(dsp->endPending));
-+  sli->func(sli, &dsp->clk, sizeof(dsp->clk));
- }
- 
- void dsp_set_output_suppressed(Dsp *dsp, bool suppressed) {
-@@ -253,6 +271,7 @@ void dsp_set_output_suppressed(Dsp *dsp, bool suppressed) {
- }
- 
- void dsp_cycle(Dsp* dsp) {
-+  if (--dsp->rateCounter < 0) dsp->rateCounter = 0x77ff;
-   int totalL = 0;
-   int totalR = 0;
-   int echoL = 0, echoR = 0;
-@@ -397,7 +416,53 @@ static void dsp_handleEcho(Dsp* dsp, int* outputL, int* outputR, bool audit,
-   }
- }
- 
-+/* The shared rate counter: a rate of period P (rateValues) fires when
-+ * (counter + offset) % P == 0; the offset cycles 0, 1040, 536 over the rate
-+ * indices from 1 (0 for the two fastest), so rates of one group step apart.
-+ * SNESRECOMP_DSP_GLOBAL_COUNTER=0 restores a counter per voice. */
-+static int dsp_globalCounterOn(void) {
-+  static int on = -1;
-+  if (on < 0) { const char *e = getenv("SNESRECOMP_DSP_GLOBAL_COUNTER"); on = !(e && e[0] == '0'); }
-+  return on;
-+}
-+static bool dsp_rateFires(const Dsp* dsp, int period) {
-+  if (period == 0) return false;
-+  int index = 0;
-+  for (int i = 1; i < 32; i++) if (rateValues[i] == period) { index = i; break; }
-+  if (index == 0) return false;
-+  int offset = index >= 30 ? 0 : ((index - 1) % 3 == 0 ? 0 : (index - 1) % 3 == 1 ? 1040 : 536);
-+  return ((dsp->rateCounter + offset) % period) == 0;
-+}
-+
-+/* SNESRECOMP_DSP_KON_DELAY: samples of key-on delay (default 5, hardware);
-+ * 0 restores immediate key-on playback. */
-+static int dsp_endxAt(void) {
-+  static int at = -2;
-+  if (at == -2) { const char *e = getenv("SNESRECOMP_DSP_ENDX_AT"); at = e ? atoi(e) : 4; }
-+  /* The decoder works 4 samples at a time, 8 ahead of playback: it finishes
-+   * an end block when playback reaches its sample 4. -1: when the next block
-+   * starts (the old behavior). */
-+  return at;
-+}
-+
-+static int dsp_konDelayOn(void) {
-+  static int on = -1;
-+  if (on < 0) { const char *e = getenv("SNESRECOMP_DSP_KON_DELAY"); on = e ? atoi(e) : 5; }
-+  return on;
-+}
-+
- static void dsp_cycleChannel(Dsp* dsp, int ch) {
-+  // Key-on delay: the voice is silent for 5 samples, then plays its sample
-+  // from the first block (decoded as the delay ends, position 0).
-+  if (dsp->konDelay[ch]) {
-+    dsp->channel[ch].sampleOut = 0;
-+    dsp->channel[ch].gain = 0;
-+    if (--dsp->konDelay[ch] == 0) {
-+      dsp->channel[ch].pitchCounter = 0;
-+      dsp_decodeBrr(dsp, ch);
-+    }
-+    return;
-+  }
-   // handle pitch counter
-   uint16_t pitch = dsp->channel[ch].pitch;
-   if(ch > 0 && dsp->channel[ch].pitchModulation) {
-@@ -411,6 +476,10 @@ static void dsp_cycleChannel(Dsp* dsp, int ch) {
-     dsp_decodeBrr(dsp, ch);
-   }
-   dsp->channel[ch].pitchCounter = newCounter;
-+  if (dsp->endPending[ch] && ((newCounter & 0xffff) >> 12) >= dsp_endxAt()) {
-+    dsp->endPending[ch] = false;
-+    dsp->ram[0x7c] |= 1 << ch; // set ENDx
-+  }
-   int16_t sample = 0;
-   if(dsp->channel[ch].useNoise) {
-     sample = dsp->noiseSample;
-@@ -444,6 +513,13 @@ static void dsp_cycleChannel(Dsp* dsp, int ch) {
-       // follows ADSR or the GAIN program is decided live per tick (the
-       // stage machine is source-independent — see dsp_handleGain).
-       dsp->channel[ch].adsrState = 0;
-+      if (dsp_konDelayOn()) {
-+        dsp->konDelay[ch] = (uint8_t)dsp_konDelayOn();
-+        dsp->ram[0x7c] &= ~(1 << ch); // key-on clears the voice's ENDx bit
-+        dsp->endPending[ch] = false;
-+        dsp->channel[ch].sampleOut = 0;
-+        return;
-+      }
-     }
-   }
-   // handle reset
-@@ -476,6 +552,10 @@ static void dsp_cycleChannel(Dsp* dsp, int ch) {
-     if(stage > 2) stage = 2;
-     rate = dsp->channel[ch].adsrRates[stage];
-   }
-+  if (dsp_globalCounterOn()) {
-+    if(releasing || (!doingDirectGain && dsp_rateFires(dsp, rate)))
-+      dsp_handleGain(dsp, ch, liveGain);
-+  } else {
-   if(!releasing && !doingDirectGain && rate != 0) {
-     dsp->channel[ch].rateCounter++;
-   }
-@@ -483,6 +563,7 @@ static void dsp_cycleChannel(Dsp* dsp, int ch) {
-     if(!releasing) dsp->channel[ch].rateCounter = 0;
-     dsp_handleGain(dsp, ch, liveGain);
-   }
-+  }
-   if(doingDirectGain) dsp->channel[ch].gain = dsp->channel[ch].gainValue;
-   // set outputs
-   dsp->ram[(ch << 4) | 8] = dsp->channel[ch].gain >> 4;
-@@ -582,7 +663,7 @@ static void dsp_decodeBrr(Dsp* dsp, int ch) {
-       dsp->channel[ch].adsrState = 4;
-       dsp->channel[ch].gain = 0;
-     }
--    dsp->ram[0x7c] |= 1 << ch; // set ENDx
-+    if (dsp_endxAt() < 0) dsp->ram[0x7c] |= 1 << ch; // set ENDx
-   }
- #if SNESRECOMP_DSP_FORENSICS
-   /* Dev faithful-reference: capture this BRR block's start + the two seed
-@@ -595,6 +676,7 @@ static void dsp_decodeBrr(Dsp* dsp, int ch) {
-   int shift = header >> 4;
-   int filter = (header & 0xc) >> 2;
-   dsp->channel[ch].previousFlags = header & 0x3;
-+  if (dsp_endxAt() >= 0 && (header & 1)) dsp->endPending[ch] = true;
-   uint8_t curByte = 0;
-   int old = dsp->channel[ch].old;
-   int older = dsp->channel[ch].older;
-@@ -636,10 +718,14 @@ static void dsp_decodeBrr(Dsp* dsp, int ch) {
- }
- 
- static void dsp_handleNoise(Dsp* dsp) {
--  if(dsp->noiseRate != 0) {
--    dsp->noiseCounter++;
-+  bool noiseStep;
-+  if (dsp_globalCounterOn()) {
-+    noiseStep = dsp_rateFires(dsp, dsp->noiseRate);
-+  } else {
-+    if(dsp->noiseRate != 0) dsp->noiseCounter++;
-+    noiseStep = dsp->noiseCounter >= dsp->noiseRate && dsp->noiseRate != 0;
-   }
--  if(dsp->noiseCounter >= dsp->noiseRate && dsp->noiseRate != 0) {
-+  if(noiseStep) {
-     int bit = (dsp->noiseSample & 1) ^ ((dsp->noiseSample >> 1) & 1);
-     dsp->noiseSample = ((dsp->noiseSample >> 1) & 0x3fff) | (bit << 14);
-     dsp->noiseSample = ((int16_t) ((dsp->noiseSample & 0x7fff) << 1)) >> 1;
-@@ -652,6 +738,9 @@ uint8_t dsp_read(Dsp* dsp, uint8_t adr) {
- }
- 
- void dsp_write(Dsp* dsp, uint8_t adr, uint8_t val) {
-+  /* Both models take every write, so dsp_cycle keeps working for callers
-+   * that step it directly (the audio tests); apu_cycle runs one of them. */
-+  const uint8_t written = val;
-   audio_trace_on_reg_write(adr, val);
-   int ch = adr >> 4;
-   switch(adr) {
-@@ -778,6 +867,7 @@ void dsp_write(Dsp* dsp, uint8_t adr, uint8_t val) {
-     }
-   }
-   dsp->ram[adr] = val;
-+  if (dsp_perClock()) dsp_clockWrite(dsp, adr, written);
- }
- 
- uint32_t dsp_available(const Dsp* dsp) {
-diff --git a/runner/src/snes/dsp.h b/runner/src/snes/dsp.h
-index c93840e3..1e73a12e 100644
---- a/runner/src/snes/dsp.h
-+++ b/runner/src/snes/dsp.h
-@@ -54,6 +54,41 @@ typedef struct DspChannel {
-   bool echoEnable;
- } DspChannel;
- 
-+/* The per-clock S-DSP (dsp_clock.c): one voice's state. */
-+typedef struct DspClockVoice {
-+  int32_t env;       /* envelope, 11 bits */
-+  int32_t envPrev;   /* last computed value before clamping (bent increase) */
-+  int32_t pos;       /* interpolation position: 3 bits of sample, 12 of fraction */
-+  uint8_t mode;      /* release, attack, decay, sustain */
-+  uint16_t brrAdr;
-+  uint8_t brrOff;
-+  uint8_t konDelay;
-+  uint8_t envx;
-+  uint8_t bufPos;
-+  int16_t buf[12];   /* decoded samples, a ring of three groups of 4 */
-+} DspClockVoice;
-+
-+/* The per-clock S-DSP: the registers as its steps read them, and the values
-+ * latched between steps (shared by the voices, as on the chip). */
-+typedef struct DspClock {
-+  uint8_t regs[0x80];
-+  uint8_t step;
-+  uint16_t counter;
-+  int32_t noise;
-+  uint8_t outxBuf, envxBuf, endxBuf;
-+  int32_t voiceOut;
-+  int32_t out[2];
-+  int32_t pitch;
-+  uint16_t dirAdr, nextAdr;
-+  uint8_t dir, non, pmon, eon, kon, konNew, kof, everyOther, srcn, brrHeader, brrData, looped, adsr1;
-+  int32_t echoIn[2], echoOut[2];
-+  int16_t echoHist[8][2];
-+  uint16_t echoPtr, echoLen, echoOff;
-+  uint8_t echoHistPos, esa;
-+  bool echoOn;
-+  DspClockVoice v[8];
-+} DspClock;
-+
- struct Dsp {
-   uint8_t *apu_ram;
-   // Host publication policy, outside the guest snapshot. Speculation still
-@@ -66,6 +101,18 @@ struct Dsp {
-   void *shadow;
-   // Host voice/echo routing, outside the serialized simulation like shadow.
-   void *output_filter;
-+  /* Canonical timing-model state. Serialized separately from the historical
-+   * ram-through-output region; a current-build load must resume these phases. */
-+  /* Samples left of each voice's key-on delay (hardware: 5 silent samples,
-+   * then playback from the sample's first block). */
-+  uint8_t konDelay[8];
-+  /* The envelope/noise rate counter all voices share (hardware): counts
-+   * down once per sample through 0x7800 values. */
-+  int rateCounter;
-+  /* A decoded end block whose ENDx bit is still to be set (when playback
-+   * reaches sample `endxAt` of the block; hardware's decoder runs ahead). */
-+  bool endPending[8];
-+  DspClock clk;   /* the per-clock S-DSP (dsp_clock.c) */
-   // mirror ram
-   uint8_t ram[0x80];
-   // 8 channels
-@@ -112,6 +159,15 @@ Dsp *dsp_init(uint8_t *ram);
- void dsp_free(Dsp* dsp);
- void dsp_reset(Dsp* dsp);
- void dsp_cycle(Dsp* dsp);
-+/* The per-clock S-DSP (dsp_clock.c): on unless SNESRECOMP_DSP_PER_CLOCK=0; then apu_cycle runs dsp_clock every
-+ * SPC cycle instead of dsp_cycle every 32nd. */
-+bool dsp_perClock(void);
-+void dsp_clock(Dsp* dsp);
-+void dsp_clockReset(Dsp* dsp);
-+void dsp_clockWrite(Dsp* dsp, uint8_t adr, uint8_t val);
-+/* Internal DAC-only mirror for the clocked mixer; never executes voices or
-+ * writes canonical APU memory. NULL means ordinary unfiltered publication. */
-+Dsp *dsp_clock_output_filter(Dsp *dsp, uint8_t *voices);
- /* Presentation only. Select dry voices AND their native echo at the DAC;
-  * every canonical voice, echo RAM write and clock still runs unchanged.
-  * 0xff restores ordinary output (the default). Caller holds the APU lock.
-diff --git a/runner/src/snes/dsp_clock.c b/runner/src/snes/dsp_clock.c
-new file mode 100644
-index 00000000..f9d7e878
---- /dev/null
-+++ b/runner/src/snes/dsp_clock.c
-@@ -0,0 +1,392 @@
-+/*
-+ * The S-DSP stepped per SPC clock (SNESRECOMP_DSP_PER_CLOCK, default on).
-+ *
-+ * dsp.c computes a whole output sample at one clock. The hardware spreads a
-+ * sample over 32 clocks: each voice does its work in nine steps at fixed
-+ * clocks, staggered from voice to voice, and reads every register at its own
-+ * step (anomie's S-DSP document gives the schedule). A register the SPC writes
-+ * inside a sample takes effect at the step that reads it: a SRCN switch just
-+ * before a voice's directory read selects the new loop address, just after it
-+ * the old one. This file runs that schedule; the SPC brings it to an access's
-+ * own cycle before it touches $F3 (apu.c), so reads of ENVX, OUTX and ENDX see
-+ * the values as they are on that clock.
-+ *
-+ * Behaviour checked against MesenCE 2.2.1's S-DSP (its $F3 reads, ENDX and
-+ * output); the code is our own. Gaussian interpolation only. The output filter
-+ * and the enhancement shadow of dsp_cycle are not applied on this path.
-+ */
-+#include <string.h>
-+
-+#include "dsp.h"
-+#include "../audio_trace.h"
-+
-+enum { R_MVOLL = 0x0c, R_MVOLR = 0x1c, R_EVOLL = 0x2c, R_EVOLR = 0x3c, R_KON = 0x4c, R_KOF = 0x5c,
-+       R_FLG = 0x6c, R_ENDX = 0x7c, R_EFB = 0x0d, R_PMON = 0x2d, R_NON = 0x3d, R_EON = 0x4d,
-+       R_DIR = 0x5d, R_ESA = 0x6d, R_EDL = 0x7d, R_FIR = 0x0f };
-+enum { V_VOLL, V_VOLR, V_PITCHL, V_PITCHH, V_SRCN, V_ADSR1, V_ADSR2, V_GAIN, V_ENVX, V_OUTX };
-+enum { M_RELEASE, M_ATTACK, M_DECAY, M_SUSTAIN };
-+
-+static int s_per_clock = -1;
-+bool dsp_perClock(void) {
-+  if (s_per_clock < 0) {
-+    const char *e = getenv("SNESRECOMP_DSP_PER_CLOCK");
-+    s_per_clock = !(e && e[0] == '0');
-+  }
-+  return s_per_clock;
-+}
-+
-+static int16_t clamp16(int32_t v) { return v < -0x8000 ? -0x8000 : v > 0x7fff ? 0x7fff : (int16_t)v; }
-+static uint8_t vreg(const DspClock *c, int v, int r) { return c->regs[(v << 4) | r]; }
-+/* A value the DSP itself produces: the SPC reads it from $F3 at once. */
-+static void dsp_publish(Dsp *dsp, uint8_t adr, uint8_t val) {
-+  dsp->clk.regs[adr] = val;
-+  dsp->ram[adr] = val;
-+}
-+static uint8_t ram8(const Dsp *dsp, uint16_t a) { return dsp->apu_ram[a]; }
-+
-+void dsp_clockReset(Dsp *dsp) {
-+  DspClock *c = &dsp->clk;
-+  memset(c, 0, sizeof(*c));
-+  /* After power-on or reset the S-DSP acts as if FLG were $E0 (soft reset, mute, echo writes off), while the
-+   * register reads back what was last written. */
-+  c->regs[R_FLG] = 0xe0;
-+  c->everyOther = 1;
-+  c->noise = 0x4000;
-+}
-+
-+/* The global rate counter: does an event of `rate` (0-31) happen on this sample? */
-+static bool rate_due(const DspClock *c, int rate) {
-+  static const uint16_t period[32] = {
-+    0, 2048, 1536, 1280, 1024, 768, 640, 512, 384, 320, 256, 192, 160, 128, 96, 80,
-+    64, 48, 40, 32, 24, 20, 16, 12, 10, 8, 6, 5, 4, 3, 2, 1 };
-+  static const uint16_t phase[32] = {
-+    0, 0, 1040, 536, 0, 1040, 536, 0, 1040, 536, 0, 1040, 536, 0, 1040, 536,
-+    0, 1040, 536, 0, 1040, 536, 0, 1040, 536, 0, 1040, 536, 0, 1040, 0, 0 };
-+  if (!rate) return false;
-+  return (c->counter + phase[rate]) % period[rate] == 0;
-+}
-+
-+static void brr_decode4(Dsp *dsp, int v) {
-+  DspClock *c = &dsp->clk;
-+  DspClockVoice *x = &c->v[v];
-+  uint8_t second = ram8(dsp, (uint16_t)(x->brrAdr + x->brrOff + 1));
-+  int nib[4] = { c->brrData >> 4, c->brrData & 15, second >> 4, second & 15 };
-+  int shift = c->brrHeader >> 4, filter = (c->brrHeader >> 2) & 3;
-+  int p1 = x->buf[(x->bufPos + 11) % 12] >> 1;
-+  int p2 = x->buf[(x->bufPos + 10) % 12] >> 1;
-+  for (int i = 0; i < 4; i++) {
-+    int d = nib[i] >= 8 ? nib[i] - 16 : nib[i];
-+    int s = shift > 12 ? (d < 0 ? -0x800 : 0) : (d * (1 << shift)) >> 1;
-+    if (filter == 1) s += p1 + (-p1 >> 4);
-+    else if (filter == 2) s += 2 * p1 + ((-3 * p1) >> 5) - p2 + (p2 >> 4);
-+    else if (filter == 3) s += 2 * p1 + ((-13 * p1) >> 6) - p2 + ((3 * p2) >> 4);
-+    int16_t out = (int16_t)(clamp16(s) * 2);   /* 15 bits, kept shifted left */
-+    x->buf[x->bufPos + i] = out;
-+    p2 = p1;
-+    p1 = out >> 1;
-+  }
-+  x->bufPos = x->bufPos >= 8 ? 0 : x->bufPos + 4;
-+}
-+
-+static int32_t gauss4(const DspClockVoice *x) {
-+  int i = (x->pos >> 12) + x->bufPos, f = (x->pos >> 4) & 0xff;
-+  int32_t sum = (int16_t)(((gaussValues[255 - f] * x->buf[i % 12]) >> 11) +
-+                          ((gaussValues[511 - f] * x->buf[(i + 1) % 12]) >> 11) +
-+                          ((gaussValues[256 + f] * x->buf[(i + 2) % 12]) >> 11));
-+  sum += (gaussValues[f] * x->buf[(i + 3) % 12]) >> 11;
-+  return clamp16(sum) & ~1;
-+}
-+
-+static void envelope(Dsp *dsp, int v) {
-+  DspClock *c = &dsp->clk;
-+  DspClockVoice *x = &c->v[v];
-+  int32_t e = x->env;
-+  if (x->mode == M_RELEASE) {
-+    x->env = e > 8 ? e - 8 : 0;
-+    return;
-+  }
-+  int rate;
-+  uint8_t level;   /* the byte whose top 3 bits are the sustain level */
-+  if (c->adsr1 & 0x80) {
-+    uint8_t adsr2 = vreg(c, v, V_ADSR2);
-+    level = adsr2;
-+    if (x->mode == M_ATTACK) {
-+      int a = c->adsr1 & 15;
-+      rate = a == 15 ? 31 : a * 2 + 1;
-+      e += a == 15 ? 1024 : 32;
-+    } else {
-+      e -= ((e - 1) >> 8) + 1;
-+      rate = x->mode == M_DECAY ? (((c->adsr1 >> 4) & 7) * 2 + 16) : (adsr2 & 31);
-+    }
-+  } else {
-+    uint8_t gain = vreg(c, v, V_GAIN);
-+    level = gain;
-+    if (gain & 0x80) {
-+      rate = gain & 31;
-+      switch (gain & 0x60) {
-+        case 0x00: e -= 32; break;
-+        case 0x20: e -= ((e - 1) >> 8) + 1; break;
-+        case 0x40: e += 32; break;
-+        default: e += (uint16_t)x->envPrev < 0x600 ? 32 : 8; break;
-+      }
-+    } else {
-+      e = gain << 4;
-+      rate = 31;
-+    }
-+  }
-+  if (x->mode == M_DECAY && (e >> 8) == (level >> 5)) x->mode = M_SUSTAIN;
-+  x->envPrev = e;
-+  if (e < 0 || e > 0x7ff) {
-+    e = e < 0 ? 0 : 0x7ff;
-+    if (x->mode == M_ATTACK) x->mode = M_DECAY;
-+  }
-+  if (rate_due(c, rate)) x->env = e;
-+}
-+
-+static void mix(Dsp *dsp, int v, int side) {
-+  DspClock *c = &dsp->clk;
-+  int32_t o = (c->voiceOut * (int8_t)vreg(c, v, V_VOLL + side)) >> 7;
-+  c->out[side] = clamp16(c->out[side] + o);
-+  if (c->eon & (1 << v)) c->echoOut[side] = clamp16(c->echoOut[side] + o);
-+}
-+
-+/* The steps of a voice; 3 is split in three parts (a, b, c) for voice 0, whose step 3 straddles the echo. */
-+static void step1(Dsp *dsp, int v) {
-+  DspClock *c = &dsp->clk;
-+  c->dirAdr = (uint16_t)(c->dir * 0x100 + c->srcn * 4);   /* the SRCN latched one voice earlier */
-+  c->srcn = vreg(c, v, V_SRCN);
-+}
-+static void step2(Dsp *dsp, int v) {
-+  DspClock *c = &dsp->clk;
-+  uint16_t a = c->dirAdr + (c->v[v].konDelay ? 0 : 2);   /* start address on key-on, else the loop address */
-+  c->nextAdr = (uint16_t)(ram8(dsp, a) | ram8(dsp, (uint16_t)(a + 1)) << 8);
-+  c->adsr1 = vreg(c, v, V_ADSR1);
-+  c->pitch = vreg(c, v, V_PITCHL);
-+}
-+static void step3a(Dsp *dsp, int v) {
-+  DspClock *c = &dsp->clk;
-+  c->pitch |= (vreg(c, v, V_PITCHH) & 0x3f) << 8;
-+}
-+static void step3b(Dsp *dsp, int v) {
-+  DspClock *c = &dsp->clk;
-+  c->brrHeader = ram8(dsp, c->v[v].brrAdr);
-+  c->brrData = ram8(dsp, (uint16_t)(c->v[v].brrAdr + c->v[v].brrOff));
-+}
-+static void step3c(Dsp *dsp, int v) {
-+  DspClock *c = &dsp->clk;
-+  DspClockVoice *x = &c->v[v];
-+  if (c->pmon & (1 << v)) c->pitch += ((c->voiceOut >> 5) * c->pitch) >> 10;
-+  if (x->konDelay) {
-+    if (x->konDelay == 5) {
-+      x->brrAdr = c->nextAdr;
-+      x->brrOff = 1;
-+      x->bufPos = 0;
-+      c->brrHeader = 0;
-+    }
-+    x->env = 0;
-+    x->envPrev = 0;
-+    x->konDelay--;
-+    x->pos = (x->konDelay & 3) ? 0x4000 : 0;
-+    c->pitch = 0;
-+  }
-+  int32_t s = gauss4(x);
-+  if (c->non & (1 << v)) s = (int16_t)(c->noise * 2);
-+  c->voiceOut = ((s * x->env) >> 11) & ~1;
-+  x->envx = (uint8_t)(x->env >> 4);
-+  if ((c->regs[R_FLG] & 0x80) || (c->brrHeader & 3) == 1) {
-+    x->mode = M_RELEASE;
-+    x->env = 0;
-+  }
-+  if (c->everyOther) {
-+    if (c->kof & (1 << v)) x->mode = M_RELEASE;
-+    if (c->kon & (1 << v)) { x->konDelay = 5; x->mode = M_ATTACK; }
-+  }
-+  if (!x->konDelay) envelope(dsp, v);
-+}
-+static void step4(Dsp *dsp, int v) {
-+  DspClock *c = &dsp->clk;
-+  DspClockVoice *x = &c->v[v];
-+  c->looped = 0;
-+  if (x->pos >= 0x4000) {
-+    brr_decode4(dsp, v);
-+    if (x->brrOff >= 7) {
-+      if (c->brrHeader & 1) { x->brrAdr = c->nextAdr; c->looped = (uint8_t)(1 << v); }
-+      else x->brrAdr += 9;
-+      x->brrOff = 1;
-+    } else {
-+      x->brrOff += 2;
-+    }
-+  }
-+  x->pos = (x->pos & 0x3fff) + c->pitch;
-+  if (x->pos > 0x7fff) x->pos = 0x7fff;
-+  mix(dsp, v, 0);
-+}
-+static void step5(Dsp *dsp, int v) {
-+  DspClock *c = &dsp->clk;
-+  mix(dsp, v, 1);
-+  uint8_t endx = c->regs[R_ENDX] | c->looped;
-+  if (c->v[v].konDelay == 5) endx &= (uint8_t)~(1 << v);
-+  c->endxBuf = endx;
-+}
-+static void step6(Dsp *dsp, int v) { (void)v; dsp->clk.outxBuf = (uint8_t)(dsp->clk.voiceOut >> 8); }
-+static void step7(Dsp *dsp, int v) {
-+  dsp_publish(dsp, R_ENDX, dsp->clk.endxBuf);
-+  dsp->clk.envxBuf = dsp->clk.v[v].envx;
-+}
-+static void step8(Dsp *dsp, int v) { dsp_publish(dsp, (uint8_t)((v << 4) | V_OUTX), dsp->clk.outxBuf); }
-+static void step9(Dsp *dsp, int v) { dsp_publish(dsp, (uint8_t)((v << 4) | V_ENVX), dsp->clk.envxBuf); }
-+
-+/* Echo, clocks 22-30. */
-+static int32_t fir(const DspClock *c, int tap, int side) {
-+  return (c->echoHist[(c->echoHistPos + tap + 1) & 7][side] * (int8_t)c->regs[R_FIR + (tap << 4)]) >> 6;
-+}
-+static int16_t echo_read(const Dsp *dsp, uint16_t a) { return (int16_t)(ram8(dsp, a) | ram8(dsp, (uint16_t)(a + 1)) << 8); }
-+static void echo_write(Dsp *dsp, uint16_t a, int32_t v) {
-+  dsp->apu_ram[a] = (uint8_t)v;
-+  dsp->apu_ram[(uint16_t)(a + 1)] = (uint8_t)(v >> 8);
-+}
-+static void echo_clock(Dsp *dsp, int clock) {
-+  DspClock *c = &dsp->clk;
-+  switch (clock) {
-+    case 22:
-+      c->echoHistPos = (c->echoHistPos + 1) & 7;
-+      c->echoPtr = (uint16_t)((c->esa << 8) + c->echoOff);
-+      c->echoHist[c->echoHistPos][0] = echo_read(dsp, c->echoPtr) >> 1;
-+      c->echoIn[0] = fir(c, 0, 0);
-+      c->echoIn[1] = fir(c, 0, 1);
-+      break;
-+    case 23:
-+      c->echoHist[c->echoHistPos][1] = echo_read(dsp, (uint16_t)(c->echoPtr + 2)) >> 1;
-+      for (int s = 0; s < 2; s++) c->echoIn[s] += fir(c, 1, s) + fir(c, 2, s);
-+      break;
-+    case 24:
-+      for (int s = 0; s < 2; s++) c->echoIn[s] += fir(c, 3, s) + fir(c, 4, s) + fir(c, 5, s);
-+      break;
-+    case 25:
-+      for (int s = 0; s < 2; s++) {
-+        int32_t partial = (int16_t)(c->echoIn[s] + fir(c, 6, s));
-+        c->echoIn[s] = clamp16(partial + (int16_t)fir(c, 7, s)) & ~1;
-+      }
-+      break;
-+    case 26:
-+      c->out[0] = clamp16(((c->out[0] * (int8_t)c->regs[R_MVOLL]) >> 7) + ((c->echoIn[0] * (int8_t)c->regs[R_EVOLL]) >> 7));
-+      for (int s = 0; s < 2; s++)
-+        c->echoOut[s] = clamp16(c->echoOut[s] + (int16_t)((c->echoIn[s] * (int8_t)c->regs[R_EFB]) >> 7)) & ~1;
-+      break;
-+    case 27:
-+      c->out[1] = clamp16(((c->out[1] * (int8_t)c->regs[R_MVOLR]) >> 7) + ((c->echoIn[1] * (int8_t)c->regs[R_EVOLR]) >> 7));
-+      break;
-+    case 28:
-+      c->echoOn = !(c->regs[R_FLG] & 0x20);
-+      break;
-+    case 29:
-+      if (c->echoOff == 0) c->echoLen = (uint16_t)((c->regs[R_EDL] & 15) << 11);
-+      c->echoOff += 4;
-+      if (c->echoOff >= c->echoLen) c->echoOff = 0;
-+      if (c->echoOn) echo_write(dsp, c->echoPtr, c->echoOut[0]);
-+      c->echoOut[0] = 0;
-+      c->esa = c->regs[R_ESA];
-+      c->echoOn = !(c->regs[R_FLG] & 0x20);
-+      break;
-+    case 30:
-+      if (c->echoOn) echo_write(dsp, (uint16_t)(c->echoPtr + 2), c->echoOut[1]);
-+      c->echoOut[1] = 0;
-+      break;
-+  }
-+}
-+
-+static void emit_sample(Dsp *dsp, Dsp *filtered) {
-+  DspClock *c = &dsp->clk;
-+  int16_t l = (int16_t)c->out[0], r = (int16_t)c->out[1];
-+  if (filtered) {
-+    l = (int16_t)filtered->clk.out[0];
-+    r = (int16_t)filtered->clk.out[1];
-+    filtered->clk.out[0] = filtered->clk.out[1] = 0;
-+  }
-+  if (c->regs[R_FLG] & 0x40) l = r = 0;
-+  c->out[0] = c->out[1] = 0;
-+  if (dsp->suppressOutput) return;
-+  uint32_t fill = dsp->sampleWrite - dsp->sampleRead;
-+  int dropped = fill >= DSP_SAMPLE_RING;
-+  if (!dropped) {
-+    uint32_t w = dsp->sampleWrite & (DSP_SAMPLE_RING - 1);
-+    dsp->sampleBuffer[w * 2] = l;
-+    dsp->sampleBuffer[w * 2 + 1] = r;
-+    dsp->sampleWrite++;
-+  }
-+  audio_trace_on_sample(l, r, dropped, dropped ? fill : fill + 1);
-+}
-+
-+/* Which voice steps run on each of the 32 clocks: {voice, step} pairs, step 31/32/33 = 3a/3b/3c. */
-+static const uint8_t kSchedule[32][3][2] = {
-+  {{0, 5}, {1, 2}, {9, 0}}, {{0, 6}, {1, 3}, {9, 0}}, {{0, 7}, {1, 4}, {3, 1}}, {{0, 8}, {1, 5}, {2, 2}},
-+  {{0, 9}, {1, 6}, {2, 3}}, {{1, 7}, {2, 4}, {4, 1}}, {{1, 8}, {2, 5}, {3, 2}}, {{1, 9}, {2, 6}, {3, 3}},
-+  {{2, 7}, {3, 4}, {5, 1}}, {{2, 8}, {3, 5}, {4, 2}}, {{2, 9}, {3, 6}, {4, 3}}, {{3, 7}, {4, 4}, {6, 1}},
-+  {{3, 8}, {4, 5}, {5, 2}}, {{3, 9}, {4, 6}, {5, 3}}, {{4, 7}, {5, 4}, {7, 1}}, {{4, 8}, {5, 5}, {6, 2}},
-+  {{4, 9}, {5, 6}, {6, 3}}, {{0, 1}, {5, 7}, {6, 4}}, {{5, 8}, {6, 5}, {7, 2}}, {{5, 9}, {6, 6}, {7, 3}},
-+  {{1, 1}, {6, 7}, {7, 4}}, {{6, 8}, {7, 5}, {0, 2}}, {{0, 31}, {6, 9}, {7, 6}}, {{7, 7}, {9, 0}, {9, 0}},
-+  {{7, 8}, {9, 0}, {9, 0}}, {{0, 32}, {7, 9}, {9, 0}}, {{9, 0}, {9, 0}, {9, 0}}, {{9, 0}, {9, 0}, {9, 0}},
-+  {{9, 0}, {9, 0}, {9, 0}}, {{9, 0}, {9, 0}, {9, 0}}, {{0, 33}, {9, 0}, {9, 0}}, {{0, 4}, {2, 1}, {9, 0}},
-+};
-+
-+static void voice_step(Dsp *dsp, int v, int s) {
-+  switch (s) {
-+    case 1: step1(dsp, v); break;
-+    case 2: step2(dsp, v); break;
-+    case 3: step3a(dsp, v); step3b(dsp, v); step3c(dsp, v); break;
-+    case 31: step3a(dsp, v); break;
-+    case 32: step3b(dsp, v); break;
-+    case 33: step3c(dsp, v); break;
-+    case 4: step4(dsp, v); break;
-+    case 5: step5(dsp, v); break;
-+    case 6: step6(dsp, v); break;
-+    case 7: step7(dsp, v); break;
-+    case 8: step8(dsp, v); break;
-+    case 9: step9(dsp, v); break;
-+  }
-+}
-+
-+void dsp_clock(Dsp *dsp) {
-+  DspClock *c = &dsp->clk;
-+  int clock = c->step;
-+  uint8_t voices = 0xff;
-+  Dsp *filtered = dsp->output_filter ? dsp_clock_output_filter(dsp, &voices) : NULL;
-+  c->step = (uint8_t)((c->step + 1) & 31);
-+  /* Clock 30: KON/KOF and the counter come before voice 0's step 3c; clock 22: voice 0's 3a before the echo
-+   * read (the order inside a clock matters only where they share a latch). */
-+  if (clock == 27) c->pmon = c->regs[R_PMON] & 0xfe;   /* voice 0 has no pitch modulation */
-+  if (clock == 28) { c->dir = c->regs[R_DIR]; c->non = c->regs[R_NON]; c->eon = c->regs[R_EON]; }
-+  if (clock == 29) { c->everyOther ^= 1; if (c->everyOther) c->konNew &= (uint8_t)~c->kon; }
-+  if (clock == 30) {
-+    if (c->everyOther) { c->kon = c->konNew; c->kof = c->regs[R_KOF]; }
-+    c->counter = c->counter ? (uint16_t)(c->counter - 1) : 0x77ff;
-+    if (rate_due(c, c->regs[R_FLG] & 31))
-+      c->noise = (((c->noise << 14) ^ (c->noise << 13)) & 0x4000) ^ (c->noise >> 1);
-+  }
-+  for (int i = 0; i < 3; i++) {
-+    int v = kSchedule[clock][i][0], step = kSchedule[clock][i][1];
-+    if (v < 8) {
-+      voice_step(dsp, v, step);
-+      /* Feed the same synthesized voice to a presentation-only mixer. Its
-+       * echo RAM/FIR are private; canonical synthesis and echo keep running. */
-+      if (filtered && (voices & (1u << v)) && (step == 4 || step == 5)) {
-+        filtered->clk.voiceOut = c->voiceOut;
-+        mix(filtered, v, step == 4 ? 0 : 1);
-+      }
-+    }
-+  }
-+  echo_clock(dsp, clock);
-+  if (filtered) echo_clock(filtered, clock);
-+  if (clock == 27) emit_sample(dsp, filtered);
-+}
-+
-+/* An SPC write to a DSP register on this path. */
-+void dsp_clockWrite(Dsp *dsp, uint8_t adr, uint8_t val) {
-+  DspClock *c = &dsp->clk;
-+  c->regs[adr] = val;
-+  dsp->ram[adr] = val;
-+  if ((adr & 15) == V_ENVX) c->envxBuf = val;
-+  else if ((adr & 15) == V_OUTX) c->outxBuf = val;
-+  else if (adr == R_KON) c->konNew = val;
-+  else if (adr == R_ENDX) { c->endxBuf = 0; dsp_publish(dsp, R_ENDX, 0); }
-+}
 diff --git a/runner/src/snes/interp_bridge.c b/runner/src/snes/interp_bridge.c
-index a1b4119c..ecf09b81 100644
+index 8f997a51..1a5fcf1d 100644
 --- a/runner/src/snes/interp_bridge.c
 +++ b/runner/src/snes/interp_bridge.c
-@@ -204,6 +204,33 @@ static void bridge_timing_bus(uint32_t adr) {
-     s_interp_bus_master+=bridge_region_speed(adr);
+@@ -219,6 +219,12 @@ static void bridge_note_access(uint32_t adrl, int word) {
+     s_access_lead_hi = s_access_lead_lo + sl;
  }
- 
-+/* Where in the running instruction an I/O access samples or lands: master
-+ * clocks from the instruction's start to 2 clocks into the access's own bus
-+ * cycle (MesenCE's sample point), for the low and high byte of the access the
-+ * interpreter is making. Valid while s_interp_bus_timing_active. */
-+static uint16_t s_access_adr;
-+static uint32_t s_access_lead_lo, s_access_lead_hi;
-+static void bridge_note_access(uint32_t adrl, int word) {
-+    if (!s_interp_bus_timing_active) { s_access_adr = 0; return; }
-+    const unsigned sl = bridge_region_speed(adrl);
-+    const unsigned sh = word ? bridge_region_speed(adrl + 1) : 0;
-+    s_access_adr = (uint16_t)adrl;
-+    s_access_lead_lo = (uint32_t)(s_interp_bus_master - sl - sh + 2);
-+    s_access_lead_hi = s_access_lead_lo + sl;
-+}
-+uint32_t interp_bridge_access_lead(uint16_t adr, uint32_t fallback) {
+ uint32_t interp_bridge_access_lead(uint16_t adr, uint32_t fallback) {
 +    /* Bus-exact compiled code: the instruction's start is the master clock
 +     * while it runs; cpu_state.c noted the access's lead. */
 +    if (!s_interp_bus_timing_active && g_aot_access_prefix != AOT_NO_ACCESS) {
 +        uint32_t lead;
 +        return cpu_aot_access_lead(adr, &lead) ? lead : fallback;
 +    }
-+    if (!s_interp_bus_timing_active || !s_access_adr) return fallback;
-+    if (adr == s_access_adr) return s_access_lead_lo;
-+    if (adr == (uint16_t)(s_access_adr + 1)) return s_access_lead_hi;
-+    return fallback;
-+}
-+
- /* interp_bridge_set_idle_poll: the opcodes declared as a pure interrupt
-  * wait's poll, and whether the one executing now is one of them. Host
-  * configuration, not guest state: it lasts until cleared and is not saved. */
-@@ -308,6 +335,7 @@ static int bridge_read_is_stable(uint32_t adr) {
- static uint8_t bridge_bus_read(void *mem, uint32_t adr) {
-     CpuState *cpu = (CpuState *)mem;
-     bridge_timing_bus(adr);
-+    bridge_note_access(adr, 0);
-     uint8_t value;
-     int stable_rom = 0;
- #if SNESRECOMP_INTERP_FUSED_ROM_READ
-@@ -378,6 +406,7 @@ static void bridge_bus_write(void *mem, uint32_t adr, uint8_t val) {
-           fprintf(stderr, "[regwrite] -> $%04X = %02X\n", (unsigned)a16,
-                   (unsigned)val); } }
-     bridge_timing_bus(adr);
-+    bridge_note_access(adr, 0);
-     g_interp_bridge_write_epoch++;
-     CpuState *cpu = (CpuState *)mem;
-     const int is_apu_port = bridge_is_apu_port(adr);
-@@ -430,6 +459,7 @@ static bool bridge_bus_read_word(void *mem, uint32_t adrl, uint32_t adrh,
-     if (!bridge_hw_word(adrl, adrh)) return false;
-     bridge_timing_bus(adrl);
-     bridge_timing_bus(adrh);
-+    bridge_note_access(adrl, 1);
-     s_interp_volatile_read_epoch++;  /* a claimed word is always MMIO */
-     if (bridge_continuous_read(adrl) || bridge_continuous_read(adrh))
-         s_interp_continuous_read_epoch++;
-@@ -464,6 +494,7 @@ static bool bridge_bus_write_word(void *mem, uint32_t adrl, uint32_t adrh,
-     if (reversed || !bridge_hw_word(adrl, adrh)) return false;
-     bridge_timing_bus(adrl);
-     bridge_timing_bus(adrh);
-+    bridge_note_access(adrl, 1);
-     g_interp_bridge_write_epoch++;
-     CpuState *cpu = (CpuState *)mem;
-     const int is_apu_port = bridge_is_apu_port(adrl);
-@@ -713,6 +744,8 @@ uint32_t g_interp_wlog_pc24 = 0;
+     if (!s_interp_bus_timing_active || !s_access_adr) return fallback;
+     if (adr == s_access_adr) return s_access_lead_lo;
+     if (adr == (uint16_t)(s_access_adr + 1)) return s_access_lead_hi;
+@@ -769,6 +775,8 @@ uint32_t g_interp_wlog_pc24 = 0;
  static uint32_t s_lle_bounce_exclusions[16];
  static size_t   s_lle_bounce_exclusion_count;
  
@@ -2696,7 +1193,7 @@ index a1b4119c..ecf09b81 100644
  bool interp_bridge_guest_scope_idle(void) {
      return !s_interp_bridge_depth && !s_lle_sched_depth &&
             !s_interp_bounce_owner_depth && !s_lle_unwind_active;
-@@ -727,6 +760,7 @@ void interp_bridge_guest_scope_unwind(void) {
+@@ -783,6 +791,7 @@ void interp_bridge_guest_scope_unwind(void) {
      s_lle_unwind_active = s_lle_unwind_owner_depth = 0;
      s_lle_unwind_pc24 = 0;
      s_lle_unwind_is_deadline = s_lle_next_unwind_is_deadline = 0;
@@ -2704,7 +1201,7 @@ index a1b4119c..ecf09b81 100644
      g_interp_wlog_pc24 = 0;
  }
  
-@@ -1000,6 +1034,7 @@ void interp_bridge_rb_state_load(const void *in) {
+@@ -1056,6 +1065,7 @@ void interp_bridge_rb_state_load(const void *in) {
      s_lle_resume_pc24             = s->lle_resume_pc24;
      s_lle_wai_yield               = s->lle_wai_yield;
      s_lle_master_deadline         = s->lle_master_deadline;
@@ -2712,7 +1209,7 @@ index a1b4119c..ecf09b81 100644
      memcpy(s_bridge_dynamic_values, s->dynamic_values,
             sizeof(s_bridge_dynamic_values));
  }
-@@ -1023,6 +1058,227 @@ void interp_bridge_set_master_deadline(uint64_t master_clock) {
+@@ -1079,6 +1089,227 @@ void interp_bridge_set_master_deadline(uint64_t master_clock) {
      s_lle_master_deadline = master_clock;
  }
  
@@ -2940,7 +1437,7 @@ index a1b4119c..ecf09b81 100644
  int interp_bridge_lle_master_deadline_reached(const CpuState *cpu) {
      /* SNESRECOMP_DEADLINE_DIAG=1: report why the bound is not firing.
       *
-@@ -1070,6 +1326,15 @@ int interp_bridge_lle_master_deadline_reached(const CpuState *cpu) {
+@@ -1126,6 +1357,15 @@ int interp_bridge_lle_master_deadline_reached(const CpuState *cpu) {
      return reached;
  }
  
@@ -2956,7 +1453,7 @@ index a1b4119c..ecf09b81 100644
  RecompReturn interp_bridge_lle_yield_unwind(CpuState *cpu, uint32 resume_pc24) {
      /* DIAGNOSTIC (SNESRECOMP_TRAP_YIELD=<lo>-<hi> hex pc24 range): print every
       * LLE yield unwind whose resume PC falls in the range, with the live guest
-@@ -1108,6 +1373,10 @@ RecompReturn interp_bridge_lle_yield_unwind(CpuState *cpu, uint32 resume_pc24) {
+@@ -1164,6 +1404,10 @@ RecompReturn interp_bridge_lle_yield_unwind(CpuState *cpu, uint32 resume_pc24) {
       * never takes it (the hle wrapper has no prologue). Swallow it here so
       * the NEXT emitted function entered (the next bounce) can't adopt a
       * stale _entry_s/_hrv. */
@@ -2967,7 +1464,7 @@ index a1b4119c..ecf09b81 100644
      cpu_take_tailcall_return_context(NULL, NULL);
      lle_unwind_arm(resume_pc24, s_interp_bounce_owner_depth,
                     s_lle_next_unwind_is_deadline,
-@@ -1610,6 +1879,16 @@ static void interp_hist_init(void) {
+@@ -1667,6 +1911,16 @@ static void interp_hist_init(void) {
  }
  #endif
  
@@ -2984,7 +1481,7 @@ index a1b4119c..ecf09b81 100644
  static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
                                   uint16_t s_exit, uint32_t *out_landing,
                                   uint32_t *out_return_pc,
-@@ -1834,6 +2113,22 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
+@@ -1891,6 +2145,22 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
              bridge_apu_flush(cpu);
              return 1;
          }
@@ -3007,7 +1504,7 @@ index a1b4119c..ecf09b81 100644
          /* Star Ocean battle $00D9 work-wait specialization. This does not skip
           * the wait; it executes the LDA $00D9 / BEQ loop with the same master
           * timing and IRQ/deadline sampling, but avoids the full interpreter bus
-@@ -2691,6 +2986,50 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
+@@ -2753,6 +3023,50 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
          const int call_len = (op == 0x22) ? 4 : 3;
          const int is_ret   = (op == 0x60 || op == 0x6B);
  
@@ -3058,15 +1555,7 @@ index a1b4119c..ecf09b81 100644
          const uint8_t coverage_mx = (uint8_t)((in.mf << 1) | in.xf);
          const uint8_t coverage_e = in.e;
          const uint16_t dp_before = in.dp;
-@@ -2698,6 +3037,7 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
-         s_interp_bus_master=0;
-         s_interp_bus_cycles=0;
-         s_interp_bus_timing_active=1;
-+        s_access_adr=0;
-         /* Optional first-divergence observability: bus callbacks receive only
-          * CpuState, while the live interpreter registers normally stay in the
-          * local Interp816 struct until a bridge boundary.  Publish the pre-op
-@@ -2714,6 +3054,7 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
+@@ -2777,6 +3091,7 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
              g_interp_bridge_pc_hook(pc_before & 0xFFFFFFu,
                                      in.mf ? 1 : 0, in.xf ? 1 : 0);
          if (s_idle_poll_count) s_idle_poll_now = bridge_is_idle_poll(pc_before);
@@ -3074,7 +1563,7 @@ index a1b4119c..ecf09b81 100644
          int _cyc = interp816_runOpcode(&in);   /* executes the opcode; pushes/pops frames */
          s_idle_poll_now = 0;
          if (s_interp_pctrace && steps < 4)
-@@ -2747,6 +3088,10 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
+@@ -2810,6 +3125,10 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
                                 ? (unsigned)_cyc - s_interp_bus_cycles : 0;
              uint64_t _master = s_interp_bus_master + (uint64_t)_internal * 6u;
              g_interp_bridge_steps++;
@@ -3085,27 +1574,26 @@ index a1b4119c..ecf09b81 100644
              cpu->cycles        += (uint64_t)_cyc;
              cpu->master_cycles += _master;
              /* DRAM refresh tax — shared watermark with the AOT tier's
-@@ -2796,7 +3141,7 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
+@@ -2859,7 +3178,7 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
              extern int snes_frame_counter;
              fprintf(stderr,
                      "[cyc] f=%d pc=$%06X op=$%02X cyc=%d bus_xfers=%u "
--                    "bus_master=%llu internal=%u master_delta=%llu\n",
+-                    "bus_master=%llu internal=%u master_delta=%llu now=%llu\n",
 +                    "bus_master=%llu internal=%u master_delta=%llu now=%llu start=%llu\n",
                      snes_frame_counter, (unsigned)pc_before, (unsigned)op,
                      _cyc, s_interp_bus_cycles,
                      (unsigned long long)s_interp_bus_master,
-@@ -2805,7 +3150,9 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
-                     (unsigned long long)(s_interp_bus_master +
+@@ -2869,7 +3188,8 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
                          (uint64_t)((unsigned)_cyc > s_interp_bus_cycles
                                         ? (unsigned)_cyc - s_interp_bus_cycles
--                                       : 0) * 6u));
-+                                       : 0) * 6u),
+                                        : 0) * 6u),
+-                    (unsigned long long)cpu->master_cycles);
 +                    (unsigned long long)cpu->master_cycles,
 +                    (unsigned long long)_cyc_start);
          }
  
          if (auto_quiescent &&
-@@ -2879,7 +3226,7 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
+@@ -2943,7 +3263,7 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
               * and set pc to the target. If the target has a compiled body for
               * the current (m,x), run it compiled. */
              sync_interp_to_cpu(&in, cpu);          /* expose (m,x) + frame to AOT */
@@ -3114,7 +1602,7 @@ index a1b4119c..ecf09b81 100644
              /* Cooperative-scheduler (yield_pc) mode bounces too (fiber-free
               * rich-LLE, docs/LLE_SCHEDULER.md): a bounced body that reaches a
               * yield primitive no longer corrupts the paired-call stack — its
-@@ -2900,8 +3247,10 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
+@@ -2964,8 +3284,10 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
                   * on the popped return addr — and over-pop whenever that addr is
                   * itself a registered function entry (e.g. $90:EB55 sub_90EB55
                   * right after HandleChargingBeamGfxAudio's JSR), the Samus-draw
@@ -3127,7 +1615,7 @@ index a1b4119c..ecf09b81 100644
                  uint16_t _sp_pre = in.sp;
                  /* Compiled body paces its own APU (RtlApuRead/Write); un-suppress
                   * the per-touch catch-up for its duration, then restore the
-@@ -2943,19 +3292,27 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
+@@ -3007,7 +3329,9 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
                  interp_edge_note(pc_before, target, INTERP_EDGE_AOT_CALL, op,
                                   (uint16_t)_sp_pre);
                  g_interp_wlog_pc24 = 0;
@@ -3135,6 +1623,10 @@ index a1b4119c..ecf09b81 100644
 +                RecompReturn _air = resume_fn
 +                    ? cpu_dispatch_resume_paired(cpu, target, resume_entry_s, _fs, resume_fn)
 +                    : cpu_dispatch_pc_paired(cpu, target, _fs);
+                 if (s_apu_pending_master) {
+                     snes_refresh_charge();
+                     cpu_aot_instruction_boundary(cpu);
+@@ -3015,15 +3339,21 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
                  s_interp_bounce_owner_depth = _saved_bounce_owner;
                  s_interp_bounce_recomp_base = _saved_bounce_base;
                  g_interp_apu_driving = _apu_drv;
@@ -3159,7 +1651,7 @@ index a1b4119c..ecf09b81 100644
                  edge_expect = ret;
                  if (_air != RECOMP_RETURN_NORMAL) {
                      if (s_lle_unwind_active) {
-@@ -3298,12 +3655,18 @@ static int interp_bridge_run_ex2(CpuState *cpu, uint32_t entry_pc24,
+@@ -3382,12 +3712,18 @@ static int interp_bridge_run_ex2(CpuState *cpu, uint32_t entry_pc24,
      const char *_scope_name = interp_scope_name(entry_pc24);
      g_last_recomp_func = _scope_name;
      RecompStackPushInterpreter(_scope_name);
@@ -3178,7 +1670,7 @@ index a1b4119c..ecf09b81 100644
      RecompStackPop();
      g_last_recomp_func = _saved_func;
      s_interp_bridge_depth--;
-@@ -3717,8 +4080,10 @@ RecompReturn interp_tier_dispatch_tail_ex(CpuState *cpu, uint32_t target_pc24,
+@@ -3801,8 +4137,10 @@ RecompReturn interp_tier_dispatch_tail_ex(CpuState *cpu, uint32_t target_pc24,
       * sentinel to unwind to the owning interpreter and resume there at the tail
       * target.  The guest S/register state is untouched, and ordinary top-level
       * AOT tail fallbacks retain the balanced nested-interpreter path below. */
@@ -3190,7 +1682,7 @@ index a1b4119c..ecf09b81 100644
      /* A subroutine called inside NMI/IRQ still returns with RTS/RTL. Let an
       * owning interpreter resume first; a nested interrupt interpreter would
       * consume its continuation and RTI before returning to a live AOT caller.
-@@ -3919,8 +4284,17 @@ RecompReturn interp_tier_run_call_frame(CpuState *cpu, uint32_t target_pc24,
+@@ -4003,8 +4341,17 @@ RecompReturn interp_tier_run_call_frame(CpuState *cpu, uint32_t target_pc24,
      const uint16_t watermark = cpu->S;
      const uint16_t post_call = (uint16_t)(cpu->S + frame_size);
      uint32_t landing = target_pc24;
@@ -3209,25 +1701,21 @@ index a1b4119c..ecf09b81 100644
      if (s_lle_unwind_active)   /* yield unwound through this nested frame */
          return (RecompReturn)RECOMP_RETURN_LLE_UNWIND_BASE;
 diff --git a/runner/src/snes/ppu.c b/runner/src/snes/ppu.c
-index 3648d55d..10c1db6a 100644
+index 38793f07..9be0513a 100644
 --- a/runner/src/snes/ppu.c
 +++ b/runner/src/snes/ppu.c
-@@ -22,6 +22,14 @@ void ppu_setGuestScope(bool active) {s_guest_scope=active;}
- #include "snes_regs.h"
- #include "ws_shadow.h"
- 
-+/* SLHV's beam position at the latching access's own clock (snes.c installs
-+ * it); without it the latch takes the beam as it stands. */
-+void (*g_ppu_latch_position_hook)(uint16_t *h_dot, uint16_t *v);
+@@ -25,6 +25,10 @@ void ppu_setGuestScope(bool active) {s_guest_scope=active;}
+ /* SLHV's beam position at the latching access's own clock (snes.c installs
+  * it); without it the latch takes the beam as it stands. */
+ void (*g_ppu_latch_position_hook)(uint16_t *h_dot, uint16_t *v);
 +/* The beam (H in master clocks, 0..1363, and V) at the clock a register
 + * access reaches the PPU (snes.c installs it). Reads during rendering need it
 + * to know what the PPU itself is fetching. */
 +bool (*g_ppu_beam_hook)(uint16_t adr, uint16_t *h_clock, uint16_t *v);
-+
+ 
  #ifndef SNESRECOMP_PPU_8BPP_HLE
  #define SNESRECOMP_PPU_8BPP_HLE 0
- #endif
-@@ -3135,6 +3143,118 @@ static uint16_t ppu_getVramRemap(Ppu* ppu) {
+@@ -3403,6 +3407,118 @@ static uint16_t ppu_getVramRemap(Ppu* ppu) {
    return adr;
  }
  
@@ -3346,29 +1834,7 @@ index 3648d55d..10c1db6a 100644
  uint8_t ppu_read(Ppu* ppu, uint8_t adr) {
    switch(adr) {
    case 0x34:
-@@ -3146,16 +3266,24 @@ uint8_t ppu_read(Ppu* ppu, uint8_t adr) {
-     case 0x37: {
-       /* SLHV latches the live beam. LLE advances Snes::hPos/vPos from the
-        * shared master-clock timeline; hard-coding a convenient scanline made
--       * games waiting for any other line loop forever. */
--      ppu->hCount = g_snes->hPos / 4;
--      ppu->vCount = g_snes->vPos;
--      ppu->hCountSecond = false;
--      ppu->vCountSecond = false;
-+       * games waiting for any other line loop forever.
-+       * Only while WRIO ($4201) bit 7 is set: the read pulls the latch line
-+       * that bit drives (MesenCE's SnesPpu::Read, $2137). */
-+      if (!g_snes->ppuLatch) return 0;
-+      /* The flip-flops of $213C/$213D are left as they are: only a $213F read
-+       * resets them (MesenCE: a latch does not touch _hLocToggle/_vLocToggle). */
-+      if (g_ppu_latch_position_hook) {
-+        g_ppu_latch_position_hook(&ppu->hCount, &ppu->vCount);
-+      } else {
-+        ppu->hCount = g_snes->hPos / 4;
-+        ppu->vCount = g_snes->vPos;
-+      }
-       ppu->countersLatched = true;
-       return 0;
+@@ -3431,6 +3547,7 @@ uint8_t ppu_read(Ppu* ppu, uint8_t adr) {
      }
      case 0x38: {
        uint8_t ret = 0;
@@ -3376,7 +1842,7 @@ index 3648d55d..10c1db6a 100644
        if(ppu->oamInHigh) {
          ret = ppu->highOam[((ppu->oamAdr & 0xf) << 1) | ppu->oamSecondWrite];
          if(ppu->oamSecondWrite) {
-@@ -3171,6 +3299,9 @@ uint8_t ppu_read(Ppu* ppu, uint8_t adr) {
+@@ -3446,6 +3563,9 @@ uint8_t ppu_read(Ppu* ppu, uint8_t adr) {
          }
        }
        ppu->oamSecondWrite = !ppu->oamSecondWrite;
@@ -3386,7 +1852,7 @@ index 3648d55d..10c1db6a 100644
        return ret;
      }
      case 0x39: {
-@@ -3191,10 +3322,13 @@ uint8_t ppu_read(Ppu* ppu, uint8_t adr) {
+@@ -3466,10 +3586,13 @@ uint8_t ppu_read(Ppu* ppu, uint8_t adr) {
      }
      case 0x3b: {
        uint8_t ret = 0;
@@ -3402,7 +1868,7 @@ index 3648d55d..10c1db6a 100644
        }
        ppu->cgramSecondWrite = !ppu->cgramSecondWrite;
        return ret;
-@@ -3286,6 +3420,7 @@ uint8_t ppu_read(Ppu* ppu, uint8_t adr) {
+@@ -3561,6 +3684,7 @@ uint8_t ppu_read(Ppu* ppu, uint8_t adr) {
   *                                   the field ended, so the guest resumes
   *                                   with the register file it last wrote */
  int g_ppu_scanout_latch_bypass = 0;
@@ -3434,38 +1900,29 @@ index 626041b4..8140f8b3 100644
  }
  
 diff --git a/runner/src/snes/snes.c b/runner/src/snes/snes.c
-index 88f789ba..b7d5f315 100644
+index 8a144499..b7d5f315 100644
 --- a/runner/src/snes/snes.c
 +++ b/runner/src/snes/snes.c
-@@ -23,6 +23,9 @@
- #include "sdd1.h"
- #include "../ppu_dma_trace.h"
- 
-+/* Master clocks charged for general DMA since power-on (snes.h). */
-+uint64_t g_snes_dma_charged;
-+
- int snes_frame_counter;
- static const double apuCyclesPerMaster = (32040 * 32) / (1364 * 262 * 60.0);
- 
-@@ -64,6 +67,56 @@ static void snes_trace_direct_wram_write(uint32_t off, uint8_t old, uint8_t val)
- }
- #endif
- 
-+/* SLHV ($2137 read, or WRIO bit 7 falling): the beam at the access's own
-+ * clock (2 clocks into its bus cycle, MesenCE's sample point), as a dot
-+ * count with the two long dots (MesenCE's SnesPpu::GetCycle). */
-+extern void (*g_ppu_latch_position_hook)(uint16_t *h_dot, uint16_t *v);
+@@ -71,18 +71,45 @@ static void snes_trace_direct_wram_write(uint32_t off, uint8_t old, uint8_t val)
+  * clock (2 clocks into its bus cycle, MesenCE's sample point), as a dot
+  * count with the two long dots (MesenCE's SnesPpu::GetCycle). */
+ extern void (*g_ppu_latch_position_hook)(uint16_t *h_dot, uint16_t *v);
+-static Snes *s_latch_snes;  /* the console snes_reset installed the hook for */
+-static void snes_latch_position(uint16_t *h_dot, uint16_t *v_out) {
 +static Snes *s_latch_snes;  /* the console snes_reset installed the hooks for */
 +extern bool (*g_ppu_beam_hook)(uint16_t adr, uint16_t *h_clock, uint16_t *v);
 +/* The beam at `lead` master clocks after the current instruction's start. */
 +static void snes_beam_at(uint32_t lead, int64_t *h_out, int *v_out) {
-+  const Snes *snes = s_latch_snes;
-+  extern uint64_t rtl_cpu_master_now(void);
-+  const uint64_t at = rtl_cpu_master_now() + lead;
-+  int64_t h = (int64_t)snes->hPos + (int64_t)(at - snes->beamMasterLast);
-+  int v = snes->vPos;
-+  while (h >= 1364) { h -= 1364; v = v + 1 >= 262 ? 0 : v + 1; }
-+  while (h < 0) { h += 1364; v = v ? v - 1 : 261; }
+   const Snes *snes = s_latch_snes;
+   extern uint64_t rtl_cpu_master_now(void);
+-  extern uint32_t interp_bridge_access_lead(uint16_t adr, uint32_t fallback);
+-  uint32_t lead = interp_bridge_access_lead(0x2137, 0xffffffffu);
+-  if (lead == 0xffffffffu) lead = interp_bridge_access_lead(0x4201, 0);
+   const uint64_t at = rtl_cpu_master_now() + lead;
+   int64_t h = (int64_t)snes->hPos + (int64_t)(at - snes->beamMasterLast);
+   int v = snes->vPos;
+   while (h >= 1364) { h -= 1364; v = v + 1 >= 262 ? 0 : v + 1; }
+   while (h < 0) { h += 1364; v = v ? v - 1 : 261; }
 +  *h_out = h;
 +  *v_out = v;
 +}
@@ -3494,66 +1951,18 @@ index 88f789ba..b7d5f315 100644
 +  int64_t h;
 +  int v;
 +  snes_beam_at(lead, &h, &v);
-+  *h_dot = (uint16_t)(h <= 1292 ? h >> 2 : h <= 1310 ? (h - 2) >> 2 : (h - 4) >> 2);
-+  *v_out = (uint16_t)v;
-+  static int hv_log = -1;
-+  if (hv_log < 0) hv_log = getenv("SNESRECOMP_HV_LOG") != NULL;
-+  if (hv_log) fprintf(stderr, "[hv] h=%lld v=%d dot=%u at=%llu\n", (long long)h, v, *h_dot, (unsigned long long)at);
-+}
-+
- void snes_set_hdma_beam_enabled(Snes *snes, bool enabled) {
-   snes->hdmaBeamOff = !enabled;
- }
-@@ -119,10 +172,10 @@ void snes_free(Snes* snes) {
- 
- /* RTLS v5 and earlier serialized beamMasterLast between vPos and
-  * apuCatchupCycles (+8 bytes). v6+ keeps it host-only (before hPos). */
--static uint32_t s_saveload_version = 10;
-+static uint32_t s_saveload_version = 11;
- 
- void snes_saveload_set_version(uint32_t version) {
--  s_saveload_version = version ? version : 10;
-+  s_saveload_version = version ? version : 11;
- }
- 
- uint32_t snes_saveload_get_version(void) { return s_saveload_version; }
-@@ -254,7 +307,10 @@ void snes_reset(Snes* snes, bool hard) {
-   snes->joypad1Index = snes->joypad2Index = 0;
-   snes->joypad1Latched = snes->joypad2Latched = 0;
-   joypad_reset_state();
--  snes->ppuLatch = false;
-+  snes->ppuLatch = true;  /* WRIO reads $FF after power-on and reset */
-+  s_latch_snes = snes;
-+  g_ppu_latch_position_hook = snes_latch_position;
+   *h_dot = (uint16_t)(h <= 1292 ? h >> 2 : h <= 1310 ? (h - 2) >> 2 : (h - 4) >> 2);
+   *v_out = (uint16_t)v;
+   static int hv_log = -1;
+@@ -283,6 +310,7 @@ void snes_reset(Snes* snes, bool hard) {
+   snes->ppuLatch = true;  /* WRIO reads $FF after power-on and reset */
+   s_latch_snes = snes;
+   g_ppu_latch_position_hook = snes_latch_position;
 +  g_ppu_beam_hook = snes_ppu_beam;
    snes->multiplyA = 0xff;
    snes->multiplyResult = 0xfe01;
    snes->divideA = 0xffff;
-@@ -270,6 +326,10 @@ double apucyc_prof_ms = 0.0;
- #endif
- 
- void snes_catchupApu(Snes* snes) {
-+  { extern bool rtl_apu_master_clock(void);
-+    /* The master-clock timeline runs the SPC only at CPU port accesses and
-+     * frame ends, to exact clocks; relative catch-up would run it ahead. */
-+    if (rtl_apu_master_clock()) { snes->apuCatchupCycles = 0; return; } }
-   /* Upper cap is a guard against accumulator runaway after a long
-    * stall; SPC runs at ~1 MHz so 10000 cycles is about 10 ms of real
-    * SPC time per catchup, plenty to absorb any spike. */
-@@ -321,9 +381,11 @@ uint8_t snes_readBBus(Snes* snes, uint8_t adr) {
-     // APU port read ($2140-$217F). Synchronize the SPC to this exact guest
-     // timestamp before observing its output-port state.
-     RtlApuLock();
--    rtl_sync_apu_to_cpu_locked();
-+    { void rtl_sync_apu_for_access_locked(uint16_t a); rtl_sync_apu_for_access_locked((uint16_t)(0x2100 + adr)); }
-     uint8_t v = snes->apu->outPorts[adr & 0x3];
-     v = rtl_apu_port_observers_read(0x2100 + adr, v);
-+    { void rtl_port_log_cpu(uint16_t adr, char rw, uint8_t v);
-+      rtl_port_log_cpu(0x2100 + adr, 'R', v); }
-     audio_trace_on_cpu_port_read((uint8_t)(adr & 0x3), v);
-     RtlApuUnlock();
-     return v;
-@@ -666,7 +728,10 @@ uint8_t snes_readReg(Snes* snes, uint16_t adr) {
+@@ -700,7 +728,10 @@ uint8_t snes_readReg(Snes* snes, uint16_t adr) {
         * clocked native reads have the same contract, without changing APU
         * ownership through g_interp_apu_driving. */
        extern int g_interp_apu_driving;
@@ -3565,488 +1974,14 @@ index 88f789ba..b7d5f315 100644
          snes_advance_beam(snes, 64, false);
        // Bit 7 = vblank. The real frame loop drives vblank via inNmi, not
        // inVblank (inVblank is never set true), so on the static-recomp
-@@ -678,7 +743,24 @@ uint8_t snes_readReg(Snes* snes, uint16_t adr) {
-       // The synthetic advance shares the live beam helper, so IRQ and
-       // auto-joypad edges remain coherent with the reported counters.
-       uint8_t val = (snes->autoJoyTimer > 0);
--      val |= (snes->hPos >= 1024) << 6;
-+      /* SNESRECOMP_HBLANK_EXACT (default: on with the master-clock APU
-+       * timeline, RtlApuUseMasterClock): bit 6 is H-blank at the read's
-+       * own clock (2 clocks into its bus cycle), H >= 1097 or H < 4, as
-+       * MesenCE reads it (16,671 reads measured). 0: hPos >= 1024 at the
-+       * beam's last sync. */
-+      static int hb_env = -2;
-+      if (hb_env == -2) { const char *e = getenv("SNESRECOMP_HBLANK_EXACT"); hb_env = e ? e[0] != '0' : -1; }
-+      extern bool rtl_apu_master_clock(void);
-+      const bool hb_exact = hb_env >= 0 ? hb_env : rtl_apu_master_clock();
-+      if (hb_exact) {
-+        extern uint64_t rtl_cpu_master_now(void);
-+        extern uint32_t interp_bridge_access_lead(uint16_t adr, uint32_t fallback);
-+        const uint64_t at = rtl_cpu_master_now() + interp_bridge_access_lead(0x4212, 20);
-+        const uint64_t h = at > snes->beamMasterLast ? (snes->hPos + (at - snes->beamMasterLast)) % 1364u : snes->hPos;
-+        val |= (h >= 1097 || h < 4) << 6;
-+      } else {
-+        val |= (snes->hPos >= 1024) << 6;
-+      }
-       val |= (snes->inVblank || snes->vPos >= 225) << 7;
-       return val;
-     }
-@@ -869,17 +951,70 @@ void snes_writeReg(Snes* snes, uint16_t adr, uint8_t val) {
-        * gundamwing-parity-root-cause. HDMA stays uncharged here (per-line,
-        * far smaller; out of scope for this fix). */
-       {
--        uint64_t dma_master = 12;
-+        /* SNESRECOMP_DMA_ALIGN (default 1): hardware alignment. The transfer
-+         * starts on the next 8-clock boundary after the next opcode fetch
-+         * (1-8 clocks), spends 8 clocks of setup, 8 per channel and 8 per
-+         * byte, then waits to the next whole CPU cycle (speed - n % speed,
-+         * n the clocks so far). A write of 0 starts nothing. 0 keeps the old
-+         * flat 12 + sum(8 + 8 n).
-+         * SNESRECOMP_DMA_LEAD: master clocks from the instruction's start
-+         * (the clock the CPU reports here) to the point the transfer waits
-+         * from, the next instruction's opcode fetch: 30 for a FastROM STA abs
-+         * (24 + 6); SNESRECOMP_DMA_END_SPEED (default 6). Measured on
-+         * MesenCE: every general DMA of the Evermore attract run fits. */
-+        static int dma_align = -1, dma_lead = 30, dma_end_speed = 6;
-+        if (dma_align < 0) {
-+          const char *e = getenv("SNESRECOMP_DMA_ALIGN");
-+          dma_align = !(e && e[0] == '0');
-+          if ((e = getenv("SNESRECOMP_DMA_LEAD"))) dma_lead = atoi(e);
-+          if ((e = getenv("SNESRECOMP_DMA_END_SPEED"))) dma_end_speed = atoi(e);
-+        }
-+        uint64_t body = 0;
-         for (int ch = 0; ch < 8; ch++) {
-           if (val & (1 << ch)) {
-             uint32_t n = snes->dma->channel[ch].size;
-             if (n == 0) n = 0x10000;
--            dma_master += 8 + (uint64_t)n * 8;
-+            body += 8 + (uint64_t)n * 8;
-+          }
-+        }
-+        uint64_t dma_master = 12 + body;
-+        if (dma_align && !val) {
-+          dma_master = 0;  /* no channel: no transfer, no time */
-+        } else if (dma_align) {
-+          extern uint64_t rtl_cpu_master_now(void);
-+          const uint64_t now = rtl_cpu_master_now();
-+          uint64_t start = now + (uint64_t)dma_lead;
-+          /* MesenCE's HDMA init event (line 0, H = 12 + (line start & 7))
-+           * takes a CPU cycle start of its own, then another for the HDMA
-+           * init itself, even with no HDMA channel on; a pending DMA waits
-+           * for both. The write's cycle starts 12 clocks before `start` (the
-+           * next opcode fetch 6, then the cycle the DMA would start in). */
-+          {
-+            const uint64_t line = snes->beamMasterLast - snes->hPos;
-+            const uint64_t line0 = snes->vPos == 0 ? line : snes->vPos == 261 ? line + 1364u : 0;
-+            if (line0) {
-+              const uint64_t ev = line0 + 12u + (line0 & 7u);
-+              const uint64_t write_cycle = start - 12u, next_fetch = start - 6u;
-+              if (ev > write_cycle - 6u && ev <= next_fetch) start += 6u;
-+              else if (ev > next_fetch && ev <= start) start += 12u;
-+            }
-           }
-+          /* The cycles it waits are the next instruction's own, charged as it
-+           * runs; only the alignment from the later start differs. */
-+          uint64_t t = (8 - (start & 7)) + 8 + body;
-+          if (dma_end_speed > 0) t += (uint64_t)dma_end_speed - t % (uint64_t)dma_end_speed;
-+          dma_master = t;
-         }
-+        { static int dma_log = -1;
-+          if (dma_log < 0) dma_log = getenv("SNESRECOMP_DMA_LOG") != NULL;
-+          extern uint64_t rtl_cpu_master_now(void);
-+          if (dma_log) fprintf(stderr, "[dma] now=%llu ch=%02X body=%llu charge=%llu\n",
-+                               (unsigned long long)rtl_cpu_master_now(), val,
-+                               (unsigned long long)body, (unsigned long long)dma_master); }
-         /* SnesInit installs the CpuState-clock charge; a host that drives
-          * the beam itself installs its own (see snes.h). With no hook the
-          * device layer advances its own beam, so snes.c needs no CpuState. */
-+        g_snes_dma_charged += dma_master;
-         if (s_master_clock_charge_hook) {
-           s_master_clock_charge_hook(snes, dma_master);
-         } else {
-diff --git a/runner/src/snes/snes.h b/runner/src/snes/snes.h
-index cac9b0e2..f5bbc493 100644
---- a/runner/src/snes/snes.h
-+++ b/runner/src/snes/snes.h
-@@ -199,4 +199,9 @@ uint32_t snes_master_clocks_until_line(const Snes *snes, uint32_t line);
- void snes_beam_hold(int hold);
- 
- extern int snes_frame_counter;
-+/* Master clocks charged for general DMA since power-on: a frame driver that
-+ * needs to tell an instruction's own cycles from the DMA it started (the DMA
-+ * runs in the next instruction's first cycle on hardware) reads the change. */
-+extern uint64_t g_snes_dma_charged;
-+
- #endif
-diff --git a/runner/src/snes/spc.c b/runner/src/snes/spc.c
-index 3013d7b9..ba48adc4 100644
---- a/runner/src/snes/spc.c
-+++ b/runner/src/snes/spc.c
-@@ -46,11 +46,42 @@ static void spc_doOpcode(Spc* spc, uint8_t opcode);
- 
- // addressing modes and opcode functions not declared, only used after defintions
- 
-+/* The core's access order differs from the S-SMP's in two families; map its
-+ * access number to the hardware cycle. dp,dp operations read the source
-+ * before fetching the destination operand (core: both operands first), and
-+ * word reads idle a cycle between the low and the high byte. */
-+static uint8_t spc_hwCycle(const Spc* spc, uint8_t idx) {
-+  switch (spc->op) {
-+    case 0x09: case 0x29: case 0x49: case 0x69: case 0x89: case 0xa9: case 0xfa:
-+      return idx == 2 ? 3 : idx == 3 ? 2 : idx;
-+    case 0x5a: case 0x7a: case 0x9a: case 0xba:
-+      return idx == 3 ? 4 : idx;
-+  }
-+  return idx;
-+}
-+
- static uint8_t spc_read(Spc* spc, uint16_t adr) {
-+  uint8_t cycle = spc_hwCycle(spc, spc->busIdx++);
-+  if (spc->dry) {
-+    if (adr >= 0xf4 && adr <= 0xf7) {
-+      if ((int)cycle > spc->dryLastPort) spc->dryLastPort = (int8_t)cycle;
-+      return spc->apu->inPorts[adr - 0xf4];
-+    }
-+    if (adr >= 0xfd && adr <= 0xff) return 0;  /* timer reads clear the counter */
-+    return apu_cpuRead(spc->apu, adr);  /* plain memory: no side effect */
-+  }
-+  spc->accessCycle = cycle;
-   return apu_cpuRead(spc->apu, adr);
- }
- 
- static void spc_write(Spc* spc, uint16_t adr, uint8_t val) {
-+  spc->accessCycle = spc->busIdx++;
-+  if (spc->dry) {
-+    if (adr >= 0xf4 && adr <= 0xf7 && spc->dryPortWrites < 4)
-+      spc->dryPortWrite[spc->dryPortWrites++] = (int8_t)spc->dryWrites;
-+    spc->dryWrites++;
-+    return;
-+  }
-   apu_cpuWrite(spc->apu, adr, val);
- }
- 
-@@ -80,10 +111,23 @@ void spc_reset(Spc* spc) {
-   spc->b = false;
-   spc->stopped = false;
-   spc->cyclesUsed = 0;
-+  spc->busIdx = 0;
-+  spc->opPc = 0;
-+  spc->op = 0;
-+  spc->accessCycle = 0;
-+  spc->dry = false;
-+  spc->dryLastPort = -1;
-+  spc->dryWrites = 0;
-+  memset(spc->dryPortWrite, 0, sizeof(spc->dryPortWrite));
-+  spc->dryPortWrites = 0;
- }
- 
- void spc_saveload(Spc *spc, SaveLoadInfo *sli) {
-   sli->func(sli, &spc->a, offsetof(Spc, cyclesUsed) - offsetof(Spc, a));
-+  /* An opcode's bus effects can lead its remaining clocks. Retain its
-+   * access cursor beside the APU's timer/DSP advance debt. Probe-only
-+   * fields starting at dry are temporary and stay outside the snapshot. */
-+  sli->func(sli, &spc->cyclesUsed, offsetof(Spc, dry) - offsetof(Spc, cyclesUsed));
- }
- 
- /* Opt-in SPC instruction trace (SNESRECOMP_SPC_TRACE=1): ring of the last
-@@ -96,9 +140,40 @@ static uint32_t s_spc_trace_head = 0;
- static uint32_t s_spc_trace_count = 0;
- static int s_spc_trace_on = -1;
- 
-+/* A store's write is its last cycle (the read before it, if any, is the
-+ * hardware's dummy read), a word store's two writes its last two: the n-th of
-+ * N writes lands on cycle cycles - N + n. Reads land on their access number. */
-+int spc_probePortCycle(Spc* spc) {
-+  if (spc->stopped) return -1;
-+  Spc saved = *spc;
-+  spc->dry = true;
-+  spc->busIdx = 0;
-+  spc->dryLastPort = -1;
-+  spc->dryWrites = 0;
-+  spc->dryPortWrites = 0;
-+  spc->op = spc_read(spc, spc->pc);  /* spc_hwCycle needs the opcode */
-+  spc->busIdx = 0;
-+  uint8_t opcode = spc_readOpcode(spc);
-+  spc->cyclesUsed = cyclesPerOpcode[opcode];
-+  spc_doOpcode(spc, opcode);
-+  int last = spc->dryLastPort;
-+  int cycles = spc->cyclesUsed;
-+  if (last >= cycles) last = cycles - 1;
-+  for (int i = 0; i < spc->dryPortWrites; i++) {
-+    int c = cycles - spc->dryWrites + spc->dryPortWrite[i];
-+    if (c > last) last = c;
-+  }
-+  *spc = saved;
-+  return last;
-+}
-+
- int spc_runOpcode(Spc* spc) {
-   spc->cyclesUsed = 0;
-+  spc->busIdx = 0;
-+  spc->accessCycle = 0;
-   if(spc->stopped) return 1;
-+  spc->opPc = spc->pc;
-+  spc->op = apu_cpuRead(spc->apu, spc->pc);  /* plain memory: spc_hwCycle needs it first */
-   uint8_t opcode = spc_readOpcode(spc);
-   if (s_spc_trace_on < 0)
-     s_spc_trace_on = getenv("SNESRECOMP_SPC_TRACE") ? 1 : 0;
-diff --git a/runner/src/snes/spc.h b/runner/src/snes/spc.h
-index eb00eee8..810598a5 100644
---- a/runner/src/snes/spc.h
-+++ b/runner/src/snes/spc.h
-@@ -33,12 +33,27 @@ struct Spc {
-   bool stopped;
-   // internal use
-   uint8_t cyclesUsed; // indicates how many cycles an opcode used
-+  /* Access timing (saved with the remaining opcode clocks). The core runs an opcode
-+   * at its first clock; busIdx numbers its bus accesses so a port access can
-+   * be placed on its own cycle (apu.c: port lookahead and hold). */
-+  uint8_t busIdx;
-+  uint16_t opPc;        /* address of the running opcode */
-+  uint8_t op;
-+  uint8_t accessCycle;  /* cycle of the access in progress */
-+  bool dry;             /* probe run: no side effects, port accesses recorded */
-+  int8_t dryLastPort;   /* latest port ($F4-$F7) access cycle seen in a probe, -1 none */
-+  uint8_t dryWrites;    /* writes seen in a probe */
-+  int8_t dryPortWrite[4]; /* write ordinal of each port write in a probe */
-+  uint8_t dryPortWrites;
- };
- 
- Spc* spc_init(Apu* apu);
- void spc_free(Spc* spc);
- void spc_reset(Spc* spc);
- int spc_runOpcode(Spc* spc);
-+/* Dry-run the next opcode without side effects: the last cycle (from the
-+ * opcode's first) on which it reads or writes $F4-$F7, or -1 if it does not. */
-+int spc_probePortCycle(Spc* spc);
- void spc_saveload(Spc *spc, SaveLoadInfo *sli);
- 
- #endif
-diff --git a/tests/audio/cmake_output_voices/CMakeLists.txt b/tests/audio/cmake_output_voices/CMakeLists.txt
-index 60b1d594..d89c3b08 100644
---- a/tests/audio/cmake_output_voices/CMakeLists.txt
-+++ b/tests/audio/cmake_output_voices/CMakeLists.txt
-@@ -7,6 +7,7 @@ foreach(variant IN ITEMS default trace0 trace1 cosim)
-   add_executable(dsp_output_${variant}
-     "${ROOT}/tests/audio/dsp_output_voices_test.c"
-     "${ROOT}/runner/src/snes/dsp.c"
-+    "${ROOT}/runner/src/snes/dsp_clock.c"
-     "${ROOT}/runner/src/snes/dsp_shadow.c"
-     "${ROOT}/runner/src/snes/audio_shadow.c"
-     "${ROOT}/runner/src/audio_trace.c")
-diff --git a/tests/audio/dsp_clock_snapshot_test.c b/tests/audio/dsp_clock_snapshot_test.c
-new file mode 100644
-index 00000000..62ac1d5e
---- /dev/null
-+++ b/tests/audio/dsp_clock_snapshot_test.c
-@@ -0,0 +1,121 @@
-+/* Current-build per-clock DSP save/load must resume the same simulation. */
-+#include <assert.h>
-+#include <stdio.h>
-+#include <stdlib.h>
-+#include <string.h>
-+#include "snes/dsp.h"
-+int snes_frame_counter;
-+void RtlApuLock(void) {}
-+void RtlApuUnlock(void) {}
-+
-+typedef struct {
-+  SaveLoadInfo base;
-+  unsigned char data[sizeof(Dsp) * 2];
-+  size_t position;
-+  int loading;
-+} Snapshot;
-+static void transfer(SaveLoadInfo *info, void *data, size_t size) {
-+  Snapshot *s = (Snapshot *)info;
-+  assert(s->position + size <= sizeof(s->data));
-+  if (s->loading) memcpy(data, s->data + s->position, size);
-+  else memcpy(s->data + s->position, data, size);
-+  s->position += size;
-+}
-+
-+int main(void) {
-+  uint8_t *ram = calloc(65536, 1);
-+  Dsp *dsp = dsp_init(ram);
-+  Snapshot *snapshot = calloc(1, sizeof(*snapshot));
-+  assert(ram && dsp && snapshot);
-+  snapshot->base.func = transfer;
-+  for (unsigned phase = 0; phase < 32; ++phase) {
-+  memset(snapshot, 0, sizeof(*snapshot)); snapshot->base.func = transfer;
-+  memset(ram, 0, 65536);
-+  ram[0x2001] = ram[0x2003] = 0x21;
-+  ram[0x2100] = 0x73;
-+  memset(ram + 0x2101, 0x77, 8);
-+  dsp_reset(dsp);
-+  dsp_write(dsp, 0x6c, 0x20); /* disable echo RAM writes */
-+  dsp_write(dsp, 0x00, 127); dsp_write(dsp, 0x01, 127);
-+  dsp_write(dsp, 0x03, 0x10); dsp_write(dsp, 0x05, 0); dsp_write(dsp, 0x07, 0x7f);
-+  dsp_write(dsp, 0x0c, 127); dsp_write(dsp, 0x1c, 127);
-+  dsp_write(dsp, 0x5d, 0x20); dsp_write(dsp, 0x5c, 0); dsp_write(dsp, 0x4c, 1);
-+  for (unsigned i = 0; i < 1024 + phase; ++i) {
-+    if (dsp_perClock()) dsp_clock(dsp); else dsp_cycle(dsp);
-+  }
-+  assert(dsp_available(dsp) > 0);
-+  bool audible = false;
-+  for (unsigned i = 0; i < dsp_available(dsp); ++i) {
-+    int16_t l, r; dsp_peek(dsp, i, &l, &r);
-+    audible |= l != 0 || r != 0;
-+  }
-+  if (!audible) {
-+    fprintf(stderr, "voice setup silent: per_clock=%d phase=%u samples=%u env=%d legacy_gain=%u mode=%u kon=%u kof=%u gain_reg=%u\n",
-+      dsp_perClock(), phase, dsp_available(dsp), dsp->clk.v[0].env,
-+      dsp->channel[0].gain, dsp->clk.v[0].mode, dsp->clk.kon, dsp->clk.kof, dsp->clk.regs[7]);
-+    return 2;
-+  }
-+  DspClock saved = dsp->clk;
-+  dsp_saveload(dsp, &snapshot->base);
-+  for (unsigned i = 0; i < 347; ++i) {
-+    if (dsp_perClock()) dsp_clock(dsp); else dsp_cycle(dsp);
-+  }
-+  DspClock expected = dsp->clk;
-+  DspOutputRing *output = malloc(sizeof(*output)); assert(output);
-+  dsp_output_ring_save(dsp, output);
-+  snapshot->position = 0; snapshot->loading = 1;
-+  dsp_saveload(dsp, &snapshot->base);
-+  if (memcmp(&saved, &dsp->clk, sizeof(saved))) {
-+    fprintf(stderr, "DSP clock snapshot lost simulation state: saved step=%u loaded=%u\n",
-+            saved.step, dsp->clk.step);
-+    return 1;
-+  }
-+  for (unsigned i = 0; i < 347; ++i) {
-+    if (dsp_perClock()) dsp_clock(dsp); else dsp_cycle(dsp);
-+  }
-+  assert(memcmp(&expected, &dsp->clk, sizeof(expected)) == 0);
-+  DspOutputRing *replayed = malloc(sizeof(*replayed)); assert(replayed);
-+  dsp_output_ring_save(dsp, replayed);
-+  assert(memcmp(output, replayed, sizeof(*output)) == 0);
-+  free(output); free(replayed);
-+  }
-+  /* An enabled native echo must also follow the selected output voices,
-+   * while canonical echo RAM and the synthesis pipeline remain unchanged. */
-+  dsp_write(dsp, 0x4d, 1); dsp_write(dsp, 0x2c, 127); dsp_write(dsp, 0x3c, 127);
-+  dsp_write(dsp, 0x0f, 64); dsp_write(dsp, 0x6d, 0x30); dsp_write(dsp, 0x7d, 1);
-+  dsp_write(dsp, 0x6c, 0);
-+  for (unsigned i = 0; i < 512; ++i) {
-+    if (dsp_perClock()) dsp_clock(dsp); else dsp_cycle(dsp);
-+  }
-+  snapshot->position = 0; snapshot->loading = 0;
-+  dsp_saveload(dsp, &snapshot->base);
-+  uint8_t *saved_ram = malloc(65536), *masked_ram = malloc(65536);
-+  assert(saved_ram && masked_ram); memcpy(saved_ram, ram, 65536);
-+  assert(dsp_set_output_voices(dsp, 0));
-+  dsp_trimSamples(dsp, 0);
-+  for (unsigned i = 0; i < 128; ++i) {
-+    if (dsp_perClock()) dsp_clock(dsp); else dsp_cycle(dsp);
-+  }
-+  assert(dsp_available(dsp));
-+  for (unsigned i = 0; i < dsp_available(dsp); ++i) {
-+    int16_t l, r; dsp_peek(dsp, i, &l, &r);
-+    if (l || r) { fprintf(stderr, "voice mask ignored: per_clock=%d PCM=%d/%d\n", dsp_perClock(), l, r); return 3; }
-+  }
-+  DspClock masked_clock = dsp->clk; memcpy(masked_ram, ram, 65536);
-+  snapshot->position = 0; snapshot->loading = 1;
-+  dsp_saveload(dsp, &snapshot->base); memcpy(ram, saved_ram, 65536);
-+  assert(dsp_set_output_voices(dsp, 0xff)); dsp_trimSamples(dsp, 0);
-+  for (unsigned i = 0; i < 128; ++i) {
-+    if (dsp_perClock()) dsp_clock(dsp); else dsp_cycle(dsp);
-+  }
-+  assert(!memcmp(&masked_clock, &dsp->clk, sizeof(masked_clock)));
-+  assert(!memcmp(masked_ram, ram, 65536));
-+  bool unfiltered_audible = false;
-+  for (unsigned i = 0; i < dsp_available(dsp); ++i) {
-+    int16_t l, r; dsp_peek(dsp, i, &l, &r); unfiltered_audible |= l || r;
-+  }
-+  assert(unfiltered_audible); free(saved_ram); free(masked_ram);
-+  dsp_free(dsp); free(ram); free(snapshot);
-+  puts("per-clock DSP snapshot and continuation PASS");
-+  return 0;
-+}
-diff --git a/tests/audio/dsp_mix_test.c b/tests/audio/dsp_mix_test.c
-index e14b76e3..b37185f7 100644
---- a/tests/audio/dsp_mix_test.c
-+++ b/tests/audio/dsp_mix_test.c
-@@ -30,12 +30,14 @@ typedef struct Snapshot {
-   SaveLoadInfo info;
-   unsigned char bytes[sizeof(Dsp)];
-   bool loading;
-+  size_t position;
- } Snapshot;
- static void transfer(SaveLoadInfo *info, void *data, size_t size) {
-   Snapshot *snapshot = (Snapshot *)info;
--  assert(size <= sizeof(snapshot->bytes));
--  if (snapshot->loading) memcpy(data, snapshot->bytes, size);
--  else memcpy(snapshot->bytes, data, size);
-+  assert(size <= sizeof(snapshot->bytes) - snapshot->position);
-+  if (snapshot->loading) memcpy(data, snapshot->bytes + snapshot->position, size);
-+  else memcpy(snapshot->bytes + snapshot->position, data, size);
-+  snapshot->position += size;
- }
- 
- int main(void) {
-@@ -79,13 +81,14 @@ int main(void) {
-       reference->suppressOutput = native->suppressOutput = (tick & 64u) != 0;
-     }
-     if (!(tick & 1023u)) {
--      Snapshot a = {{transfer, NULL}, {0}, false}, b = a;
-+      Snapshot a = {.info = {transfer, NULL}}, b = a;
-       reference_dsp_saveload(reference, &a.info); dsp_saveload(native, &b.info);
-       assert(!memcmp(a.bytes, b.bytes, sizeof(a.bytes)));
-       reference->channel[0].gain ^= 0x400;
-       native->channel[0].gain ^= 0x400;
-       reference->sampleRead++; native->sampleRead++;
-       a.loading = b.loading = true;
-+      a.position = b.position = 0;
-       reference_dsp_saveload(reference, &a.info); dsp_saveload(native, &b.info);
-     }
-     uint32_t old_write = native->sampleWrite;
-diff --git a/tests/audio/run_dsp_mix_test.py b/tests/audio/run_dsp_mix_test.py
-index 83c0eee5..8bde8e05 100644
---- a/tests/audio/run_dsp_mix_test.py
-+++ b/tests/audio/run_dsp_mix_test.py
-@@ -34,7 +34,8 @@ for arm in ('reference', 'native'):
-     run(base + defines + ['-c', str(source), '-o', str(build / (arm + '.o'))])
- binary = build / ('dsp_mix_test.exe' if os.name == 'nt' else 'dsp_mix_test')
- sources = [root / 'tests/audio/dsp_mix_test.c', build / 'reference.o',
--           build / 'native.o', root / 'runner/src/snes/dsp_shadow.c',
-+           build / 'native.o', root / 'runner/src/snes/dsp_clock.c',
-+           root / 'runner/src/snes/dsp_shadow.c',
-            root / 'runner/src/snes/audio_shadow.c', root / 'runner/src/audio_trace.c']
- gc = '-Wl,-dead_strip' if sys.platform == 'darwin' else '-Wl,--gc-sections'
- run(base + [str(path) for path in sources] + [gc, '-lm', '-o', str(binary)])
-diff --git a/tests/audio/run_dsp_trace_gate_test.ps1 b/tests/audio/run_dsp_trace_gate_test.ps1
-index 40ad4f0a..41d96b63 100644
---- a/tests/audio/run_dsp_trace_gate_test.ps1
-+++ b/tests/audio/run_dsp_trace_gate_test.ps1
-@@ -11,6 +11,7 @@ $baseArgs = @(
-     "-I$root\runner\src", "-I$root\runner\src\snes",
-     "$root\tests\audio\dsp_trace_gate_test.c",
-     "$root\runner\src\snes\dsp.c",
-+    "$root\runner\src\snes\dsp_clock.c",
-     "$root\runner\src\snes\dsp_shadow.c",
-     "$root\runner\src\snes\audio_shadow.c",
-     "$root\runner\src\audio_trace.c",
-diff --git a/tests/audio_delivery/run.ps1 b/tests/audio_delivery/run.ps1
-index 33d17832..f8e4a80c 100644
---- a/tests/audio_delivery/run.ps1
-+++ b/tests/audio_delivery/run.ps1
-@@ -9,7 +9,7 @@ try {
-     & $Compiler -std=c11 -O2 -flto -fwhole-program -ffunction-sections -fdata-sections `
-         -DSNESRECOMP_TRACE=0 -DSNESRECOMP_SDL3=1 -DSDL_MAIN_HANDLED `
-         -Irunner/src/desktop -Irunner/src tests/audio_delivery_test.c `
--        runner/src/snes/dsp.c runner/src/audio_trace.c '-Wl,--gc-sections' -lm -o $executable
-+        runner/src/snes/dsp.c runner/src/snes/dsp_clock.c runner/src/audio_trace.c '-Wl,--gc-sections' -lm -o $executable
-     if ($LASTEXITCODE -ne 0) { throw 'Audio delivery test compilation failed' }
-     & $executable
-     if ($LASTEXITCODE -ne 0) { throw 'Audio delivery regression failed' }
 diff --git a/tests/dma/hdma_timing_test.c b/tests/dma/hdma_timing_test.c
-index c0a1581f..cfbfe1e2 100644
+index 7f7b1559..b99b76ee 100644
 --- a/tests/dma/hdma_timing_test.c
 +++ b/tests/dma/hdma_timing_test.c
-@@ -49,10 +49,20 @@ void ppu_rasterRecord(uint16_t reg, uint16_t line, uint8_t val) {
- }
+@@ -50,6 +50,10 @@ void ppu_rasterRecord(uint16_t reg, uint16_t line, uint8_t val) {
  void ppu_rasterFieldBoundary(void) {}
  void ppu_rasterReset(void) {}
-+void (*g_ppu_latch_position_hook)(uint16_t *h_dot, uint16_t *v);
+ void (*g_ppu_latch_position_hook)(uint16_t *h_dot, uint16_t *v);
 +/* ppu.c's beam hook for register accesses during rendering: ppu.c is not linked here. */
 +bool (*g_ppu_beam_hook)(uint16_t adr, uint16_t *h_clock, uint16_t *v);
 +/* Bus-exact compiled code's I/O lead (cpu_state.c): no compiled code here. */
@@ -4054,20 +1989,11 @@ index c0a1581f..cfbfe1e2 100644
  
  void RtlApuLock(void) {}
  void RtlApuUnlock(void) {}
- void rtl_sync_apu_to_cpu_locked(void) {}
-+void rtl_sync_apu_for_access_locked(uint16_t adr) { (void)adr; }
-+void rtl_port_log_cpu(uint16_t adr, char rw, uint8_t v) { (void)adr; (void)rw; (void)v; }
-+bool rtl_apu_master_clock(void) { return false; }
-+uint64_t rtl_cpu_master_now(void) { return 0; }
-+uint32_t interp_bridge_access_lead(uint16_t adr, uint32_t fallback) { (void)adr; return fallback; }
- void RtlApuWrite(uint16_t adr, uint8_t val) { (void)adr; (void)val; }
- uint8_t rtl_apu_port_observers_read(uint16_t adr, uint8_t value) {
-     (void)adr;
 diff --git a/tests/interp816/bridge_test.c b/tests/interp816/bridge_test.c
-index b697e05a..d8d64bbc 100644
+index 58edcbff..75c6746f 100644
 --- a/tests/interp816/bridge_test.c
 +++ b/tests/interp816/bridge_test.c
-@@ -84,6 +84,25 @@ void ppudma_note_interrupt(int is_nmi) { (void)is_nmi; }
+@@ -97,6 +97,25 @@ void ppudma_note_interrupt(int is_nmi) { (void)is_nmi; }
  uint32_t cpu_region_speed(uint32_t addr24) {
      return (uint32_t)snes_region_speed(addr24, g_memsel);
  }
@@ -4093,52 +2019,6 @@ index b697e05a..d8d64bbc 100644
  uint8_t sdd1_read(Sdd1 *sdd1, uint16_t addr) {
      (void)sdd1;
      (void)addr;
-diff --git a/tests/netplay/rb_state_digest_test.c b/tests/netplay/rb_state_digest_test.c
-index 821c3b5d..4b216ed1 100644
---- a/tests/netplay/rb_state_digest_test.c
-+++ b/tests/netplay/rb_state_digest_test.c
-@@ -113,6 +113,17 @@ int main(void)
- 
-     /* --- everything else in the APU is simulation and must fold in --- */
- 
-+    for (unsigned i = 0; i < 3; ++i) {
-+        apu->timerAhead[i] ^= 1u;
-+        check(snes_state_digest_apu_of(apu) != base,
-+              "APU timer advance debt is included");
-+        apu->timerAhead[i] ^= 1u;
-+    }
-+    apu->dspAhead ^= 1u;
-+    check(snes_state_digest_apu_of(apu) != base,
-+          "APU DSP advance debt is included");
-+    apu->dspAhead ^= 1u;
-+
-     apu->dsp->ram[0x0C] ^= 0xFFu; /* MVOLL mirror */
-     after = snes_state_digest_apu_of(apu);
-     check(after != base, "DSP register file is included");
-@@ -131,6 +142,23 @@ int main(void)
-     check(snes_state_digest_apu_of(apu) == base,
-           "digest returns to baseline after restore");
- 
-+    apu->dsp->konDelay[7] ^= 1u;
-+    check(snes_state_digest_apu_of(apu) != base,
-+          "DSP key-on delay after the ring stream is included");
-+    apu->dsp->konDelay[7] ^= 1u;
-+    apu->dsp->rateCounter ^= 0x1234;
-+    check(snes_state_digest_apu_of(apu) != base,
-+          "DSP shared rate phase is included");
-+    apu->dsp->rateCounter ^= 0x1234;
-+    apu->dsp->endPending[7] = !apu->dsp->endPending[7];
-+    check(snes_state_digest_apu_of(apu) != base,
-+          "DSP pending end state is included");
-+    apu->dsp->endPending[7] = !apu->dsp->endPending[7];
-+    apu->dsp->clk.v[7].buf[11] ^= 0x1234;
-+    check(snes_state_digest_apu_of(apu) != base,
-+          "per-clock DSP continuation state is included");
-+    apu->dsp->clk.v[7].buf[11] ^= 0x1234;
-+
-     apu->ram[0x0100] ^= 0xFFu;
-     check(snes_state_digest_apu_of(apu) != base, "APU RAM is included");
-     apu->ram[0x0100] ^= 0xFFu;
 diff --git a/tests/ppu/ppu_brightness_test.c b/tests/ppu/ppu_brightness_test.c
 index abc7f409..f3582c08 100644
 --- a/tests/ppu/ppu_brightness_test.c
@@ -4305,182 +2185,6 @@ index 60520042..3f1de557 100644
              frag = folder / (name + '.frag')
              frag.write_bytes((prefix + body).encode('utf-8'))
              subprocess.run([args.validator, '-l', str(vert), str(frag)], check=True)
-diff --git a/tests/run_c_tests.sh b/tests/run_c_tests.sh
-index 224066ef..c4de1e5a 100644
---- a/tests/run_c_tests.sh
-+++ b/tests/run_c_tests.sh
-@@ -327,6 +327,7 @@ echo "=== rollback state digest ==="
-     "$ROOT/runner/src/snes/apu.c" \
-     "$ROOT/runner/src/snes/spc.c" \
-     "$ROOT/runner/src/snes/dsp.c" \
-+    "$ROOT/runner/src/snes/dsp_clock.c" \
-     "$ROOT/runner/src/crc32.c" \
-     -o "$OUT/rb_state_digest_test"
- "$OUT/rb_state_digest_test"
-@@ -340,6 +341,7 @@ echo "=== APU guest-time pacing ==="
-     "$ROOT/runner/src/snes/apu.c" \
-     "$ROOT/runner/src/snes/spc.c" \
-     "$ROOT/runner/src/snes/dsp.c" \
-+    "$ROOT/runner/src/snes/dsp_clock.c" \
-     $GC_SECTIONS_LINKER -o "$OUT/apu_port_guest_time_test"
- "$OUT/apu_port_guest_time_test"
- 
-@@ -645,7 +647,7 @@ RTL_UNIT_FLAGS="$(pkg-config --cflags sdl2) -std=c11 -O2 -flto -fwhole-program -
- 
- echo "=== audio delivery + console reset ==="
- "$CC" $RTL_UNIT_FLAGS "$ROOT/tests/audio_delivery_test.c" \
--    "$ROOT/runner/src/snes/dsp.c" "$ROOT/runner/src/audio_trace.c" \
-+    "$ROOT/runner/src/snes/dsp.c" "$ROOT/runner/src/snes/dsp_clock.c" "$ROOT/runner/src/audio_trace.c" \
-     -Wl,--gc-sections -lm -o "$OUT/audio_delivery_test"
- "$OUT/audio_delivery_test"
- 
-diff --git a/tests/run_native_runtime.ps1 b/tests/run_native_runtime.ps1
-index 874f4447..09eae280 100644
---- a/tests/run_native_runtime.ps1
-+++ b/tests/run_native_runtime.ps1
-@@ -10,7 +10,7 @@ if (!$OutputDirectory) { $OutputDirectory = Join-Path $root 'build\native-runtim
- $common = @('-std=c11', '-O3', '-UNDEBUG', '-DSNESRECOMP_TRACE=0',
-     '-ffunction-sections', '-fdata-sections', "-I$root\runner\src")
- $audioSources = @("$root\tests\audio\apu_native_test.c",
--    "$root\runner\src\snes\spc.c", "$root\runner\src\snes\dsp.c",
-+    "$root\runner\src\snes\spc.c", "$root\runner\src\snes\dsp.c", "$root\runner\src\snes\dsp_clock.c",
-     "$root\runner\src\snes\dsp_shadow.c", "$root\runner\src\snes\audio_shadow.c",
-     "$root\runner\src\audio_trace.c")
- foreach ($native in @(0, 1)) {
-diff --git a/tests/runtime_dispatch/cmake_diag_flags/CMakeLists.txt b/tests/runtime_dispatch/cmake_diag_flags/CMakeLists.txt
-index d958cb3e..b5cfafd2 100644
---- a/tests/runtime_dispatch/cmake_diag_flags/CMakeLists.txt
-+++ b/tests/runtime_dispatch/cmake_diag_flags/CMakeLists.txt
-@@ -28,7 +28,8 @@ add_executable(cmake_apu_port_guest_time
-     "${SNESRECOMP_ROOT}/tests/runtime_dispatch/apu_port_guest_time_test.c"
-     "${SNESRECOMP_ROOT}/runner/src/snes/apu.c"
-     "${SNESRECOMP_ROOT}/runner/src/snes/spc.c"
--    "${SNESRECOMP_ROOT}/runner/src/snes/dsp.c")
-+    "${SNESRECOMP_ROOT}/runner/src/snes/dsp.c"
-+    "${SNESRECOMP_ROOT}/runner/src/snes/dsp_clock.c")
- target_include_directories(cmake_apu_port_guest_time PRIVATE
-     ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
- target_compile_options(cmake_apu_port_guest_time PRIVATE
-diff --git a/tests/runtime_dispatch/run_apu_port_guest_time_test.ps1 b/tests/runtime_dispatch/run_apu_port_guest_time_test.ps1
-index 1dfff34b..77889149 100644
---- a/tests/runtime_dispatch/run_apu_port_guest_time_test.ps1
-+++ b/tests/runtime_dispatch/run_apu_port_guest_time_test.ps1
-@@ -11,6 +11,7 @@ $args = @(
-     "$root\runner\src\snes\apu.c",
-     "$root\runner\src\snes\spc.c",
-     "$root\runner\src\snes\dsp.c",
-+    "$root\runner\src\snes\dsp_clock.c",
-     "-Wl,--gc-sections", "-o", $out
- )
- 
-diff --git a/tests/snapshot_guard/transaction_test.c b/tests/snapshot_guard/transaction_test.c
-index f1a68c0e..50043684 100644
---- a/tests/snapshot_guard/transaction_test.c
-+++ b/tests/snapshot_guard/transaction_test.c
-@@ -1,3 +1,10 @@
-+static size_t dsp_clock_offset;
-+static void find_clock(SaveLoadInfo *info, void *data, size_t size) {
-+    MemorySli *s = (MemorySli *)info;
-+    if (data == &dsp.clk) dsp_clock_offset = s->position;
-+    s->position += size;
-+}
-+
- int main(void) {
-     machine.cpu=&cpu; machine.apu=&apu; machine.dma=&dma; machine.ppu=&ppu;
-     machine.cart=&cart; machine.ram=ram; apu.dsp=&dsp; apu.spc=&spc;
-@@ -5,6 +12,22 @@ int main(void) {
-     cpu.a=0x1234; host_extra=17; ram[70]=8;
-     unsigned char *snapshot=malloc(1024*1024); assert(snapshot);
-     size_t size=RtlSaveSnapshotToMemory(snapshot,1024*1024); assert(size>0x20000);
-+    /* Malformed new clock indices are rejected before any guest publication. */
-+    MemorySli locate={{&find_clock},snapshot,1024*1024,8,true,false};
-+    cpu_saveload(&cpu,&locate.base); apu_saveload(&apu,&locate.base);
-+    assert(dsp_clock_offset);
-+    const size_t bad_clock_fields[]={offsetof(DspClock,step),offsetof(DspClock,echoHistPos),
-+        offsetof(DspClock,v)+offsetof(DspClockVoice,bufPos)};
-+    for(unsigned i=0;i<sizeof(bad_clock_fields)/sizeof(*bad_clock_fields);++i) {
-+        size_t at=dsp_clock_offset+bad_clock_fields[i]; uint8_t saved=snapshot[at];
-+        snapshot[at]=255;
-+        unsigned loads=extra_loads, resets=audio_resets;
-+        DspClock saved_clock=dsp.clk; uint16_t saved_a=cpu.a;
-+        assert(!RtlLoadSnapshotFromMemory(snapshot,size));
-+        assert(!memcmp(&saved_clock,&dsp.clk,sizeof(saved_clock)) && cpu.a==saved_a);
-+        assert(extra_loads==loads && audio_resets==resets);
-+        snapshot[at]=saved;
-+    }
-     cpu.a=0x5678; cpu.e=true; ram[70]=9; host_extra=42;
-     const Cpu before_cpu=cpu; const Snes before_snes=machine;
-     static Apu before_apu; static Dsp before_dsp; static Ppu before_ppu;
-@@ -130,7 +153,7 @@ int main(void) {
-         snes_saveload_set_version(version); snes_saveload(&machine,&out.base);
-         assert(!out.error); assert(RtlLoadSnapshotFromMemory(snapshot,out.position));
-     }
--    /* Early v6/v7 used the compact DMA and SNES tail layouts. */
-+    /* Pre-v11 snapshots lack required DSP timing state and are rejected. */
-     for(uint32_t version=6;version<=7;version++) {
-         uint32_t header[2]={RTL_SAV_MAGIC,version};
-         MemorySli out={{&memory_sli_func},snapshot,1024*1024,0,true,false};
-@@ -151,7 +174,7 @@ int main(void) {
-             memory_sli_func(&out.base,&machine.joypad1Latched,sizeof(machine.joypad1Latched));
-             memory_sli_func(&out.base,&machine.joypad2Latched,sizeof(machine.joypad2Latched));
-         }
--        assert(RtlLoadSnapshotFromMemory(snapshot,out.position));
-+        assert(!RtlLoadSnapshotFromMemory(snapshot,out.position));
-         const Cpu saved_cpu=cpu; const Dma saved_dma=dma; const Snes saved_snes=machine;
-         assert(!RtlLoadSnapshotFromMemory(snapshot,out.position-1));
-         assert(!memcmp(&cpu,&saved_cpu,sizeof(cpu)) && !memcmp(&dma,&saved_dma,sizeof(dma)));
-diff --git a/tests/test_audio_producer_pacing.py b/tests/test_audio_producer_pacing.py
-index e5e7f215..f8bff2af 100644
---- a/tests/test_audio_producer_pacing.py
-+++ b/tests/test_audio_producer_pacing.py
-@@ -160,6 +160,10 @@ static unsigned slices;
- static bool g_apu_frame_time_valid = true;
- static void rtl_accumulate_apu_catchup(void) { assert(0); }
- static void snes_catchupApu(void *s) { (void)s; assert(0); }
-+/* The master-clock APU timeline (RtlApuUseMasterClock) is off here. */
-+static bool rtl_apu_master_clock(void) { return false; }
-+static void rtl_apu_master_sync_locked(void) { assert(0); }
-+static void rtl_apu_master_frame_end_locked(void) { assert(0); }
- static uint64_t rtl_apu_guest_cycle(void) {
-   return rtl_apu_clock_now(&g_apu_frame_clock, g_cpu.master_cycles);
- }
-diff --git a/tests/test_dsp_clock_snapshot.py b/tests/test_dsp_clock_snapshot.py
-new file mode 100644
-index 00000000..73e7726d
---- /dev/null
-+++ b/tests/test_dsp_clock_snapshot.py
-@@ -0,0 +1,31 @@
-+"""Execute current-build per-clock DSP snapshot and continuation."""
-+import os
-+from pathlib import Path
-+import shutil
-+import subprocess
-+import sys
-+import pytest
-+
-+ROOT = Path(__file__).resolve().parents[1]
-+
-+
-+def test_dsp_clock_snapshot(tmp_path):
-+    compiler = os.environ.get("CC") or shutil.which("gcc") or shutil.which("clang")
-+    if os.name == "nt" and Path("C:/msys64/mingw64/bin/gcc.exe").is_file():
-+        compiler = "C:/msys64/mingw64/bin/gcc.exe"
-+    if not compiler:
-+        pytest.skip("C compiler required")
-+    exe = tmp_path / ("snapshot.exe" if os.name == "nt" else "snapshot")
-+    sources = ["tests/audio/dsp_clock_snapshot_test.c", "runner/src/snes/dsp.c",
-+        "runner/src/snes/dsp_clock.c", "runner/src/snes/dsp_shadow.c",
-+        "runner/src/snes/audio_shadow.c", "runner/src/audio_trace.c"]
-+    gc = "-Wl,-dead_strip" if sys.platform == "darwin" else "-Wl,--gc-sections"
-+    build = subprocess.run([compiler, "-std=c11", "-O1", "-DSNESRECOMP_TRACE=0",
-+        "-ffunction-sections", "-fdata-sections", "-Irunner/src", "-Irunner/src/snes",
-+        *sources, gc, "-lm", "-o", str(exe)], cwd=ROOT, capture_output=True,
-+        text=True, timeout=60)
-+    assert build.returncode == 0, build.stdout + build.stderr
-+    for model in ("1", "0"):
-+        env = dict(os.environ, SNESRECOMP_DSP_PER_CLOCK=model)
-+        run = subprocess.run([str(exe)], capture_output=True, text=True, timeout=30, env=env)
-+        assert run.returncode == 0, run.stdout + run.stderr
 diff --git a/tests/v2/test_hle_func_seam.py b/tests/v2/test_hle_func_seam.py
 index 1a3cc2b3..ebb8a2e7 100644
 --- a/tests/v2/test_hle_func_seam.py

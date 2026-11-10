@@ -9,7 +9,7 @@ named `soe_compare_*`, and the tier statistics `SOE_BANK_STATS` are tooling.
 
 ## To do before opening
 
-1. Wait for #241 to merge, then port the rules below into `beam_frame_driver.c`, one commit per rule, each with an environment
+1. #241 merged on 2026-11-09. Port the rules below into `beam_frame_driver.c`, one commit per rule, each with an environment
    switch to turn it off (as #241 does), all on by default only with `RtlApuUseMasterClock`.
 2. Give the driver a hook for what stays game side: the NMI hook (the compare harness) and the start of a run from a saved state.
 3. Replace the fitted constants (below) by the access's own lead, which #241 already supplies for port accesses.

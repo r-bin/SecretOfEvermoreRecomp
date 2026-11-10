@@ -1,7 +1,9 @@
 # 1. Access-exact timing: PR #241
 
-**Status:** open, https://github.com/RetroPortingToolKit/snesrecomp/pull/241, head `810d438a`. Conflicts with main. Waiting for our
-replay recipe (`mstan`, 2026-11-03: "the author's reproducible Secret of Evermore replay recipe remains required").
+**Status:** merged 2026-11-09, https://github.com/RetroPortingToolKit/snesrecomp/pull/241: `mstan` squashed it as `c1f84f61`
+("Preserve access-exact audio and DMA timing on current runtime", merge `7925230a`), the same code as our commits. Our copy is
+gone from the fork's `develop` and from `framework/snesrecomp.patch`; replay 01 is still in sync on main `e9c20732`
+([README.md](README.md#what-was-tested)). What is left of the list below (steps 3 and 4) is a follow-up PR.
 
 Commits (same patches on the PR and on our pin): `a9df3563`, `f192b16f`, `f032712d`, `37157d4a`, `a395f9ed`, `fb289e33`, `1b61ec4d`,
 plus `mstan`'s repairs on the PR.

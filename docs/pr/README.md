@@ -4,18 +4,19 @@ Every change we made to snesrecomp, as the pull requests they should become. One
 required and how to reproduce it. A change stays only if it is required, not game specific and useful to future games; the
 rest is in [Not proposed](#not-proposed).
 
-Upstream: https://github.com/RetroPortingToolKit/snesrecomp. Measured 2026-11-07 on main `816bc5ac` plus our stack.
+Upstream: https://github.com/RetroPortingToolKit/snesrecomp. Measured 2026-11-07 on main `816bc5ac` plus our stack; since 2026-11-10 the pin is main `e9c20732`, which has #241 (replay 01 checked
+again, below).
 
 ## Tracker
 
 | # | File | PR | State | Depends on | Next step |
 |---|---|---|---|---|---|
-| 1 | [01-access-exact-timing.md](01-access-exact-timing.md) | [#241](https://github.com/RetroPortingToolKit/snesrecomp/pull/241) | **open**, conflicts with main, waiting for our replay recipe | — | Post the recipe (the comment in its file), resolve the conflict, trim |
+| 1 | [01-access-exact-timing.md](01-access-exact-timing.md) | [#241](https://github.com/RetroPortingToolKit/snesrecomp/pull/241) | **merged** 2026-11-09, squashed as `c1f84f61` | — | Trim the [Not proposed](#not-proposed) parts in a follow-up PR |
 | 2 | [02-ppu-reads-during-rendering.md](02-ppu-reads-during-rendering.md) | not opened | draft | 1 | Game-neutral test, then open |
 | 3 | [03-bus-exact-compiled-code.md](03-bus-exact-compiled-code.md) | not opened | draft, **blocked** on a decision | 1 | Decide against [#250](https://github.com/RetroPortingToolKit/snesrecomp/pull/250)/[#251](https://github.com/RetroPortingToolKit/snesrecomp/pull/251) |
 | 4 | [04-compiled-resume.md](04-compiled-resume.md) | not opened | draft | 3 | Follows 3 |
 | 5 | [05-brightness-rule.md](05-brightness-rule.md) | not opened | draft | — | Ask upstream whether a parity switch is welcome |
-| 6 | [06-frame-driver.md](06-frame-driver.md) | not opened | draft, no branch yet | 1 | Port `src/soe_frame_driver.c` once #241 is merged |
+| 6 | [06-frame-driver.md](06-frame-driver.md) | not opened | draft, no branch yet | 1 | Port `src/soe_frame_driver.c` (#241 is merged) |
 | 7 | [07-hd-mode7-apple-gl.md](07-hd-mode7-apple-gl.md) | not opened | draft | — | GLSL validator and a non-Mac GL4 run, then open |
 
 **Why each one, and the doubts:**
@@ -55,8 +56,14 @@ Replay 01 needs every required change. 02 needs one thing 01 does not: the `$421
 
 Upstream's tests on the fork's `develop`: `pytest tests/v2 tests/test_snes_cycles.py` **596 passed** (with `lib/` submodules
 initialized; without them `test_disconnect_diagnostics` cannot build, on plain main too). The three test stubs that made it so are
-one commit per PR: `4c10057c` (PR 2), `87961ea1` (PR 3), `d56d8da9` (PR 4). `tests/run_c_tests.sh` passes on macOS as far as plain
+one commit per PR: `4c10057c` (PR 2), `87961ea1` (PR 3), `d56d8da9` (PR 4); after the 2026-11-10 rebase `cbddf51e`, `0fb786df`, `ac7c172b`. `tests/run_c_tests.sh` passes on macOS as far as plain
 main does: both stop at the lobby test, which does not build on macOS, and after it need `pkg-config`; not run on Linux yet.
+
+**After #241 merged (2026-11-10):** upstream squashed it as `c1f84f61` (merged in `7925230a`), with the same code as ours. The
+fork's `develop` was rebased onto main `e9c20732` without our copy of #241: the 11 later commits only, conflicts with #250/#251's
+region-paced emission resolved by keeping both (both opt-in). `framework/snesrecomp.patch` is now that stack alone. Replay 01,
+native, against MesenCE 2.2.1: `in sync through counter $0100 = 8592`, 8592 checkpoints; `replay_01_recorded` passes.
+Not re-run since: replay 02, interpreted mode, upstream's pytest.
 
 ## Reproduce
 
