@@ -30,6 +30,7 @@
 #include "common_cpu_infra.h"
 #include "snes/snes.h"
 #include "soe_ws_alive.h"
+#include "soe_cheats.h"
 
 #ifdef SOE_RECONSTRUCTED_C
 #define SOE_COST
@@ -1249,6 +1250,7 @@ RecompReturn HleEntitySleepWake(CpuState *cpu) {
  */
 RecompReturn HleFieldTickFreeBegin(CpuState *cpu) {
     stats_init();
+    SoeCheatsFieldFrame();   /* the practice hotkeys (src/soe_cheats.c); nothing while that mod is off */
     SoeAliveFrame((uint16_t)(g_ram[(uint16_t)(cpu->D + 0x59)] | g_ram[(uint16_t)(cpu->D + 0x5A)] << 8),
                   (uint16_t)(g_ram[(uint16_t)(cpu->D + 0x5B)] | g_ram[(uint16_t)(cpu->D + 0x5C)] << 8));
     if (SoeAliveFreeTime()) { soe_frame_driver_free_time(true); s_bind[FREE_BEGIN].c++; }

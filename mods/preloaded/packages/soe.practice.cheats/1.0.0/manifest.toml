@@ -1,0 +1,133 @@
+format_version = 1
+id = "soe.practice.cheats"
+version = "1.0.0"
+name = "Practice hotkeys"
+author = "r-bin"
+description = "Cheats on Start + a direction while you play, as in the practice ROM: no clip and the Atlas glitch (the vanilla glitches, switched on and off), all items, weapon levels. Changes the game."
+license = "MIT"
+resolver = "declarative"
+save_compatibility = "shared"
+
+[[target]]
+game_id = "secretofevermore-usa"
+rom_sha256 = "17c864a76d498feb6479eee8e7d6807b951c66225033228622bb66754baab1db"
+
+[[feature]]
+id = "hotkeys"
+name = "Practice hotkeys"
+description = "Hold Start and press a direction in the field (not in cutscenes or text boxes). A message at the top left says what happened. No clip and the Atlas glitch stay on until pressed again; saving keeps what they changed (src/soe_cheats.c)."
+group = "Cheats"
+default_enabled = false
+
+[[option]]
+feature = "hotkeys"
+id = "up"
+label = "Start + Up"
+description = "No clip: walk through walls (the Dog's wall-clip glitch). Atlas glitch: attack and defence at 61,439 and invincible. All items: money, every formula, charm, weapon and armour, 99 of each ingredient, consumable and trade good. Weapon levels: every weapon and the Dog at level 3."
+type = "choice"
+default = "noclip"
+[[option.choice]]
+value = "noclip"
+label = "No clip (on / off)"
+[[option.choice]]
+value = "atlas"
+label = "Atlas glitch (on / off)"
+[[option.choice]]
+value = "items"
+label = "All items"
+[[option.choice]]
+value = "levels"
+label = "Weapon levels 3"
+[[option.choice]]
+value = "none"
+label = "Nothing"
+
+[[option]]
+feature = "hotkeys"
+id = "right"
+label = "Start + Right"
+description = "What Start + Right does (see Start + Up)."
+type = "choice"
+default = "atlas"
+[[option.choice]]
+value = "noclip"
+label = "No clip (on / off)"
+[[option.choice]]
+value = "atlas"
+label = "Atlas glitch (on / off)"
+[[option.choice]]
+value = "items"
+label = "All items"
+[[option.choice]]
+value = "levels"
+label = "Weapon levels 3"
+[[option.choice]]
+value = "none"
+label = "Nothing"
+
+[[option]]
+feature = "hotkeys"
+id = "left"
+label = "Start + Left"
+description = "What Start + Left does (see Start + Up)."
+type = "choice"
+default = "items"
+[[option.choice]]
+value = "noclip"
+label = "No clip (on / off)"
+[[option.choice]]
+value = "atlas"
+label = "Atlas glitch (on / off)"
+[[option.choice]]
+value = "items"
+label = "All items"
+[[option.choice]]
+value = "levels"
+label = "Weapon levels 3"
+[[option.choice]]
+value = "none"
+label = "Nothing"
+
+[[option]]
+feature = "hotkeys"
+id = "down"
+label = "Start + Down"
+description = "What Start + Down does (see Start + Up)."
+type = "choice"
+default = "levels"
+[[option.choice]]
+value = "noclip"
+label = "No clip (on / off)"
+[[option.choice]]
+value = "atlas"
+label = "Atlas glitch (on / off)"
+[[option.choice]]
+value = "items"
+label = "All items"
+[[option.choice]]
+value = "levels"
+label = "Weapon levels 3"
+[[option.choice]]
+value = "none"
+label = "Nothing"
+
+[[option]]
+feature = "hotkeys"
+id = "target"
+label = "No clip and Atlas for"
+description = "Who no clip and the Atlas glitch apply to."
+type = "choice"
+default = "both"
+[[option.choice]]
+value = "both"
+label = "Boy and Dog"
+[[option.choice]]
+value = "boy"
+label = "Boy"
+[[option.choice]]
+value = "dog"
+label = "Dog"
+
+[[plugin]]
+feature = "hotkeys"
+id = "soe.cheats"
