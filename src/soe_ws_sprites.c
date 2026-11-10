@@ -28,7 +28,7 @@
  *                 eight facings at 2*facing, bit 6 four at $90:815B[facing]; $90:8124), facing +$22;
  *                 its script's first set-sprite command (0x22..0x2B: bank = cmd + $A8) is the frame
  *                 (everscript-vscode maps/character-animation.ts, resolveCharacterSprite)
- *   ghosts        widescreen E6 only: a spawn record (60 at $5DC3, 16 bytes) with a count left (+$0C) is drawn at
+ *   ghosts        every extended mode (it only reads WRAM): a spawn record (60 at $5DC3, 16 bytes) with a count left (+$0C) is drawn at
  *                 its point (+$02/+$04) as a dark silhouette of the largest frame seen on a live entity of its
  *                 character (record +$00; its standing frame until one is seen),
  *                 thinned by an ordered dither whose density follows the screen distance from the 4:3 edge (half
@@ -257,7 +257,7 @@ static void SnapshotGhosts(Snapshot *s)
 }
 
 /* Every live entity, both lists, then the Boy and the Dog, then the projectiles (and the ghosts). */
-static void TakeSnapshot(Snapshot *s, int ghosts)
+static void TakeSnapshot(Snapshot *s)
 {
     uint8_t seen[(kSlotEnd - kSlotFirst) / 8 + 1];
     memset(seen, 0, sizeof seen);
@@ -284,7 +284,7 @@ static void TakeSnapshot(Snapshot *s, int ghosts)
         int x = (int16_t)W(e + 0x14) >> 4, y = (int16_t)W(e + 0x16) >> 4, z = (int16_t)W(e + 0x18) >> 4;
         Add(s, (uint32_t)g_ram[e + 0x08] << 16 | W(e + 0x06), x, y - z, g_ram[e + 0x0C], 3, y);
     }
-    if (ghosts) SnapshotGhosts(s);
+    SnapshotGhosts(s);
 }
 
 /* One 8x8 or 16x16 block as 4-bit indices (row-major). */
@@ -398,13 +398,13 @@ void SoeWsSpritesReset(void)
     if (g_ppu) PpuSetExtraObjects(g_ppu, NULL, 0);
 }
 
-void SoeWsSpritesFrame(int enabled, int grey, int ghosts, int cam_x, int cam_y, int left, int right)
+void SoeWsSpritesFrame(int enabled, int grey, int cam_x, int cam_y, int left, int right)
 {
     if (!g_ppu) return;
     if (s_center < 0) { const char *c = getenv("SOE_WS_SPRITES_CENTER"); s_center = c && *c == '1';
                       const char *d = getenv("SOE_WS_DEBUG"); s_debug = d && *d == '1';
                       const char *sh = getenv("SOE_WS_SPRITES_SHIFT"); s_shift = sh ? atoi(sh) : 0; }
-    TakeSnapshot(&s_next, ghosts);
+    TakeSnapshot(&s_next);
     PpuSetExtraObjects(g_ppu, NULL, 0);
     if (enabled && s_prev.room == s_next.room && (left || right)) {
         /* Back to front by room y; a lower order wins, so the front one gets the lowest. */

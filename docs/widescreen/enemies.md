@@ -225,7 +225,8 @@ replay stays in sync up to there).
   * *Ghosts* (`src/soe_ws_sprites.c`): every record with a count left is drawn in the margins as a dark silhouette of the
     largest frame seen on a live entity of its character (until one is seen, its first standing frame: a Wimpy
     Flower's is its burrowed patch). Only the side margins show them: a ghost above or below the 4:3 view is off the
-    picture, thinned by a 4×4 ordered dither whose
+    picture. Drawn in every extended mode, vanilla extended too (2026-11-10, the owner: the same ghosts there; drawing
+    them only reads WRAM), thinned by a 4×4 ordered dither whose
     density follows the screen distance from the 4:3 edge (half from 32 px out, none at the edge), so it fades out as
     it comes into the 4:3 view and back in as it leaves; when it spawns, the enemy takes its place.
   * Checked with synthetic records in `0x38` (no spawner room is reachable from replay 06's save; the village guards its
