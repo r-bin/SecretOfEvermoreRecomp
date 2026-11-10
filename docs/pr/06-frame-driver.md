@@ -1,22 +1,38 @@
 # 6. The beam frame driver's interrupt and field rules
 
-**Status:** draft, no code on a snesrecomp branch yet. Depends on [#241](01-access-exact-timing.md): the access-clock hook and the
-master-clock APU timeline it feeds are #241's, and without this PR they have no caller inside snesrecomp.
+**Status:** planned as five PRs (below), no code on a snesrecomp branch yet. [#241](01-access-exact-timing.md) is merged; its
+access-clock hook and master-clock APU timeline have no caller inside snesrecomp until these land.
 
 The code is ours today: `src/soe_frame_driver.c`, which started as a copy of snesrecomp's `runner/src/beam_frame_driver.c`. Since
 2026-11-07 it holds only hardware rules. What the PPU and registers lack is in `src/soe_ppu_fixes.c` (below), the compare hooks are
 named `soe_compare_*`, and the tier statistics `SOE_BANK_STATS` are tooling.
 
-## To do before opening
+## Plan: five PRs, each rule where it belongs (2026-11-10)
 
-1. #241 merged on 2026-11-09. Port the rules below into `beam_frame_driver.c`, one commit per rule, each with an environment
-   switch to turn it off (as #241 does), all on by default only with `RtlApuUseMasterClock`.
-2. Give the driver a hook for what stays game side: the NMI hook (the compare harness) and the start of a run from a saved state.
-3. Replace the fitted constants (below) by the access's own lead, which #241 already supplies for port accesses.
-4. Point our glue at the framework's driver, delete `src/soe_frame_driver.c`, and run replay 01 native and interpreted against
-   MesenCE. Replay 02 too: it is the one with input.
-5. A game-neutral test per rule in `tests/`: a frame driver harness with a tiny CPU program (enable NMI inside vblank, poll `$4212`,
-   a long DMA across V=225), checked against the clocks MesenCE gives.
+Our driver patches several rules from outside: it moves the beam's H after the fact (short line), tops up refresh after each
+slice, and stops slices 20 clocks before each `$4212` edge. Upstream they belong in `snes.c`, where the beam, refresh and
+`$4212` live; only the interrupt rules belong in `beam_frame_driver.c`. Main `e9c20732` already has two pieces: the interrupt
+push clears D (`cpu_push_interrupt_frame_at`), and `$4212` bit 6 is read at the access's own clock (`interp_bridge_access_lead`,
+#241's `SNESRECOMP_HBLANK_EXACT`).
+
+| PR | Where | Rules | Replaces in `src/soe_frame_driver.c` |
+|---|---|---|---|
+| 6.1 Beam | `snes.c` | line 240 lasts 1360 clocks every other non-interlaced field; the CPU starts at clock 186 | `align_beam`, `align_field_length`, `mesen_line0`, `RESET_CLOCKS` |
+| 6.2 `$4212` at the access | `snes.c` | bit 7 and bit 0 at the read's clock, as bit 6 already is; the auto-joypad window from the first clock 128 mod 256 at least 3 after line 225, 4352 clocks | `edge_*`, `auto_joypad_begin`, both fitted leads |
+| 6.3 DRAM refresh | `snes.c` | 40 clocks at H=538 (534 on lines starting at 4 mod 8), also in front of a port access | `refresh_begin/end`, the stall in `access_clock` |
+| 6.4 Interrupt sequence | driver | 8 cycles, 60 clocks, a refresh point inside it stalls it | the charge in `run_interrupt` |
+| 6.5 NMI timing | driver | recognised after the first instruction with a cycle from V=225 H=6; enabled inside vblank, it fires after the next instruction | `finish_nmi_approach`, `soe_last_cycle.c`, the late-NMI watch |
+
+Order: 6.1 first, since 6.2 and 6.3 count from line 225 and need the beam to be MesenCE's in every field. Each PR is one commit
+per rule with an off switch, on by default only with `RtlApuUseMasterClock`.
+
+How each is checked: our glue drops the code the PR replaces and keeps the rest, then replay 01 must stay in sync (native and
+interpreted), and replay 02 for 6.2 (it has input). With the switch off, the replay parts at the NMI the rule's imperfection file names.
+After 6.5, our glue calls `snes_beam_frame_driver_run_frame` and `src/soe_frame_driver.c` keeps only the compare hooks and starting
+from a MesenCE state, through a hook the driver offers.
+
+Each needs a test that does not depend on our game: a tiny CPU program (enable NMI inside vblank, poll `$4212`, a long DMA across
+V=225) checked against MesenCE's clocks.
 
 ## The rules
 
@@ -28,7 +44,7 @@ Each is hardware, taken from MesenCE 2.2.1 and fullsnes, with no Evermore addres
 | CPU starts at master clock 186 after reset | starts at 0 | [short-scanline.md](../imperfections/short-scanline.md) |
 | Line 240 lasts 1360 clocks every other non-interlaced field | every field 357,368 clocks | [short-scanline.md](../imperfections/short-scanline.md): the attract seed at NMI 11986 |
 | DRAM refresh: 40 clocks at H=538 (534 on lines starting at 4 mod 8), also inside the interrupt sequence | 40 per 1364 clocks of CPU time, anywhere | [dram-refresh.md](../imperfections/dram-refresh.md), [refresh-before-access.md](../imperfections/refresh-before-access.md) |
-| The interrupt sequence: 8 cycles, 60 master clocks, and it clears D | not charged; D kept | [interrupt-cost.md](../imperfections/interrupt-cost.md); D: replay 05, NMI 6844 |
+| The interrupt sequence: 8 cycles, 60 master clocks, and it clears D | not charged; D cleared since main `e9c20732` | [interrupt-cost.md](../imperfections/interrupt-cost.md); D: replay 05, NMI 6844 |
 | NMI recognised after the first instruction with a cycle from V=225, H=6 | after the first instruction to end past V=225 | [nmi-recognition.md](../imperfections/nmi-recognition.md), NMI 3876 |
 | NMI enabled inside vblank fires after the next instruction | never fires that field | [late-nmi.md](../imperfections/late-nmi.md): the NMI count one behind from frame 5 |
 | Automatic joypad read: busy from the first clock 128 past a multiple of 256 and 3 after line 225 begins, for 4352 clocks | from V=225, 4224 clocks | [auto-joypad-read.md](../imperfections/auto-joypad-read.md) |
