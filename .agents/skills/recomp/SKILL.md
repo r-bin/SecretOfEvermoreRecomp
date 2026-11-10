@@ -37,6 +37,10 @@ The committed replays are MesenCE movies from power-on (`tools/compare/replays/`
 - Replays in `replays/local/` are extra: run them when it costs nothing, from a copy of the executable, and never block a
   commit on them. A full-game recording does not sync: never use it for parity or native share.
 - A replay becomes mandatory only once it is known to contain one specific action, and then for changes to that action.
+- **Replays run vanilla:** WRAM and picture are compared with no mod active unless the user asks. A mod that changes the
+  game (above all *Widescreen (experimental)*, which changes how enemies sleep, spawn and aggro; the practice hotkeys) never
+  has to match a replay. Runs read the launcher's shared `build/mods/preloaded/state.toml`: set the kill switches
+  (`SOE_WS_ALIVE=0 SOE_CHEATS=0`, as `tests/replay_recorded.sh` does) or run from a copy of the build with none selected.
 
 ## Ownership
 

@@ -301,6 +301,8 @@ static void auto_joypad_begin(void) {
 #define INTERRUPT_CYCLES 8u
 #define INTERRUPT_CLOCKS (2u * 6u + 4u * 8u + 2u * 8u)
 
+static void run_handler(uint32_t vector, uint64_t deadline, bool nmi, bool counted);
+
 static void run_interrupt(uint32_t vector, uint64_t deadline, bool nmi) {
     if (nmi) soe_ppu_fixes_nmi_entry();
     cpu_push_interrupt_frame_at(&g_cpu, s_resume_pc);
@@ -314,12 +316,18 @@ static void run_interrupt(uint32_t vector, uint64_t deadline, bool nmi) {
     const uint64_t seq = g_cpu.master_cycles;
     g_cpu.master_cycles += INTERRUPT_CLOCKS;
     if (refresh_points_upto(g_cpu.master_cycles - 1) > refresh_points_upto(seq - 1)) g_cpu.master_cycles += REFRESH_CLOCKS;
+    run_handler(vector, deadline, nmi, true);
+}
+
+/* An interrupt's handler from `vector`, its frame already pushed. `counted`: an NMI the compare samples as a key (an NMI
+ * a MesenCE state had already taken is not one: MesenCE's first key is the next NMI). */
+static void run_handler(uint32_t vector, uint64_t deadline, bool nmi, bool counted) {
     if (nmi && s_auto_joy_due) {
         snes_sync_master_clock(g_snes, g_cpu.master_cycles); /* the beam crosses V=225 before the handler reads $4212 */
         auto_joypad_begin();
     }
     if (nmi) soe_ppu_fixes_nmi_taken();
-    if (nmi && soe_frame_driver_nmi_hook) soe_frame_driver_nmi_hook();
+    if (nmi && counted && soe_frame_driver_nmi_hook) soe_frame_driver_nmi_hook();
     const uint64_t before = g_cpu.master_cycles;
     /* The NMI handler runs as an ordinary slice from its vector (the frame is pushed above), so it stops at the next
      * refresh point like every other slice and goes on in the field's slices. Run whole to its RTI, which ignores
@@ -488,7 +496,12 @@ static void finish_nmi_approach(uint64_t frame_end) {
 /* NMI can still fire late in this field: it is off, and the vblank flag has not been read or cleared. */
 static bool late_nmi_possible(void) { return !g_snes->nmiEnabled && g_snes->rdnmiPending; }
 
-/* A MesenCE state sits at line 225 with the instruction that NMI will follow still to run (its line rises at H=6). */
+/* A MesenCE state sits at line 225 with the instruction that NMI will follow still to run (its line rises at H=6), or,
+ * when MesenCE left its frame loop later in the line, with the NMI already taken: the PC on the handler's first
+ * instruction, the frame pushed (replay 07: H=80, $00:823A). Then the first field runs that handler instead of
+ * taking another NMI (docs/imperfections/mesen-state.md). */
+static bool s_state_in_nmi;
+
 static void start_from_mesen_state(void) {
     const uint32_t pc = soe_mesen_state_load();
     if (!pc) return;
@@ -496,6 +509,8 @@ static void start_from_mesen_state(void) {
     soe_compare_ready();
     interp_bridge_set_lle_resume_pc(pc);
     soe_compare_pad_first(g_snes->beamMasterLast - g_snes->hPos + FIELD_CLOCKS);
+    s_state_in_nmi = g_snes->nmiEnabled && pc == read_vector(0x00FFEAu) && g_snes->hPos >= NMI_LINE_CLOCKS + INTERRUPT_CLOCKS;
+    if (s_state_in_nmi) return;
     set_deadline(g_cpu.master_cycles + 1);
     (void)interp_bridge_run_until_quiescent(&g_cpu, s_resume_pc);
     set_deadline(0);
@@ -545,7 +560,13 @@ void soe_frame_driver_run_frame(void) {
     s_auto_joy_due = !booting;
     RtlSetCpuAccessClockHook(access_clock);
 
-    if (!booting && g_snes->nmiEnabled) run_nmi(frame_end);
+    if (s_state_in_nmi) {   /* the state's NMI, already taken: its handler, not counted as a key */
+        s_state_in_nmi = false;
+        g_snes->inNmi = true;
+        s_wai_halted = false;
+        run_handler(s_resume_pc, frame_end, true, false);
+        g_snes->inNmi = false;
+    } else if (!booting && g_snes->nmiEnabled) run_nmi(frame_end);
 
     const uint64_t cpu_end = frame_end + NMI_SEEN_CLOCKS;
     while (g_cpu.master_cycles < cpu_end && slices++ < MAX_SLICES_PER_FIELD) {

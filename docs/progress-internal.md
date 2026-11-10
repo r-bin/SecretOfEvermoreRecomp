@@ -11,7 +11,7 @@ committed replays never do, and most fixes of 2026-11-04 came from them (below).
 | `01-no-inputs-4m.evsmv` | power-on, everscript-vscode's movie format | none; superseded by the committed `01-no-inputs-1-loop.mmo` |
 | `02-newgame-boy-available.evsmv` | power-on with a save file | battery RAM (`# sram:`) |
 | `04-newgame-flowers.mmo` | a reset of a running console | a save state |
-| `05-flowers-from-state.mmo`, `06-flowers-raptors.mmo` | a mid-game save state | a save state |
+| `05-flowers-from-state.mmo`, `06-flowers-raptors.mmo`, `07-alchemy-boy-dog-from-state.mmo` (2026-11-10: items from the practice cheats in the state, much alchemy cast by the Boy and by the Dog) | a mid-game save state | a save state |
 | `03-complete-run-7h.evsmv` | power-on, 7 hours | does not stay in sync with MesenCE: never a parity or native-share test |
 
 Measured 2026-11-04/05 unless a section says otherwise; the native share, speed and bound C sections are the measurements behind
@@ -54,6 +54,7 @@ column, at the same keys; the last column is the native build with `--fade`.
 | `04-newgame-flowers.mmo` | 25,804 | **0** | **0** | 1 | 2 | 1,708 | **0** |
 | `05-flowers-from-state.mmo` | 8,434 | **0** | **0** | **0** | **0** | 1,446 | 1 |
 | `06-flowers-raptors.mmo` | 4,683 | **0** | **0** | **0** | **0** | 112 | **0** |
+| `07-alchemy-boy-dog-from-state.mmo` (2026-11-10) | 4,446 | **0** | **0** | **0** | 3 (10, 71, 105: voice 6 sample buffer) | not measured | 3 (4283, 4290, 4291; open) |
 
 What the differences are:
 - **Picture:** rounding below full brightness, up to 8 of 255 ([fade-rounding.md](imperfections/fade-rounding.md)). The one key

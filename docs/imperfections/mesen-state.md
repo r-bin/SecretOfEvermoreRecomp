@@ -1,6 +1,6 @@
 # Starting From a MesenCE Save State
 
-**Status:** works. Replays 05 and 06 are identical to MesenCE to their ends from states taken mid-game.
+**Status:** works. Replays 05, 06 and 07 are identical to MesenCE to their ends from states taken mid-game.
 
 ## What it is
 `SOE_COMPARE_MESEN_STATE=<file>` starts the game from a MesenCE state's field stream (everscript-vscode
@@ -18,6 +18,11 @@ internal registers, the SPC700, its timers and the per-clock S-DSP, whose state 
 
 ## Traps found
 - The state's next instruction runs before the NMI: the driver runs it as one step, then takes the NMI as usual.
+- Or the NMI is already taken: MesenCE leaves its frame loop later in line 225 when an instruction or DMA ran past the
+  NMI point (replay 07: H=80, PC `$00:823A`, the handler's first instruction, the frame pushed). The driver took a second
+  NMI on top: `$0100` one behind, RNG and scheduler apart from key 1. Now `start_from_mesen_state` sees the PC at the
+  NMI vector's target past H=66 (the NMI point + the interrupt sequence) and the first field runs that handler instead,
+  not counted as a key: MesenCE's first key is the next NMI (2026-11-10).
 - The first NMI comes in the first host frame, before the compare hook had read its settings: it went uncounted.
 - The beam starts at H=2, past where snesrecomp runs the automatic joypad read: the handler's `$4016` read took the other
   branch at `$80:848D`. The load runs that read.
