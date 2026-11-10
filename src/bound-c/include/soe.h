@@ -191,6 +191,13 @@ static inline uint16_t soe_rol16(soe_regs r, uint16_t v) {
     soe_nz16(r, out);
     return out;
 }
+/* ROR A (16-bit): carry in from P, bit 0 out to P. N and Z as the result. */
+static inline uint16_t soe_ror16(soe_regs r, uint16_t v) {
+    uint16_t out = (uint16_t)((v >> 1) | ((r->p & SOE_C) ? 0x8000 : 0));
+    soe_carry(r, (v & 0x0001) != 0);
+    soe_nz16(r, out);
+    return out;
+}
 /* ADC (16-bit, binary mode): a + m + carry; sets N, V, Z, C. */
 static inline uint16_t soe_adc16(soe_regs r, uint16_t a, uint16_t m) {
     uint32_t sum = (uint32_t)a + m + (r->p & SOE_C);

@@ -1614,10 +1614,10 @@
 #define CGRAM_DMA_LOCK_SIZE 2
 #define CGRAM_DMA_LOCK RAM16(CGRAM_DMA_LOCK_ADDR)
 
-/* HUD_DRAW_SUPPRESSION_LOCK ($7E0F3E-$7E0F3F, ram): src/games/evermore/localizations/data/wram-map.md */
-#define HUD_DRAW_SUPPRESSION_LOCK_ADDR 0x0F3Eu
-#define HUD_DRAW_SUPPRESSION_LOCK_SIZE 2
-#define HUD_DRAW_SUPPRESSION_LOCK RAM16(HUD_DRAW_SUPPRESSION_LOCK_ADDR)
+/* ENTITY_PTR_BOY ($7E0F3E-$7E0F3F, ram): src/games/evermore/localizations/data/wram-map.md */
+#define ENTITY_PTR_BOY_ADDR 0x0F3Eu
+#define ENTITY_PTR_BOY_SIZE 2
+#define ENTITY_PTR_BOY RAM16(ENTITY_PTR_BOY_ADDR)
 
 /* ENTITY_PTR_DOG ($7E0F40-$7E0F41, ram): src/games/evermore/localizations/data/wram-map.md */
 #define ENTITY_PTR_DOG_ADDR 0x0F40u

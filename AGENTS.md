@@ -45,5 +45,8 @@ These rules apply to every AI agent working in this repository.
 
 `.agents/skills/<name>/SKILL.md` (Claude Code reads them through `.claude/skills`):
 `recomp` (build, test, ownership, seeds), `recomp-debugging` (reproduce, compare, classify, fix),
+`c-bindings` (import, glue adaptation, cost marks, mutation control and replay-01 parity),
 `mods` (a mod's package and plugin, its MesenCE Lua twin, the parity check, docs/mods),
 `reference-emulators` (MesenCE decides, ares by hand, snes9x only probes).
+
+Personas (`.agents/agents/`, `.claude/agents` for Claude Code): `c-bindings`.
