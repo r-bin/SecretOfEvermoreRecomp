@@ -32,7 +32,8 @@
  *                 its point (+$02/+$04) as a dark silhouette of its character's standing frame (record +$00),
  *                 thinned by an ordered dither whose density follows the screen distance from the 4:3 edge (half
  *                 from 32 px out, none at the edge): it fades out as it comes into the 4:3 view and back in as it
- *                 leaves; when it spawns, the enemy takes its place
+ *                 leaves; when it spawns, the enemy takes its place. A placed enemy E6 holds on the room's load
+ *                 (SoeAliveHeld) is drawn the same way where it stands, without its shadow
  *
  * Timing: the field drawn at begin_sim_frame shows the OAM built a frame earlier, while WRAM already
  * holds the next positions. So each frame draws the snapshot taken at the previous call, against
@@ -46,6 +47,7 @@
 #include <string.h>
 
 #include "common_rtl.h"
+#include "soe_ws_alive.h"
 #include "snes/ppu.h"
 
 enum {
@@ -188,6 +190,12 @@ static void SnapshotEntity(Snapshot *s, uint32_t e)
     if (!Depth(e, &priority)) return;
     int x = (int16_t)W(e + 0x1A), y = (int16_t)W(e + 0x1C), z = (int16_t)W(e + 0x1E);
     uint8_t slot = g_ram[e + 0x0C];
+    if (SoeAliveHeld((uint16_t)e)) {
+        const int before = s->count;
+        Add(s, main, x, y - (z >> 4), slot, priority, y);
+        if (s->count > before) s->item[before].ghost = 1;
+        return;
+    }
     if (!(hide & 0x4000)) Add(s, shadow, x, y, slot, priority, y - 1);
     if (!(hide & 0x8000)) Add(s, main, x, y - (z >> 4), slot, priority, y);
 }

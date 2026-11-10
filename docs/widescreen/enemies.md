@@ -223,6 +223,16 @@ replay stays in sync up to there).
     frame dump). Superseded: spawns anywhere out of sight after the load (2026-11-09); a gate counting only spawned
     enemies, no load spawning and a plain 50 % stipple (2026-11-10).
 
+* **Placed enemies: held on a crowded load** (owner, 2026-11-10). Most rooms have no spawn record: the flower field
+  `0x38` places 7 Mosquitoes and 14 Wimpy Flowers from its enter script (`+$8C` = 0), and vanilla keeps the far ones
+  asleep where they stand. During the load the placed enemies (hostile, alive, `+$6C` < 0, not segmented) are taken
+  nearest the Boy first; one whose box already holds the limit (taken placed ones and spawned ones) is *held*: put to
+  sleep (`$C451`), kept asleep (`$C450`) and drawn as a ghost where it stands. It wakes once it is 16 px or more outside
+  the 4:3 view, its box has room and the crowd (below) is under `cap`. One the game itself wakes is let be. The only
+  state E6 keeps: held/taken per slot (with the character record, so a reused slot starts fresh) and the chasers (below),
+  both forgotten on a room change. Checked: six Wimpy Flowers poked into one box before E6 started, 4 taken, 2 held as
+  ghosts in the 32:9 margin.
+
 * **Nobody sleeps.** `hle_func` at `$8F:C40F`: E6 off, the ROM routine; on, the helper does `LDY $4C` and the ROM code
   goes on at `$C450` (RTS: an awake entity stays awake) or `$C4B1` (wake). Asleep with `+$10 & $0078`, HP 0,
   `+$6C` ≥ 0 or a spawner record goes the ROM's way; a segmented body waits for a free segment list. `$1076` is
@@ -237,6 +247,12 @@ replay stays in sync up to there).
   walk). The helpers do the first instruction natively (`LDX $0F42`, `LDA $002E,Y`), so the ROM path stays compiled.
   An attack begun before the view filled runs to its end (`+$78` = 7, set by `enemy_engage_target` `$8F:DC1E`).
   `+$24` is no aggro marker: it holds a party pointer for idle enemies too.
+  *The crowd* (2026-11-10) is the awake characters in the 4:3 view plus the enemies outside it that chase the party:
+  their last check at one of the three hooks let them, and `+$24` is still the Boy or the Dog. An enemy outside may
+  aggro while the crowd, counting only chasers nearer the Boy than itself, is under `cap`, so the nearest keep their
+  place and the farthest lets go. Before, only the view counted: all 7 Mosquitoes of `0x38` chased the Dog from across
+  the room while the view held fewer than 6 (the user's "too many spawned" screenshot); now 3 chase and 4 let go. The
+  spawn step and a held enemy's wake use the same crowd.
 * **Free time: the logic is not limited to the SNES CPU's speed.** Whole-room AI does not fit the 65816's frame (the
   flower field ran at ~55 % speed with all 21 awake; the cost is spread over the per-entity work: animation, stamina,
   gravity, AI, pair overlap tests). So `per_frame_field_tick` from its `JSL script_scheduler_pass` (`$8E:E45C`) to its

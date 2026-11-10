@@ -25,8 +25,15 @@
  *    point 16..48 px off the 4:3 screen) and the spawn step $8F:DE43 (SoeAliveSpawnAllowed) lets it through only while
  *    the record's box is not full and the player's 4:3 view holds fewer than `cap` characters (as the aggro cap counts
  *    them). Records still to spawn are drawn as ghosts in the margins (src/soe_ws_sprites.c).
+ *  - Placed enemies (an enter script's, +$8C = 0): most rooms have no spawner at all (the flower field 0x38 places
+ *    7 Mosquitoes and 14 Wimpy Flowers), and vanilla keeps the far ones asleep where they stand. On the room's load
+ *    they are taken nearest the Boy first; one whose box already holds `cap` - 2 enemies (placed ones taken, spawned
+ *    ones) is held: put to sleep where it stands and drawn as a ghost like a spawn record. A held enemy wakes once it
+ *    is 16 px or more outside the 4:3 view, its box has room and the 4:3 view holds fewer than `cap` characters: the
+ *    same rule as the spawn step, so it turns from ghost to enemy where vanilla would pop one in.
  *
- * Stateless: every decision follows from WRAM at the call. The ROM code does every change of state; this file only
+ * State: which placed enemies of the current room are held (per slot, with the character record to see a slot
+ * reused); everything else follows from WRAM at the call. The ROM code does every change of state; this file only
  * picks the branch. Not gated on the widescreen field gate: a menu or a narrow room in between would let vanilla put
  * the room back to sleep (the hooks run only in the field tick anyway).
  *
@@ -51,13 +58,15 @@ enum {
     kSegmentLists = 0x58AF, kSegmentEnd = 0x5DC3, kSegmentStride = 0x82,
     kVanillaBudget = 6,
     /* entity fields */
-    kFlags = 0x10, kX = 0x1A, kY = 0x1C, kHp = 0x2A, kNode = 0x6C, kRecord = 0x60, kSpawnRecord = 0x8C,
+    kFlags = 0x10, kX = 0x1A, kY = 0x1C, kHp = 0x2A, kNode = 0x6C, kRecord = 0x60, kTarget = 0x24, kSpawnRecord = 0x8C,
     kAwake = 0x0100, kAsleep = 0x0200,
     kViewWidth = 256, kViewHeight = 224,   /* the 4:3 view at the rendered camera $59/$5B */
     kFieldCounter = 0x0B19, kRoomCap = 0x2435, kLiveCount = 0x1074,
     /* spawn records: 60 of 16 bytes, +$02/+$04 point, +$0C count left */
     kSpawnFirst = 0x5DC3, kSpawnEnd = 0x6183, kSpawnStride = 0x10, kSpawnX = 0x02, kSpawnY = 0x04, kSpawnCount = 0x0C,
     kEntryFrames = 90,       /* logic frames after a room change that count as its load (the fade-in) */
+    kSlotCount = (kSlotEnd - kSlotFirst) / kStride,
+    kWakeMargin = 16,        /* a held enemy wakes only this far outside the 4:3 view (the spawner's ring starts here) */
 };
 
 #define kModPackage "soe.enhancement.widescreen"
@@ -66,6 +75,12 @@ enum {
 static struct { int on, cap, enemies_only; } s_mod;
 static struct { int read, off, free_off, reserve, debug; long after; } s_env;
 static int s_steered;   /* $1076 holds our value: put vanilla's back when E6 stops */
+/* The current room since its load: placed enemies taken (kTaken) or held (kHeld), by slot. */
+enum { kUnseen = 0, kTaken, kHeld };
+static struct { uint16_t room, since; uint8_t state[kSlotCount]; uint16_t record[kSlotCount]; } s_room = { .room = 0xFFFF };
+/* Enemies whose last aggro check (SoeAliveMayAggro) let them take the party, by slot, with their character record:
+ * +$24 alone is no marker (idle enemies hold a party pointer too). */
+static struct { uint8_t on[kSlotCount]; uint16_t record[kSlotCount]; } s_chase;
 
 static uint16_t W(uint32_t a) { return (uint16_t)(g_ram[a] | g_ram[a + 1] << 8); }
 static void SetW(uint32_t a, uint16_t v) { g_ram[a] = (uint8_t)v; g_ram[a + 1] = (uint8_t)(v >> 8); }
@@ -121,6 +136,40 @@ static int ViewCount(uint16_t cam_x, uint16_t cam_y)
     return n;
 }
 
+/* Distance² from the Boy, for the order in which chasers keep their place. */
+static long BoyDistance(uint32_t e)
+{
+    const long dx = (int16_t)(W(e + kX) - W(kBoy + kX)), dy = (int16_t)(W(e + kY) - W(kBoy + kY));
+    return dx * dx + dy * dy;
+}
+
+static int Chases(uint32_t e)
+{
+    const int i = (int)(e - kSlotFirst) / kStride;
+    const uint16_t t = W(e + kTarget);
+    return s_chase.on[i] && s_chase.record[i] == W(e + kRecord) && (t == kBoy || t == kDog);
+}
+
+/* The crowd the party faces: ViewCount, plus enemies outside the 4:3 view that chase the Boy or the Dog (+$24) and,
+ * when `before` is an enemy, are nearer the Boy than it (ties: the lower slot), so the nearest chasers keep their place
+ * and the farthest lets go. Without it, every awake enemy of the room would chase while the view itself is not full
+ * (the flower field's seven Mosquitoes all went for the Dog from across the room). */
+static int Crowd(uint16_t cam_x, uint16_t cam_y, uint32_t before)
+{
+    int n = ViewCount(cam_x, cam_y);
+    const long limit = before ? BoyDistance(before) : 0;
+    for (uint32_t e = kSlotFirst; e < kSlotEnd; e += kStride) {
+        const uint16_t f = W(e + kFlags);
+        if (e == before || !(f & kAwake) || (f & 0x0006) || !Chases(e) || InView(e, cam_x, cam_y)) continue;
+        if (before) {
+            const long d = BoyDistance(e);
+            if (d > limit || (d == limit && e > before)) continue;
+        }
+        n++;
+    }
+    return n;
+}
+
 static int FreeSlots(void)
 {
     int n = 0;
@@ -162,6 +211,99 @@ static void Debug(uint16_t cam_x, uint16_t cam_y)
             frame, W(kRoomId), ViewCount(cam_x, cam_y), Cap(), W(kAwakeCount), W(0x1072), FreeSlots(), W(kBudget));
 }
 
+/* Logic frames since the room changed; a new room forgets the last one's held enemies. */
+static uint16_t RoomFrames(void)
+{
+    const uint16_t room = W(kRoomId), field = W(kFieldCounter);
+    if (room != s_room.room) {
+        memset(&s_room, 0, sizeof s_room);
+        memset(&s_chase, 0, sizeof s_chase);
+        s_room.room = room, s_room.since = field;
+    }
+    return (uint16_t)(field - s_room.since);
+}
+
+static int Loading(void) { return RoomFrames() < kEntryFrames; }
+
+static int SlotIndex(uint32_t e) { return (int)(e - kSlotFirst) / kStride; }
+
+/* What the load made of the enemy in slot `e`; kUnseen once its slot holds another character. */
+static int LoadState(uint32_t e)
+{
+    const int i = SlotIndex(e);
+    return s_room.record[i] == W(e + kRecord) ? s_room.state[i] : kUnseen;
+}
+
+/* A hostile enemy the room's enter script placed, alive, awake or asleep, which the round robin would wake. */
+static int Placed(uint32_t e)
+{
+    const uint16_t f = W(e + kFlags);
+    return (f & (kAwake | kAsleep)) && !(f & 0x0006) && !(f & 0x0078) && W(e + kHp) && !W(e + kSpawnRecord) &&
+           (W(e + kNode) & 0x8000) && !Segmented(e);
+}
+
+/* Enemies (placed or spawned, alive, not friendly or on the party's side) within a 4:3-sized box centred on (x, y):
+ * held ones and, during the load, placed ones not yet taken do not count. */
+static int EnemiesAround(uint16_t x, uint16_t y)
+{
+    int n = 0;
+    const int loading = Loading();
+    for (uint32_t e = kSlotFirst; e < kSlotEnd; e += kStride) {
+        const uint16_t f = W(e + kFlags);
+        if (!(f & (kAwake | kAsleep)) || (f & 0x0006) || !W(e + kHp)) continue;
+        const int state = LoadState(e);
+        if (state == kHeld || (loading && state == kUnseen && Placed(e))) continue;
+        int dx = (int16_t)(W(e + kX) - x), dy = (int16_t)(W(e + kY) - y);
+        if (dx >= -kViewWidth / 2 && dx < kViewWidth / 2 && dy >= -kViewHeight / 2 && dy < kViewHeight / 2) n++;
+    }
+    return n;
+}
+
+/* A box holds enough enemies: the cap less the Boy and the Dog, unless the cap counts enemies only. */
+static int Crowded(uint16_t x, uint16_t y)
+{
+    const int limit = s_mod.enemies_only ? Cap() : Cap() - 2;
+    return EnemiesAround(x, y) >= limit;
+}
+
+static int BoxFull(uint32_t r) { return Crowded(W(r + kSpawnX), W(r + kSpawnY)); }
+
+/* During the load: takes the placed enemies seen for the first time, nearest the Boy first, holding each whose box is
+ * crowded already. */
+static void TakePlaced(void)
+{
+    if (!Loading()) return;
+    const int bx = (int16_t)W(kBoy + kX), by = (int16_t)W(kBoy + kY);
+    for (;;) {
+        uint32_t best = 0;
+        long best_d = 0;
+        for (uint32_t e = kSlotFirst; e < kSlotEnd; e += kStride) {
+            if (LoadState(e) != kUnseen || !Placed(e)) continue;
+            const long dx = (int16_t)W(e + kX) - bx, dy = (int16_t)W(e + kY) - by, d = dx * dx + dy * dy;
+            if (!best || d < best_d) best = e, best_d = d;
+        }
+        if (!best) return;
+        const int i = SlotIndex(best);
+        s_room.record[i] = W(best + kRecord);
+        s_room.state[i] = Crowded(W(best + kX), W(best + kY)) ? kHeld : kTaken;
+    }
+}
+
+/* A held enemy may wake: out of sight by the margin, its box has room, the 4:3 view is not crowded. */
+static int HeldMayWake(uint32_t e, uint16_t cam_x, uint16_t cam_y)
+{
+    const int dx = (int16_t)(W(e + kX) - cam_x), dy = (int16_t)(W(e + kY) - cam_y);
+    const int near = dx >= -kWakeMargin && dx < kViewWidth + kWakeMargin && dy >= -kWakeMargin &&
+                     dy < kViewHeight + kWakeMargin;
+    return !near && !Crowded(W(e + kX), W(e + kY)) && Crowd(cam_x, cam_y, 0) < Cap();
+}
+
+int SoeAliveHeld(uint16_t slot)
+{
+    if (!SoeAliveEnabled() || slot < kSlotFirst || slot >= kSlotEnd || (slot - kSlotFirst) % kStride) return 0;
+    return LoadState(slot) == kHeld;
+}
+
 uint16_t SoeAliveDecide(uint16_t slot, uint16_t cam_x, uint16_t cam_y)
 {
     if (!SoeAliveEnabled() || slot < kSlotFirst || slot >= kSlotEnd) {
@@ -172,6 +314,15 @@ uint16_t SoeAliveDecide(uint16_t slot, uint16_t cam_x, uint16_t cam_y)
     const uint16_t flags = W(e + kFlags);
     SteerBudget();
     Debug(cam_x, cam_y);
+    if (LoadState(e) == kHeld) {
+        if (flags & kAwake) {
+            if (Loading()) return kAliveSleep;
+            s_room.state[SlotIndex(e)] = kTaken;   /* woken by the game itself: let it be */
+            return kAliveKeep;
+        }
+        if (!HeldMayWake(e, cam_x, cam_y)) return kAliveKeep;
+        s_room.state[SlotIndex(e)] = kTaken;
+    }
     if (flags & kAwake) return kAliveKeep;
     if (!(flags & kAsleep)) return kAliveRom;
     if (W(e + kHp) == 0 || (flags & 0x0078) || !(W(e + kNode) & 0x8000) || W(e + kSpawnRecord))
@@ -183,42 +334,24 @@ uint16_t SoeAliveDecide(uint16_t slot, uint16_t cam_x, uint16_t cam_y)
 int SoeAliveMayAggro(uint16_t slot, uint16_t cam_x, uint16_t cam_y)
 {
     if (!SoeAliveEnabled() || slot < kSlotFirst || slot >= kSlotEnd) return 1;
-    return InView(slot, cam_x, cam_y) || ViewCount(cam_x, cam_y) < Cap();
-}
-
-/* Enemies (placed or spawned, alive, not friendly or on the party's side) within a 4:3-sized box centred on (x, y). */
-static int EnemiesAround(uint16_t x, uint16_t y)
-{
-    int n = 0;
-    for (uint32_t e = kSlotFirst; e < kSlotEnd; e += kStride) {
-        const uint16_t f = W(e + kFlags);
-        if (!(f & (kAwake | kAsleep)) || (f & 0x0006) || !W(e + kHp)) continue;
-        int dx = (int16_t)(W(e + kX) - x), dy = (int16_t)(W(e + kY) - y);
-        if (dx >= -kViewWidth / 2 && dx < kViewWidth / 2 && dy >= -kViewHeight / 2 && dy < kViewHeight / 2) n++;
+    const int may = InView(slot, cam_x, cam_y) || Crowd(cam_x, cam_y, slot) < Cap();
+    if ((slot - kSlotFirst) % kStride == 0) {
+        const int i = (slot - kSlotFirst) / kStride;
+        s_chase.on[i] = (uint8_t)may, s_chase.record[i] = W((uint32_t)slot + kRecord);
     }
-    return n;
-}
-
-/* A record's box is full: the cap less the Boy and the Dog, unless the cap counts enemies only. */
-static int BoxFull(uint32_t r)
-{
-    const int limit = s_mod.enemies_only ? Cap() : Cap() - 2;
-    return EnemiesAround(W(r + kSpawnX), W(r + kSpawnY)) >= limit;
+    return may;
 }
 
 int SoeAliveSpawnAllowed(uint16_t record, uint16_t cam_x, uint16_t cam_y)
 {
     if (!SoeAliveEnabled()) return 1;
-    return !BoxFull(record) && ViewCount(cam_x, cam_y) < Cap();
+    return !BoxFull(record) && Crowd(cam_x, cam_y, 0) < Cap();
 }
 
 uint16_t SoeAliveSpawnPick(void)
 {
-    static uint16_t s_room = 0xFFFF, s_room_field;
     if (!SoeAliveEnabled()) return kAliveSpawnRom;
-    const uint16_t room = W(kRoomId), field = W(kFieldCounter);
-    if (room != s_room) s_room = room, s_room_field = field;
-    if ((uint16_t)(field - s_room_field) >= kEntryFrames) return kAliveSpawnRom;   /* loaded: the ROM's spawner */
+    if (!Loading()) return kAliveSpawnRom;   /* loaded: the ROM's spawner */
     SteerBudget();
     if (W(kAwakeCount) >= W(kBudget) || (int16_t)W(kLiveCount) >= (int16_t)W(kRoomCap)) return 0;
     for (uint32_t r = kSpawnFirst; r < kSpawnEnd; r += kSpawnStride)
@@ -228,12 +361,17 @@ uint16_t SoeAliveSpawnPick(void)
 
 void SoeAliveFrame(void)
 {
-    if (SoeAliveEnabled()) SteerBudget();
+    if (!SoeAliveEnabled()) return;
+    SteerBudget();
+    TakePlaced();
 }
 
 static void ModReset(void)
 {
     memset(&s_mod, 0, sizeof s_mod);
+    memset(&s_room, 0, sizeof s_room);
+    s_room.room = 0xFFFF;
+    memset(&s_chase, 0, sizeof s_chase);
 }
 
 static void ModActivate(void)

@@ -35,7 +35,10 @@ int SoeAliveSpawnAllowed(uint16_t record, uint16_t cam_x, uint16_t cam_y);
  * frame. kAliveSpawnRom when E6 is off or the room has loaded (the ROM's spawner runs). */
 enum { kAliveSpawnRom = 0xFFFF };
 uint16_t SoeAliveSpawnPick(void);
-/* Once per field frame, from the start of free time: keeps the budget $1076 where E6 wants it. */
+/* Once per field frame, from the start of free time: keeps the budget $1076 where E6 wants it and, during a room's
+ * load, takes or holds the placed enemies. */
 void SoeAliveFrame(void);
+/* The entity in `slot` is a placed enemy held on the room's load (asleep, to be drawn as a ghost). 0 when E6 is off. */
+int SoeAliveHeld(uint16_t slot);
 
 #endif
