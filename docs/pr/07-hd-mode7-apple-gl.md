@@ -1,7 +1,8 @@
 # 7. HD Mode 7 on Apple's OpenGL (no double precision)
 
-**Status:** draft, no PR yet. Independent of 1-6: it touches only `desktop/hd_gpu.c`, `desktop/hd_gpu.h`,
-`tests/ppu/ppu_hd_gpu_test.c` and `tests/ppu/validate_hd_glsl.py`, and applies to main `816bc5ac` alone.
+**Status:** open, https://github.com/RetroPortingToolKit/snesrecomp/pull/279 (2026-11-10). CI: `Native analyzer` / `Linux x86-64` / `Run C runtime tests` fails, as it does on main
+`e9c20732` itself and on every PR since (run 42715630813); `tests/run_c_tests.sh` builds none of the files this PR
+changes. Windows and macOS jobs pass.
 
 Branch: `hd-mode7-no-fp64-main` in the fork, `4e838c47` on main `e9c20732` (2026-11-10; the older `hd-mode7-no-fp64` is on `816bc5ac`);
 on `develop` as `30c4fb1f`.
