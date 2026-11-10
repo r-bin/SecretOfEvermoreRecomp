@@ -9,6 +9,8 @@
 //   --fade: the recomp scales brightness by MesenCE's rule, to see what else differs in the picture
 //   --record: keep the reference's hashes in a file; --reference: compare with that file, no MesenCE needed
 //   --mesen-lua <file>: run a MesenCE mod (mods/mesen/*.lua) with MesenCE, for a mod's parity check (docs/mods/README.md)
+//   --mods: the recomp with the mods selected beside its executable (implied by --mesen-lua); without it a copy with no
+//   mod catalog runs (recomp.mts vanillaExe), whatever the launcher selected
 //   backend: mesen | recomp (exe: build/ by default); no ROM after '=' means the clean ROM (--rom, SNESRECOMP_ROM,
 //   a known name at the repo root, rom.cfg)
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
@@ -150,7 +152,7 @@ function start(s: Setup, extra: { stride: number }, onCp: (k: number, c: Crcs) =
         runs.push(r.done.then(dump => { onEnd(frames); return dump; }).catch(e => onErr((e as Error).message)));
         return r.kill;
     }
-    const r = runRecomp({ exe: s.exe!, rom: s.rom, to: frames, regions, stride: extra.stride, replay, atNmi, fade: !!opts.fade }, onCp);
+    const r = runRecomp({ exe: s.exe!, rom: s.rom, to: frames, regions, stride: extra.stride, replay, atNmi, fade: !!opts.fade, mods: !!opts.mods || !!mesenLua }, onCp);
     runs.push(r.done.then(dump => { onEnd(frames); return dump; }).catch(e => onErr((e as Error).message)));
     return r.kill;
 }
@@ -175,7 +177,7 @@ async function snapshot(s: Setup, at: number): Promise<Uint8Array[]> {
         if (!dump) throw new Error(`Mesen did not reach counter ${at}`);
         return dump;
     }
-    const dump = await runRecomp({ exe: s.exe!, rom: s.rom, to: at, regions, dumpAt: at, replay, atNmi, fade: !!opts.fade }, () => {}).done;
+    const dump = await runRecomp({ exe: s.exe!, rom: s.rom, to: at, regions, dumpAt: at, replay, atNmi, fade: !!opts.fade, mods: !!opts.mods || !!mesenLua }, () => {}).done;
     if (!dump) throw new Error(`the recomp did not reach counter ${at}`);
     return dump;
 }

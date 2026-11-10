@@ -6,9 +6,8 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy
-# The launcher's mod selection (build/mods/preloaded/state.toml) is shared with a game the user may be playing: widescreen
-# experiment E6 and the practice hotkeys change the game by design, so the stored runs are checked with them off whatever
-# is selected.
+# The launcher's mod selection (build/mods/preloaded/state.toml) is shared with a game the user may be playing. compare.mts
+# runs a copy without mods anyway (recomp.mts vanillaExe); the switches stay as a second guard for E6 and the hotkeys.
 export SOE_WS_ALIVE=0 SOE_CHEATS=0
 exec node "$ROOT/tools/compare/compare.mts" "recomp:$1=$2" --rom "$2" \
     --replay "$ROOT/tools/compare/replays/$3.mmo" --regions wram,vram,cgram,oam \

@@ -41,7 +41,8 @@ commands, the page template) and the table of every mod; read it and the mod's p
 
 - **Replays are vanilla.** A mod that changes the game is never matched against a replay; replays and their MesenCE runs
   compare WRAM and picture with no mod active unless the user asks. The parity check above is the one exception: the mod
-  on both sides, input written for it. Every new mod that changes the game gets an `=0` in `tests/replay_recorded.sh`.
+  on both sides, input written for it (`--mesen-lua` keeps the mods on). Otherwise `tools/compare` runs a copy with no mod
+  catalog, so a new mod needs nothing there; one that changes the game still gets its `=0` in `tests/replay_recorded.sh`.
 - `build/mods/preloaded/state.toml` is the player's selection, shared by every run of `build/`: test from a copy of the
   build with its own `state.toml`, or through the `SOE_<NAME>` switch; never edit the player's.
 - The NMI counter (compare's key) runs behind the movie's frames: no NMI during loads. Input appended after replay 02's

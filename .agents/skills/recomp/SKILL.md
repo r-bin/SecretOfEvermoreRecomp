@@ -39,8 +39,10 @@ The committed replays are MesenCE movies from power-on (`tools/compare/replays/`
 - A replay becomes mandatory only once it is known to contain one specific action, and then for changes to that action.
 - **Replays run vanilla:** WRAM and picture are compared with no mod active unless the user asks. A mod that changes the
   game (above all *Widescreen (experimental)*, which changes how enemies sleep, spawn and aggro; the practice hotkeys) never
-  has to match a replay. Runs read the launcher's shared `build/mods/preloaded/state.toml`: set the kill switches
-  (`SOE_WS_ALIVE=0 SOE_CHEATS=0`, as `tests/replay_recorded.sh` does) or run from a copy of the build with none selected.
+  has to match a replay. The game reads the launcher's shared `build/mods/preloaded/state.toml`, and the kill switches
+  (`SOE_WS_ALIVE=0 SOE_CHEATS=0`) do not cover the HUD or the debug overlay, which draw into the picture. So
+  `tools/compare/recomp.mts` runs a hard-linked copy with no mod catalog (`out/compare/vanilla/`) unless a run passes
+  `--mods` or `--mesen-lua`. Trap (2026-11-10): with the HUD on top, replay 01's picture parted at 1227 even with `--fade`.
 
 ## Ownership
 

@@ -1,8 +1,8 @@
 // The snesrecomp backend: the recomp repository's game run headless from a script, hashing through its
 // glue (src/game_rtl.c there, SOE_COMPARE_*), which writes to fd 3. Keys are always the NMI counter $0100.
-import { mkdtempSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, existsSync, mkdirSync, statSync, linkSync, copyFileSync, renameSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { readReplay, type Replay } from './replay.mts';
 import { REGION_SIZE, type Region, type Crcs } from './diff.mts';
@@ -35,6 +35,30 @@ export interface RecompJob {
     onPeek?: (frame: number, key: number, clock: number, bytes: number[]) => void;
     /** The recomp's stderr as it arrives (a probe: the framework's SNESRECOMP_* traces go there). */
     onStderr?: (chunk: Buffer) => void;
+    /** Run with the mods selected beside the executable (a mod's parity check). Off: a copy with no mod catalog. */
+    mods?: boolean;
+}
+
+/**
+ * The executable without mods. The game reads its mod catalog and selection (mods/preloaded/state.toml) beside the
+ * executable: the launcher's choice in build/, which may turn on drawing (debug overlay, HUD) or game-changing mods
+ * no switch covers. A hard link (a copy across volumes) in out/compare/vanilla/ has no catalog, so no mod is active.
+ */
+function vanillaExe(exe: string): string {
+    const dir = join(REPO, 'out', 'compare', 'vanilla', dirname(exe).replace(/[^A-Za-z0-9]+/g, '_'));
+    const staged = join(dir, basename(exe));
+    const src = statSync(exe);
+    if (existsSync(staged)) {
+        const st = statSync(staged);
+        if (st.ino === src.ino || (st.size === src.size && st.mtimeMs === src.mtimeMs)) return staged;
+    }
+    mkdirSync(dir, { recursive: true });
+    const tmp = `${staged}.${process.pid}`;
+    try { linkSync(exe, tmp); } catch { copyFileSync(exe, tmp); }
+    renameSync(tmp, staged);
+    const assets = join(dirname(exe), 'assets');
+    if (existsSync(assets) && !existsSync(join(dir, 'assets'))) symlinkSync(assets, join(dir, 'assets'));
+    return staged;
 }
 
 const h = (n: number) => n.toString(16).toUpperCase();
@@ -77,7 +101,7 @@ export function runRecomp(job: RecompJob, onCp: (key: number, crcs: Crcs) => voi
     if (job.stride) env.SOE_COMPARE_STRIDE = String(job.stride);
     if (job.dumpAt !== undefined) env.SOE_COMPARE_DUMP = String(job.dumpAt);
     if (job.peek?.length) env.SOE_COMPARE_PEEK = job.peek.map(h).join(',');
-    const child = spawn(job.exe, ['--no-launcher', '--script', join(dir, 'compare.txt'), job.rom], { env, stdio: ['ignore', 'ignore', 'pipe', 'pipe'] });
+    const child = spawn(job.mods ? job.exe : vanillaExe(job.exe), ['--no-launcher', '--script', join(dir, 'compare.txt'), job.rom], { env, stdio: ['ignore', 'ignore', 'pipe', 'pipe'] });
     let log = '';
     child.stderr!.on('data', (d: Buffer) => { log = (log + d).slice(-4000); job.onStderr?.(d); });
     let buf = Buffer.alloc(0), dump: Uint8Array[] | null = null;
