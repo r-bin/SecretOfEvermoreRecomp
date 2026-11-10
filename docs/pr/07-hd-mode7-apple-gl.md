@@ -3,7 +3,14 @@
 **Status:** draft, no PR yet. Independent of 1-6: it touches only `desktop/hd_gpu.c`, `desktop/hd_gpu.h`,
 `tests/ppu/ppu_hd_gpu_test.c` and `tests/ppu/validate_hd_glsl.py`, and applies to main `816bc5ac` alone.
 
-Branch: `hd-mode7-no-fp64` in the fork (on main), `3f55bcdb`; on `develop` as `01904551`.
+Branch: `hd-mode7-no-fp64-main` in the fork, `4e838c47` on main `e9c20732` (2026-11-10; the older `hd-mode7-no-fp64` is on `816bc5ac`);
+on `develop` as `30c4fb1f`.
+
+Checked on main `e9c20732`, Apple M4 (2026-11-10). snesrecomp has no build rule for `ppu_hd_gpu_test`; it was built by hand: the test,
+`desktop/hd_gpu.c`, `snes/hd_jobs.c`, `snes/ppu.c`, `snes/ppu_legacy.c`, `third_party/gl_core/gl_core_3_1.c`, with
+`-DSNESRECOMP_SDL3=1 -DSNESRECOMP_HD_GPU=1`, linked to SDL3 (this repo's `build/_deps`). Main: Metal pipeline fallback, then
+`GPU mismatch scale2 pixel0,0 cpu424242 gpu000000`. Branch: `affine single + CPU plane`, 301 of 927,376 samples differ at texel
+edges, 660 ROI comparisons at 1-64x pass.
 
 ## To do before opening
 
