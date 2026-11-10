@@ -12,7 +12,7 @@ again, below).
 | # | File | PR | State | Depends on | Next step |
 |---|---|---|---|---|---|
 | 1 | [01-access-exact-timing.md](01-access-exact-timing.md) | [#241](https://github.com/RetroPortingToolKit/snesrecomp/pull/241) | **merged** 2026-11-09, squashed as `c1f84f61` | — | Trim the [Not proposed](#not-proposed) parts in a follow-up PR |
-| 2 | [02-ppu-reads-during-rendering.md](02-ppu-reads-during-rendering.md) | not opened | draft | 1 | Game-neutral test, then open |
+| 2 | [02-ppu-reads-during-rendering.md](02-ppu-reads-during-rendering.md) | [#278](https://github.com/RetroPortingToolKit/snesrecomp/pull/278) | **open** 2026-11-10, fork branch `ppu-render-reads-main` | 1 (merged) | Game-neutral test in `tests/ppu/` |
 | 3 | [03-bus-exact-compiled-code.md](03-bus-exact-compiled-code.md) | not opened | draft, **blocked** on a decision | 1 | Decide against [#250](https://github.com/RetroPortingToolKit/snesrecomp/pull/250)/[#251](https://github.com/RetroPortingToolKit/snesrecomp/pull/251) |
 | 4 | [04-compiled-resume.md](04-compiled-resume.md) | not opened | draft | 3 | Follows 3 |
 | 5 | [05-brightness-rule.md](05-brightness-rule.md) | not opened | draft | — | Ask upstream whether a parity switch is welcome |
@@ -36,7 +36,7 @@ State values: draft, open, conflicts, merged, closed. Update this table when a s
 The framework side of all of them is `framework/snesrecomp.patch` in this repository: the tree of `develop` in our fork
 https://github.com/r-bin/snesrecomp against main ([../framework.md](../framework.md)). A reviewer needs only this repository.
 The fork also holds one branch per PR: `spc-access-cycles` (1), `ppu-render-reads` (2), `aot-bus-exact` (3), `aot-resume` (4),
-`brightness-rule` (5); each one's tip is where its PR is in the stack, so it includes the PRs before it.
+`brightness-rule` (5); PR 2 is opened from `ppu-render-reads-main` (main `e9c20732` + `d6e7b60d` + stub `e4001e81`). Each older branch's tip is where its PR is in the stack, so it includes the PRs before it.
 
 ## What was tested
 

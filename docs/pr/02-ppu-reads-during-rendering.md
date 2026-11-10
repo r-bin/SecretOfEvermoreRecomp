@@ -1,6 +1,9 @@
 # 2. OAM and CGRAM reads during rendering
 
-**Status:** draft, no PR yet. Depends on [#241](01-access-exact-timing.md): the beam hook is answered only on the master-clock timeline.
+**Status:** open, https://github.com/RetroPortingToolKit/snesrecomp/pull/278 (2026-11-10), from the fork's branch `ppu-render-reads-main`: main `e9c20732` + `d6e7b60d` (the change) +
+`e4001e81` (test stub). [#241](01-access-exact-timing.md), which it needs for the master-clock timeline, is merged. Still required on that
+main (2026-11-10, replay 01 vs MesenCE 2.2.1): with `SNESRECOMP_PPU_RENDER_READS=0` WRAM parts at 5998, native and interpreted; on, in
+sync through 8592.
 
 Branch: `ppu-render-reads` in the fork, `bc980ee9` (first written as `3b73e98c` on an older main, not published; one conflict with `mstan`'s `s_latch_snes`, resolved their way).
 

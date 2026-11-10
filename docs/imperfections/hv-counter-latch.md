@@ -2,7 +2,7 @@
 
 **Status:** fixed in PR 1 (`runner/src/snes/ppu.c` `$2137`, `snes.c`
 `snes_latch_position`), 2026-10-31; `$2138`/`$213B` reads during rendering fixed in PR 2
-(`ppu.c` `ppu_renderOamAddress`, `ppu_renderCgramAddress`), 2026-11-02.
+(`ppu.c` `ppu_renderOamAddress`, `ppu_renderCgramAddress`), 2026-11-02; upstream as [#278](https://github.com/RetroPortingToolKit/snesrecomp/pull/278) (open).
 
 ## What hardware does (MesenCE)
 - A `$2137` read latches the counters only while WRIO (`$4201`) bit 7 is set; WRIO is `$FF` after power-on. A
