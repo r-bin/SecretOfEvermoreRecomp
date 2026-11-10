@@ -29,7 +29,8 @@
  *                 its script's first set-sprite command (0x22..0x2B: bank = cmd + $A8) is the frame
  *                 (everscript-vscode maps/character-animation.ts, resolveCharacterSprite)
  *   ghosts        widescreen E6 only: a spawn record (60 at $5DC3, 16 bytes) with a count left (+$0C) is drawn at
- *                 its point (+$02/+$04) as a dark silhouette of its character's standing frame (record +$00),
+ *                 its point (+$02/+$04) as a dark silhouette of the largest frame seen on a live entity of its
+ *                 character (record +$00; its standing frame until one is seen),
  *                 thinned by an ordered dither whose density follows the screen distance from the 4:3 edge (half
  *                 from 32 px out, none at the edge): it fades out as it comes into the 4:3 view and back in as it
  *                 leaves; when it spawns, the enemy takes its place. A placed enemy E6 holds on the room's load
@@ -180,6 +181,45 @@ static uint32_t StandingSprite(uint16_t record, int facing)
     return sprite;
 }
 
+/* A sprite's bounding box area from its chunk table (count, offset, then 5 bytes per chunk: flags, x, y, block), or 0. */
+static int SpriteArea(uint32_t sprite)
+{
+    int count = RomU8(sprite), first = RomU8(sprite + 1);
+    if (!sprite || count <= 0 || first < 0 || count > 64) return 0;
+    int x0 = 1 << 20, y0 = 1 << 20, x1 = -(1 << 20), y1 = -(1 << 20);
+    for (int i = 0; i < count; i++) {
+        uint32_t c = sprite + (uint32_t)first + 5u * (uint32_t)i;
+        int flags = RomU8(c), cx = (int8_t)RomU8(c + 1), cy = (int8_t)RomU8(c + 2), n = (flags & 1) ? 16 : 8;
+        if (flags < 0) return 0;
+        if (cx < x0) x0 = cx;
+        if (cy < y0) y0 = cy;
+        if (cx + n > x1) x1 = cx + n;
+        if (cy + n > y1) y1 = cy + n;
+    }
+    return (x1 - x0) * (y1 - y0);
+}
+
+/* The largest frame seen on a live entity of each character record: a ghost's silhouette. The standing frame alone
+ * can be a poor one (a Wimpy Flower's is its burrowed patch on the ground). */
+static struct { uint16_t record; uint32_t sprite; int area; } s_seen[64];
+
+static void SeeSprite(uint16_t record, uint32_t sprite)
+{
+    int i = 0;
+    while (i < 64 && s_seen[i].record && s_seen[i].record != record) i++;
+    if (i == 64) return;
+    if (s_seen[i].record && s_seen[i].sprite == sprite) return;
+    const int area = SpriteArea(sprite);
+    if (!s_seen[i].record || area > s_seen[i].area) s_seen[i].record = record, s_seen[i].sprite = sprite, s_seen[i].area = area;
+}
+
+static uint32_t GhostSprite(uint16_t record, int facing)
+{
+    for (int i = 0; i < 64 && s_seen[i].record; i++)
+        if (s_seen[i].record == record) return s_seen[i].sprite;
+    return StandingSprite(record, facing);
+}
+
 static void SnapshotEntity(Snapshot *s, uint32_t e)
 {
     uint16_t hide = W(e + 0x12);
@@ -190,12 +230,16 @@ static void SnapshotEntity(Snapshot *s, uint32_t e)
     if (!Depth(e, &priority)) return;
     int x = (int16_t)W(e + 0x1A), y = (int16_t)W(e + 0x1C), z = (int16_t)W(e + 0x1E);
     uint8_t slot = g_ram[e + 0x0C];
+    const uint16_t record = W(e + 0x60);
     if (SoeAliveHeld((uint16_t)e)) {
+        main = GhostSprite(record, g_ram[e + 0x22]);
         const int before = s->count;
         Add(s, main, x, y - (z >> 4), slot, priority, y);
         if (s->count > before) s->item[before].ghost = 1;
         return;
     }
+    if (record >= 0x8000 && W(e + 0x2A) && (W(e + 0x10) & 0x0100) && !(hide & 0x8000) && W(e + 0x06))
+        SeeSprite(record, main);
     if (!(hide & 0x4000)) Add(s, shadow, x, y, slot, priority, y - 1);
     if (!(hide & 0x8000)) Add(s, main, x, y - (z >> 4), slot, priority, y);
 }
@@ -205,7 +249,7 @@ static void SnapshotGhosts(Snapshot *s)
 {
     for (uint32_t r = kSpawnFirst; r < kSpawnEnd; r += kSpawnStride) {
         if (!W(r + 0x0C) || W(r) < 0x8000) continue;
-        const uint32_t sprite = StandingSprite(W(r), 4);   /* facing down */
+        const uint32_t sprite = GhostSprite(W(r), 4);   /* facing down */
         const int x = (int16_t)W(r + 0x02), y = (int16_t)W(r + 0x04), before = s->count;
         Add(s, sprite, x, y, 0, 2, y);
         if (s->count > before) s->item[before].ghost = 1;

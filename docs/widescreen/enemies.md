@@ -213,12 +213,19 @@ replay stays in sync up to there).
   * *Room load* (its first 90 logic frames, the fade-in): `hle_func` at the spawner `$8F:DDBB` spawns, one per frame,
     every record whose box is not full, wherever its point is (the helper does `INC $6185` and the `PHA` that the ROM's
     spawn code at `$DE43` pulls; at a bound entry the interpreter runs those ROM bytes).
+  * *Kept clear of the entry* (2026-11-10): a record whose point is in the 4:3 view or within half a view of it on
+    the load stays a ghost, and the ROM's spawner may take it only after the camera has reached it (view or spawn ring)
+    and left it behind beyond the ring. Entering the east jungle `0x5b` from the north: 8 ghosts, nothing spawns on the
+    way in (vanilla's spawner had put the Wimpy Flower at (152,328) on the path 56 px below the first view), and the
+    three near the exit spawn out of sight on the way back north.
   * *Afterwards* the ROM decides when and where (timer, the ring 16..48 px off the 4:3 screen), and `hle_func` at its
     spawn step `$8F:DE43` skips a record (on at `$DE3B`, the loop's next record, same stack) while its box is full or the
     player's 4:3 view holds `cap` characters (counted as for aggro). E6 takes nobody back, so walking through again
     spawns more only where it is thin.
-  * *Ghosts* (`src/soe_ws_sprites.c`): every record with a count left is drawn in the margins as a dark silhouette of its
-    character's first standing frame (a Wimpy Flower's is its burrowed patch), thinned by a 4×4 ordered dither whose
+  * *Ghosts* (`src/soe_ws_sprites.c`): every record with a count left is drawn in the margins as a dark silhouette of the
+    largest frame seen on a live entity of its character (until one is seen, its first standing frame: a Wimpy
+    Flower's is its burrowed patch). Only the side margins show them: a ghost above or below the 4:3 view is off the
+    picture, thinned by a 4×4 ordered dither whose
     density follows the screen distance from the 4:3 edge (half from 32 px out, none at the edge), so it fades out as
     it comes into the 4:3 view and back in as it leaves; when it spawns, the enemy takes its place.
   * Checked with synthetic records in `0x38` (no spawner room is reachable from replay 06's save; the village guards its
@@ -256,7 +263,9 @@ replay stays in sync up to there).
   aggro while the crowd, counting only chasers nearer the Boy than itself, is under `cap`, so the nearest keep their
   place and the farthest lets go. Before, only the view counted: all 7 Mosquitoes of `0x38` chased the Dog from across
   the room while the view held fewer than 6 (the flower field; the user's screenshot from the east jungle had both causes); now 3 chase and 4 let go. The
-  spawn step and a held enemy's wake use the same crowd.
+  spawn step and a held enemy's wake first used the same crowd; since 2026-11-10 they count the view alone (Skelesnails
+  chasing from behind the cliffs held the crowd at 6 and no ghost spawned). Only `ai_pick_target` makes a chaser:
+  stationary Wimpy Flowers keep a party pointer once let through.
 * **E6 decides past the slice deadline too.** The helpers used to fall back to the ROM once the slice's deadline was
   reached, which let the ROM decide: 4 spawns of a walk through `0x5b` bypassed the density gate. E6's branches run
   in free time, where the clock is put back after every slice, so they now apply at the deadline as well; the ROM's

@@ -25,19 +25,21 @@ int SoeAliveEnabled(void);
 int SoeAliveFreeTime(void);
 
 /* Whether the enemy in `slot` may take the party as its target: always inside the 4:3 view at `cam_x`/`cam_y`
- * ($59/$5B), outside it only while fewer than `cap` characters are in the view. 1 whenever E6 is off. */
-int SoeAliveMayAggro(uint16_t slot, uint16_t cam_x, uint16_t cam_y);
+ * ($59/$5B), outside it only while the crowd is under `cap`. `moves`: the check is ai_pick_target's (an enemy that
+ * comes for the party), whose answer makes it count as a chaser in the crowd. 1 whenever E6 is off. */
+int SoeAliveMayAggro(uint16_t slot, uint16_t cam_x, uint16_t cam_y, int moves);
 
 /* Whether the spawner's spawn step may spawn record `record` ($5DC3..) now: its box is not full and the 4:3 view at
  * `cam_x`/`cam_y` holds fewer than `cap` characters. 1 whenever E6 is off. */
 int SoeAliveSpawnAllowed(uint16_t record, uint16_t cam_x, uint16_t cam_y);
 /* During a room's load (its first 90 logic frames): the record the spawner $8F:DDBB should spawn now, 0 for none this
- * frame. kAliveSpawnRom when E6 is off or the room has loaded (the ROM's spawner runs). */
+ * frame. Points within half a view of the 4:3 view at `cam_x`/`cam_y` ($59/$5B) wait for the ROM's spawner. kAliveSpawnRom when E6 is off or the room has loaded (the ROM's spawner runs). */
 enum { kAliveSpawnRom = 0xFFFF };
-uint16_t SoeAliveSpawnPick(void);
-/* Once per field frame, from the start of free time: keeps the budget $1076 where E6 wants it and, during a room's
- * load, takes or holds the placed enemies. */
-void SoeAliveFrame(void);
+uint16_t SoeAliveSpawnPick(uint16_t cam_x, uint16_t cam_y);
+/* Once per field frame, from the start of free time, with the camera ($59/$5B): keeps the budget $1076 where E6 wants
+ * it, during a room's load takes or holds the placed enemies, later frees the spawn records kept clear of the entry
+ * once the camera has left them behind. */
+void SoeAliveFrame(uint16_t cam_x, uint16_t cam_y);
 /* The entity in `slot` is a placed enemy held on the room's load (asleep, to be drawn as a ghost). 0 when E6 is off. */
 int SoeAliveHeld(uint16_t slot);
 

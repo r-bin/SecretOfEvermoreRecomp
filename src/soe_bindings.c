@@ -1249,7 +1249,8 @@ RecompReturn HleEntitySleepWake(CpuState *cpu) {
  */
 RecompReturn HleFieldTickFreeBegin(CpuState *cpu) {
     stats_init();
-    SoeAliveFrame();
+    SoeAliveFrame((uint16_t)(g_ram[(uint16_t)(cpu->D + 0x59)] | g_ram[(uint16_t)(cpu->D + 0x5A)] << 8),
+                  (uint16_t)(g_ram[(uint16_t)(cpu->D + 0x5B)] | g_ram[(uint16_t)(cpu->D + 0x5C)] << 8));
     if (SoeAliveFreeTime()) { soe_frame_driver_free_time(true); s_bind[FREE_BEGIN].c++; }
     return run_rom_bytes(cpu, FREE_BEGIN, 0xE45C, 0xE460, NULL);
 }
@@ -1293,7 +1294,7 @@ static RecompReturn aggro_gate(CpuState *cpu, int which, uint16_t entry, uint16_
     if (plain && interp_bridge_in_lle_scheduler()) {   /* E6's branch, also past the deadline (see kE6Deadline) */
         const uint16_t d = cpu->D;
 #define DP_WORD(o) (uint16_t)(g_ram[(uint16_t)(d + (o))] | g_ram[(uint16_t)(d + (o) + 1)] << 8)
-        if (!SoeAliveMayAggro(cpu->Y, DP_WORD(0x59), DP_WORD(0x5B))) {
+        if (!SoeAliveMayAggro(cpu->Y, DP_WORD(0x59), DP_WORD(0x5B), which == PICK_TARGET)) {
 #undef DP_WORD
             s_bind[which].c++;
             return interp_bridge_lle_yield_unwind(cpu, (uint32_t)cpu->PB << 16 | no);
@@ -1316,7 +1317,9 @@ RecompReturn HleSpawner(CpuState *cpu) {
     stats_init();
     const bool plain = wide_a(cpu) && !cpu->x_flag && cpu->DB == 0x7E && cpu->S > 4;
     if (plain && interp_bridge_in_lle_scheduler()) {   /* E6's branch, also past the deadline (see kE6Deadline) */
-        const uint16_t rec = SoeAliveSpawnPick();
+        const uint16_t d = cpu->D;
+        const uint16_t rec = SoeAliveSpawnPick((uint16_t)(g_ram[(uint16_t)(d + 0x59)] | g_ram[(uint16_t)(d + 0x5A)] << 8),
+                                               (uint16_t)(g_ram[(uint16_t)(d + 0x5B)] | g_ram[(uint16_t)(d + 0x5C)] << 8));
         if (rec != kAliveSpawnRom) {
             const uint16_t scans = (uint16_t)((g_ram[0x6185] | g_ram[0x6186] << 8) + 1);
             g_ram[0x6185] = (uint8_t)scans;

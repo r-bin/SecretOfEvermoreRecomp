@@ -22,7 +22,8 @@
  *    `cap` - 2 enemies (4: vanilla's budget less the Boy and the Dog; `cap` with Count = enemies only), enemies placed
  *    or spawned, alive, not friendly.
  *    On a room's load (its first 90 logic frames, the fade-in; SoeAliveSpawnPick at the spawner $8F:DDBB) every record
- *    whose box is not full spawns wherever its point is, one per frame. Later the ROM decides when and where (timer,
+ *    whose box is not full spawns, one per frame, unless its point is in the 4:3 view or within half a view of it: the
+ *    player would see it appear or meet it a few steps in; it stays a ghost until the ROM's spawner takes it. Later the ROM decides when and where (timer,
  *    point 16..48 px off the 4:3 screen) and the spawn step $8F:DE43 (SoeAliveSpawnAllowed) lets it through only while
  *    the record's box is not full and the player's 4:3 view holds fewer than `cap` characters (as the aggro cap counts
  *    them). Records still to spawn are drawn as ghosts in the margins (src/soe_ws_sprites.c).
@@ -67,6 +68,7 @@ enum {
     kSpawnFirst = 0x5DC3, kSpawnEnd = 0x6183, kSpawnStride = 0x10, kSpawnX = 0x02, kSpawnY = 0x04, kSpawnCount = 0x0C,
     kEntryFrames = 90,       /* logic frames after a room change that count as its load (the fade-in) */
     kSlotCount = (kSlotEnd - kSlotFirst) / kStride,
+    kRingOuter = 48,         /* the spawner's ring is 16..48 px off the 4:3 view */
     kWakeMargin = 16,        /* a held enemy wakes only this far outside the 4:3 view (the spawner's ring starts here) */
 };
 
@@ -82,9 +84,12 @@ static struct {
     uint16_t room, since;
     uint8_t state[kSlotCount];
     uint16_t record[kSlotCount], home_x[kSlotCount], home_y[kSlotCount];   /* where it stood when taken or held */
+    uint8_t entry[(kSpawnEnd - kSpawnFirst) / kSpawnStride];   /* spawn records kept clear of the entry */
 } s_room = { .room = 0xFFFF };
-/* Enemies whose last aggro check (SoeAliveMayAggro) let them take the party, by slot, with their character record:
- * +$24 alone is no marker (idle enemies hold a party pointer too). */
+/* Enemies whose last ai_pick_target check (SoeAliveMayAggro, `moves`) let them take the party, by slot, with their
+ * character record: +$24 alone is no marker (idle enemies hold a party pointer too), and stationary ones (Wimpy
+ * Flowers, at enemy_ai_check_aggro) do not come for the party: counted, every flower once let through held the
+ * crowd at `cap` for good and no ghost of the east jungle spawned. */
 static struct { uint8_t on[kSlotCount]; uint16_t record[kSlotCount]; } s_chase;
 
 static uint16_t W(uint32_t a) { return (uint16_t)(g_ram[a] | g_ram[a + 1] << 8); }
@@ -157,7 +162,8 @@ static int Chases(uint32_t e)
 
 /* The crowd the party faces: ViewCount, plus enemies outside the 4:3 view that chase the Boy or the Dog (+$24) and,
  * when `before` is an enemy, are nearer the Boy than it (ties: the lower slot), so the nearest chasers keep their place
- * and the farthest lets go. Without it, every awake enemy of the room would chase while the view itself is not full
+ * and the farthest lets go. Only the aggro cap counts them: chasers held up far away (the east jungle's Skelesnails behind
+ * the cliffs) kept every ghost from spawning, so the spawn step and a held enemy's wake count the view alone. Without it, every awake enemy of the room would chase while the view itself is not full
  * (the flower field's seven Mosquitoes all went for the Dog from across the room). */
 static int Crowd(uint16_t cam_x, uint16_t cam_y, uint32_t before)
 {
@@ -321,7 +327,7 @@ static int HeldMayWake(uint32_t e, uint16_t cam_x, uint16_t cam_y)
     const int dx = (int16_t)(W(e + kX) - cam_x), dy = (int16_t)(W(e + kY) - cam_y);
     const int near = dx >= -kWakeMargin && dx < kViewWidth + kWakeMargin && dy >= -kWakeMargin &&
                      dy < kViewHeight + kWakeMargin;
-    return !near && !Crowded(W(e + kX), W(e + kY)) && Crowd(cam_x, cam_y, 0) < Cap();
+    return !near && !Crowded(W(e + kX), W(e + kY)) && ViewCount(cam_x, cam_y) < Cap();
 }
 
 int SoeAliveHeld(uint16_t slot)
@@ -357,44 +363,80 @@ uint16_t SoeAliveDecide(uint16_t slot, uint16_t cam_x, uint16_t cam_y)
     return kAliveWake;
 }
 
-int SoeAliveMayAggro(uint16_t slot, uint16_t cam_x, uint16_t cam_y)
+int SoeAliveMayAggro(uint16_t slot, uint16_t cam_x, uint16_t cam_y, int moves)
 {
     if (!SoeAliveEnabled() || slot < kSlotFirst || slot >= kSlotEnd) return 1;
     const int may = InView(slot, cam_x, cam_y) || Crowd(cam_x, cam_y, slot) < Cap();
-    if ((slot - kSlotFirst) % kStride == 0) {
+    if (moves && (slot - kSlotFirst) % kStride == 0) {
         const int i = (slot - kSlotFirst) / kStride;
         s_chase.on[i] = (uint8_t)may, s_chase.record[i] = W((uint32_t)slot + kRecord);
     }
     return may;
 }
 
+/* A point the player sees on entry or reaches within a few steps: the 4:3 view and half a view around it. The spawn
+ * ring alone (48 px) let the east jungle's Wimpy Flower on the path from the north exit (152,328) spawn in the way. */
+static int NearView(uint16_t x, uint16_t y, uint16_t cam_x, uint16_t cam_y)
+{
+    const int dx = (int16_t)(x - cam_x), dy = (int16_t)(y - cam_y);
+    return dx >= -kViewWidth / 2 && dx < kViewWidth * 3 / 2 && dy >= -kViewHeight / 2 && dy < kViewHeight * 3 / 2;
+}
+
+/* A record kept clear of the entry may spawn only once the camera has left its point behind (beyond the spawn ring): the ROM's spawner put the east jungle's Wimpy Flower on the path from the north exit right below the first
+ * view, in the player's way. So it stays a ghost on the way in and spawns, density permitting, when its point comes
+ * back into the spawn ring on the way out. */
+enum { kEntryKept = 1, kEntryPassed = 2 };
+static int EntryClear(uint32_t r) { return !s_room.entry[(r - kSpawnFirst) / kSpawnStride]; }
+
+/* Once per frame: a record whose point the camera has reached (the view or its spawn ring) and then left behind is
+ * clear; the next time the ring reaches it the spawn step decides. Beyond the ring on entry is not enough: the path
+ * flower is 56 px below the first view. */
+static void ClearEntry(uint16_t cam_x, uint16_t cam_y)
+{
+    if (Loading()) return;
+    for (uint32_t r = kSpawnFirst; r < kSpawnEnd; r += kSpawnStride) {
+        uint8_t *e = &s_room.entry[(r - kSpawnFirst) / kSpawnStride];
+        if (!*e) continue;
+        const int dx = (int16_t)(W(r + kSpawnX) - cam_x), dy = (int16_t)(W(r + kSpawnY) - cam_y);
+        const int in_ring = dx >= -kRingOuter && dx < kViewWidth + kRingOuter && dy >= -kRingOuter &&
+                            dy < kViewHeight + kRingOuter;
+        if (in_ring) *e = kEntryPassed;
+        else if (*e == kEntryPassed) *e = 0;
+    }
+}
+
 int SoeAliveSpawnAllowed(uint16_t record, uint16_t cam_x, uint16_t cam_y)
 {
     if (!SoeAliveEnabled()) return 1;
-    const int around = EnemiesAround(W(record + kSpawnX), W(record + kSpawnY)), crowd = Crowd(cam_x, cam_y, 0);
-    const int allowed = !BoxFull(record) && crowd < Cap();
+    const int around = EnemiesAround(W(record + kSpawnX), W(record + kSpawnY)), crowd = ViewCount(cam_x, cam_y);
+    const int allowed = (record < kSpawnFirst || record >= kSpawnEnd || EntryClear(record)) && !BoxFull(record) &&
+                        crowd < Cap();
     if (s_env.debug)
         fprintf(stderr, "[alive] frame %u: spawn step, record $%04X: %d around its point, crowd %d/%d: %s\n",
                 W(kFrameCounter), record, around, crowd, Cap(), allowed ? "spawns" : "skipped");
     return allowed;
 }
 
-uint16_t SoeAliveSpawnPick(void)
+uint16_t SoeAliveSpawnPick(uint16_t cam_x, uint16_t cam_y)
 {
     if (!SoeAliveEnabled()) return kAliveSpawnRom;
     if (!Loading()) return kAliveSpawnRom;   /* loaded: the ROM's spawner */
+    for (uint32_t r = kSpawnFirst; r < kSpawnEnd; r += kSpawnStride)
+        if (W(r + kSpawnCount) && NearView(W(r + kSpawnX), W(r + kSpawnY), cam_x, cam_y))
+            s_room.entry[(r - kSpawnFirst) / kSpawnStride] = 1;   /* kEntryKept */
     SteerBudget();
     if (W(kAwakeCount) >= W(kBudget) || (int16_t)W(kLiveCount) >= (int16_t)W(kRoomCap)) return 0;
     for (uint32_t r = kSpawnFirst; r < kSpawnEnd; r += kSpawnStride)
-        if (W(r + kSpawnCount) && !BoxFull(r)) return (uint16_t)r;
+        if (W(r + kSpawnCount) && !NearView(W(r + kSpawnX), W(r + kSpawnY), cam_x, cam_y) && !BoxFull(r)) return (uint16_t)r;
     return 0;
 }
 
-void SoeAliveFrame(void)
+void SoeAliveFrame(uint16_t cam_x, uint16_t cam_y)
 {
     if (!SoeAliveEnabled()) return;
     SteerBudget();
     TakePlaced();
+    ClearEntry(cam_x, cam_y);
 }
 
 static void ModReset(void)
