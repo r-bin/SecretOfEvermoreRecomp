@@ -1,6 +1,8 @@
 # 4. Compiled resume
 
-**Status:** draft, no PR yet. Depends on [PR 3](03-bus-exact-compiled-code.md).
+**Status:** draft, no PR yet. Was built on [PR 3](03-bus-exact-compiled-code.md), which is not opened: upstream's region-paced
+emission replaces it. Next: make resume work on region-paced code (`--instruction-blocks --region-paced`), then measure the native
+share again; region-paced code also needs counting in `SNESRECOMP_TIER_STATS`.
 
 Branch: `aot-resume` in the fork, up to the fix `09cf15ec` (first written as `25d2f42f`, `88bc5ef8` on an older main, not published).
 

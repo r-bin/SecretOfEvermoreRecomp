@@ -1,8 +1,29 @@
 # 3. Bus-exact compiled code
 
-**Status:** draft, no PR yet, **blocked on a decision.** Depends on [#241](01-access-exact-timing.md).
+**Status:** not opened: upstream's region-paced emission (#250/#251, merged) does the same job (below, 2026-11-10).
 
 Branch: `aot-bus-exact` in the fork, `b8eed84c` (first written as `9a4dc97c` on an older main, not published), without its nested-deadline part ([Not proposed](README.md#not-proposed)).
+
+## Result (2026-11-10): upstream's region-paced emission does the job
+
+Main `e9c20732`, generated four ways side by side (`tools/regen.sh --out-dir`, docs/testing.md "Variants"), against MesenCE 2.2.1
+with no mods, at every NMI:
+
+| Generated with | Replay 01 (8,592) | Replay 02 (23,756) | Replay 01 interpreted / compiled |
+|---|---|---|---|
+| ours: `SNESRECOMP_EXACT_BUS=1`, resume on | in sync | in sync | 0.21 M / 59.7 M (99.65 % native) |
+| ours: `SNESRECOMP_EXACT_BUS=1`, resume off | in sync | — | 55.8 M / 9.8 M (14.9 %) |
+| upstream: `--instruction-blocks --region-paced`, ours off | in sync | in sync | 57.6 M / not counted* |
+| neither | parts at NMI 1 | — | — |
+
+\* `SNESRECOMP_TIER_STATS` counts compiled instructions in bus-exact code only. Like for like (no resume), region-paced
+interprets 3 % more than ours, so it compiles about as much.
+
+**Decision: this PR is not opened.** Upstream has the mechanism, it keeps both replays in sync, and a second one would compete
+with it. What is left of ours goes with [PR 4](04-compiled-resume.md): resume has to move onto region-paced emission. Our build keeps
+`bus_exact.py` until it has, because without resume the native share falls from 99.65 % to about 15 %.
+
+The "neither" row parts at NMI 1 on this main, not at 320 as measured on 2026-11-07 (then with resume on).
 
 ## The decision
 
