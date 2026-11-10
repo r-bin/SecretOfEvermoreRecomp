@@ -196,8 +196,8 @@ static int WantedWidth(int drawable_w, int drawable_h)
 
 /* Mode 7 frames are drawn 256 wide, exactly as without widescreen: widescreen has nothing for
  * them, and HD Mode 7 gets the frame it gets in 4:3. (The black flight the user saw with HD Mode 7
- * was not the width: the GPU presenter draws black on that Mac at any width, docs/bugs-and-todos.md
- * §3 item 12.) The PPU's mode at this point is the one the next field starts with. */
+ * was not the width: the GPU presenter drew black on Macs at any width, docs/bugs-and-todos.md
+ * §3 item 12, fixed by docs/pr/07.) The PPU's mode at this point is the one the next field starts with. */
 void SoeWsPrepareFrame(int drawable_w, int drawable_h, int *frame_w, int *frame_h)
 {
     *frame_h = 224;

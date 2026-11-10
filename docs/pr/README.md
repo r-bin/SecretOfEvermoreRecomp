@@ -16,6 +16,7 @@ Upstream: https://github.com/RetroPortingToolKit/snesrecomp. Measured 2026-11-07
 | 4 | [04-compiled-resume.md](04-compiled-resume.md) | not opened | draft | 3 | Follows 3 |
 | 5 | [05-brightness-rule.md](05-brightness-rule.md) | not opened | draft | — | Ask upstream whether a parity switch is welcome |
 | 6 | [06-frame-driver.md](06-frame-driver.md) | not opened | draft, no branch yet | 1 | Port `src/soe_frame_driver.c` once #241 is merged |
+| 7 | [07-hd-mode7-apple-gl.md](07-hd-mode7-apple-gl.md) | not opened | draft | — | GLSL validator and a non-Mac GL4 run, then open |
 
 **Why each one, and the doubts:**
 
@@ -27,6 +28,7 @@ Upstream: https://github.com/RetroPortingToolKit/snesrecomp. Measured 2026-11-07
 | 4 | **No.** Only the native share, 16.31 % → 99.70 % | Speed gain not measured; built on 3, so it moves with 3; can be dropped |
 | 5 | **No.** The picture only: 289 (01) and 948 (02) NMIs differ without it, none with it | A switch for parity with one emulator; upstream chose bsnes's rule on purpose |
 | 6 | Yes, from NMI 5 (the late NMI); today supplied by our glue | Large; the fitted 20-clock leads must go first; no game-neutral test yet |
+| 7 | **No.** HD Mode 7 on macOS only (black without it) | Single precision is not bit-exact at texel edges (0.03 % of samples); checked on one Mac |
 
 State values: draft, open, conflicts, merged, closed. Update this table when a state changes, and the file's Status line with it.
 

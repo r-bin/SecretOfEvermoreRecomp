@@ -130,8 +130,14 @@ These issues should be submitted to the [RetroPortingToolKit/snesrecomp](https:/
    picture with either renderer, so the GPU presenter (`desktop/hd_gpu.c`, `SnesHdGpuRender`) draws black there while
    reporting success (no native fallback). Seen at 256 px; widescreen not involved. Since 2026-11-09 our glue keeps it
    off (`SoeHdMode7Off` in `src/game_rtl.c`, at config time and before every field, since Settings can switch it on
-   live); `SOE_HD_MODE7=1` lets the setting through to check a fix. Upstream: check the GL path on Apple's GL 4.1
-   (the affine shader uses `double`/`precise`). Todo: [roadmap.md](roadmap.md) §2.
+   live); `SOE_HD_MODE7=1` lets the setting through to check a fix.
+   **Root cause (2026-11-10):** Apple's GL compiles the GL4 double shaders but cannot build them for Metal
+   ("buildPipelineState failed") and falls back to software processing, which draws black without a GL error. Reproduced
+   with snesrecomp's own `ppu_hd_gpu_test` on an M4.
+   **Fix:** framework patch [pr/07](pr/07-hd-mode7-apple-gl.md): on Apple the coordinate plane is computed on the CPU and
+   the affine shader runs in single precision. The flight in replay 02 now shows in HD at 8x. `SoeHdMode7Off` is removed.
+   **Lesson:** a GL path that "succeeds" can still draw nothing. Run the framework's GPU test on the platform before
+   blaming the data, and read the driver's stderr (Apple logs its software fallback there).
 
 ---
 
