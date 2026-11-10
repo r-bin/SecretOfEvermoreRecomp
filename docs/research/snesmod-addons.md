@@ -60,9 +60,18 @@ A mod is written across two layers depending on its complexity:
 
 ### 1.3 ROM Hacks vs. Plugins vs. Packages
 A common question is whether a ROM hack is considered a "plugin":
-* **ROM Hacks are Data (Not Plugins):** In Secret of Evermore, custom quests, dialogues, map edits, and Everscript (`.evs`) scripts do **not** compile into native C or new 65816 machine code engines. They compile into script bytecode interpreted by the in-game VM at `$8C:D0A6`. In `.snesmod`, these are declarative byte patches (`patches/*.toml`).
-* **Clean Vanilla ROM as Single Source of Truth:** Users never load pre-patched ROM hacks directly into the recomp executable. The launcher loads the untouched vanilla ROM (verified against `rom_sha256`) and applies the `.snesmod` byte patches **in-memory at runtime**. The original ROM file on disk remains clean.
-* **When is a Plugin Needed?** Only when a mod requires new host-level capabilities or native engine rewrites (e.g., 16:9 widescreen camera logic, network multiplayer, or a DAP debug server). Pure gameplay/story hacks are 100% data patches.
+> **Superseded:** the process is [docs/mods/rom-hacks.md](../mods/rom-hacks.md). snesrecomp has no `patches/*.toml`
+> format (§1.1, §2 above): byte patches are its runtime table's `[[rom_patch]]` / `[[ram_patch]]` / `[[vram_patch]]`,
+> loaded by a game plugin, and this recomp does not load them yet. Recompiled ROM-hack variants (§4, Super Mario World)
+> are deprecated upstream.
+
+* **Script and data hacks are data:** custom quests, dialogue, map edits and Everscript (`.evs`) scripts compile into
+  bytecode and data the game's VM (`$8C:D0A6`) and the compiled routines read at run time, so they ship as verified byte
+  patches against the stock ROM.
+* **Code hacks are not:** changed 65816 code at a compiled address never runs; an Asar patch is reimplemented as a
+  trusted C plugin. A grown or remapped ROM (ExHiROM) is unsupported.
+* **Clean vanilla ROM:** the player never loads a patched ROM; the launcher verifies the stock ROM (`rom_sha256`) and the
+  mod changes it in memory.
 
 
 ### 2.1 Manifest Example (`manifest.toml`)

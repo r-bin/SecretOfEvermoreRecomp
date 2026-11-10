@@ -11,6 +11,9 @@ mod (this folder); the skill `mods` (`.agents/skills/mods/SKILL.md`) is how to m
 **Same?** means checked, not believed: the MesenCE script and the recomp plugin, given the same input, leave WRAM, VRAM,
 CGRAM and OAM identical at every NMI (`tools/compare --mesen-lua`, below). *Same by design* is not a result.
 
+A ROM hack becomes a mod by being reimplemented against the stock ROM, never by recompiling the patched ROM:
+[rom-hacks.md](rom-hacks.md).
+
 ## Where a mod's parts live
 
 | Part | Where |
