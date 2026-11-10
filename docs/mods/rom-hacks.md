@@ -29,7 +29,15 @@ changed byte depends on what the byte is:
 | **ROM size or layout**: ExHiROM, the table hack's relocated tables, a remapped header | unsupported | rework as data a plugin loads, or leave out |
 
 Most Everscript hacks are the first kind: the compiler writes bytecode and repoints scripts, into existing free space
-when it fits. A hack that also ships `patches/*.asm` (everscript's Asar patches) has code in it.
+when it fits. A hack that also ships `patches/*.asm` (everscript's Asar patches) has code in it. For those hacks the
+compiler, which knows what every byte it wrote is, should write the mod itself: [evs-to-snesmod.md](evs-to-snesmod.md)
+(the practice ROM as the worked example).
+
+**A 4 MB hack is not the third kind here.** A 3 MiB ROM is loaded into a 4 MiB buffer (`snes_other.c` pads to a power of
+two by mirroring: `0x300000–0x3FFFFF` = a copy of `0x200000–0x2FFFFF`), the identity hash covers only the first 3 MiB
+(`romImageSize`), and `[[rom_patch]]` checks bounds against the 4 MiB `cart->romSize`. A plugin can therefore write a
+hack's 4th MB into the cartridge, and bus reads of `$F0`–`$FF` see it. Not yet checked: that vanilla never reads the
+mirror. Banks past `$FF` or a remapped header (ExHiROM) stay unsupported.
 
 ## The process
 
@@ -61,6 +69,10 @@ when it fits. A hack that also ships `patches/*.asm` (everscript's Asar patches)
 - **No byte patches from a package yet.** This repo does not call `snes_text_xlate_init_c` or apply `[[rom_patch]]`
   anywhere; snesrecomp loads that table from a path a game plugin gives it, not from the `.snesmod` by itself. A
   data-only hack needs a plugin that loads its package's table first (one shared plugin for every data hack).
-- **No diff-to-table tool.** Steps 1–4 are by hand today; the tool belongs in `tools/mods/`.
+- **No diff-to-table tool.** Steps 1–4 are by hand today; the tool belongs in `tools/mods/`. For Everscript hacks the
+  compiler is the better source than a diff: it names every range ([evs-to-snesmod.md](evs-to-snesmod.md)).
+- **`source_hex` ships stock bytes.** Every `[[rom_patch]]` carries the vanilla bytes it replaces; for a hack's 4th MB
+  that is the mirror, kilobytes of ROM content in the package. Data that big goes through a plugin that applies its
+  own payload after the launcher's whole-ROM SHA-256 check (evs-to-snesmod.md, "Why patch.ips").
 - **Same-width only.** A hack that relocates or grows data past free space has no path except a plugin that serves the
-  data itself.
+  data itself (the 4th MB above, or a plugin that writes the payload).
