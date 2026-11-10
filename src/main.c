@@ -27,6 +27,7 @@
 
 #include "host_main.h"
 #include "game_rtl.h"
+#include "soe_hud.h"
 #include "soe_widescreen.h"
 void SoeAfterConfig(void);   /* src/game_rtl.c */
 void SoePrepareFrame(int drawable_w, int drawable_h, int *frame_w, int *frame_h);   /* src/game_rtl.c */
@@ -44,6 +45,14 @@ void SoePrepareFrame(int drawable_w, int drawable_h, int *frame_w, int *frame_h)
 #ifndef SNES_GAME_VERSION
 #define SNES_GAME_VERSION "dev"
 #endif
+
+/* After the raster: widescreen blacks the margins outside the room, then the HUD mod draws the
+ * HUD it captured (it may sit in those margins). */
+static void SoeEndSimFrame(const uint8_t *field, unsigned number)
+{
+    SoeWsEndFrame(field, number);
+    SoeHudEndFrame(field, number);
+}
 
 static const SnesDesktopHostGame kGameHost = {
     .after_config        = SoeAfterConfig,
@@ -65,7 +74,7 @@ static const SnesDesktopHostGame kGameHost = {
     .native_widescreen   = 1,
     .prepare_frame       = SoePrepareFrame,
     .begin_sim_frame     = SoeWsBeginFrame,
-    .end_sim_frame       = SoeWsEndFrame,
+    .end_sim_frame       = SoeEndSimFrame,
     .window_base_width   = SoeWsWindowBaseWidth,
 };
 

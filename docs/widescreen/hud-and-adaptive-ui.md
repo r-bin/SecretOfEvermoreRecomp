@@ -1,13 +1,17 @@
 # HUD and adaptive widescreen UI
 
-Tag `widescreen.hud`. Marks: [README](README.md).
+Tag `widescreen.hud` (the field HUD alone: tag `hud`). Marks: [README](README.md).
+
+**Done for the field HUD:** the adaptive-HUD mod ([../mods/hud.md](../mods/hud.md)) does the
+*Edges* row below, plus a top position and hiding, through the PPU's host-overlay capture rather
+than the OAM shifter or BG3 split. Measured layout: everscript-vscode `docs/disassembly/ui/field-hud.md`.
 
 ## How Evermore draws each element
 
 | Element | Drawn by | Mark |
 |---|---|---|
-| Boy/Dog gauges, portraits | animation-script sprites through `direct_sprite_draw_oam` (`$80:9033`) at fixed screen positions: (224, 16) in `$90:8CEE`; (232, 20) when `$05AB` bit 0 and (96, 162) in `$90:8D2D`; portraits set up by `$8F:810E` | V |
-| HP numbers, charge text, HUD frame | BG3 tilemap: widgets `$051D`/`$0561` hold a screen column (`$19` for the Boy) and a VRAM tilemap address (`$1F00`); lower HUD frame rows 16..27 of `$7F:C800` | U |
+| Portraits | two 16×16 sprites, OBJ tile `$080` (Boy, palette 6) at (8, 201) and `$082` (Dog, palette 7) at (232, 201), in two adjacent OAM slots that move with the menus (0/1 in the field, up to 11/12 under a ring menu); records set by `$8F:810E`. The positions the `$90:8CEE`/`$90:8D2D` entries give, (224, 16) and (96, 162), match no sprite measured | V (measured 2026-11-10) |
+| Boxes: HP numbers, charge gauge, frame | BG3 map rows 24..27 (lines 193..223), columns 3..12 Boy and 19..28 Dog, palette 2, priority; glyphs `$3E0..$3FF`. Written to VRAM from the widgets `$051D`/`$0561` (`+$06` is the gauge glyphs' VRAM address `$1F00`/`$1F20`, not a tilemap address); `$7F:C800` holds blanks at those rows | V (measured 2026-11-10) |
 | Dialogue windows, choice boxes, shop lists | BG3 from the shadow tilemap `$7F:C800`, OAM window borders (`$80:D22D`) | U |
 | Ring menu | sprites on an ellipse around the calling actor `$05A7`, angle `$061B` | U (`docs/disassembly/ui/ring-menu-sprites.md` in everscript-vscode) |
 | Damage popups | world sprites (world − `$59`/`$5B`, `$8C:888F`) | V |
@@ -26,9 +30,9 @@ Tag `widescreen.hud`. Marks: [README](README.md).
 ## How, renderer-side (no game state)
 
 * HUD sprites: `PpuSetWsHudOamBand` + `PpuSetWsHudOamShiftRange` (`snes/ppu.h` ~794–816) shift
-  edge-hugging OAM entries by the margin. They expect fixed OAM slots; Evermore's OAM is filled in
-  depth order each frame, so whether HUD sprites sit in fixed slots is unknown (U). If not, classify
-  per entry by Y band and X edge (the positions above), and publish the set each frame.
+  edge-hugging OAM entries by the margin. They expect fixed OAM slots; Evermore's portraits are
+  always adjacent but not in fixed slots (measured), so the slots are found per frame by tile.
+  The adaptive-HUD mod uses the overlay capture instead, which also moves them vertically.
 * BG3 text: `PpuSetWidescreenHudSplit(height, left_end, right_start)` (`ppu.h:781`) moves the left
   and right chunks of the top `height` lines to the edges; for a HUD at the bottom, anchor/elastic
   bands per scanline range (`PpuSetWidescreenLayerElasticSplitBandSlot`, `ppu.h:1013`). Measure the

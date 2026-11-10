@@ -30,6 +30,7 @@
 #include "snes/saveload.h"
 #include "snes/snes.h"
 #include "soe_frame_driver.h"
+#include "soe_hud.h"
 #include "soe_widescreen.h"
 #include "desktop/host_main.h"
 
@@ -475,11 +476,13 @@ void SoeAfterConfig(void) {
 
 /* The host's prepare_frame, before each field is drawn. The reference renderer above is for mode 4;
  * a Mode 7 field gets the framework's own renderer, the one its HD Mode 7 path is built with, and
- * nothing meant for the other modes. The PPU's mode here is the one the next field starts with. */
+ * nothing meant for the other modes. The PPU's mode here is the one the next field starts with.
+ * A field whose HUD the adaptive-HUD mod captures gets it too: only that renderer captures. */
 void SoePrepareFrame(int drawable_w, int drawable_h, int *frame_w, int *frame_h) {
     SoeHdMode7Off(); /* the launcher's Settings can switch it on in a running game */
-    snesrecomp_desktop_set_new_renderer(g_ppu && (g_ppu->bgmode & 7) == 7);
     SoeWsPrepareFrame(drawable_w, drawable_h, frame_w, frame_h);
+    const int hud = SoeHudPrepareFrame(*frame_w);
+    snesrecomp_desktop_set_new_renderer(g_ppu && ((g_ppu->bgmode & 7) == 7 || hud));
 }
 
 /*

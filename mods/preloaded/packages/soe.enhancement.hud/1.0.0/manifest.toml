@@ -1,0 +1,56 @@
+format_version = 1
+id = "soe.enhancement.hud"
+version = "1.0.0"
+name = "Adaptive HUD"
+author = "r-bin"
+description = "Moves the field HUD (both characters' HP, charge gauge and portrait) to the top of the screen or to the screen's edges, or hides it. Only the picture changes: the game runs exactly as without it."
+license = "MIT"
+resolver = "declarative"
+save_compatibility = "shared"
+
+[[target]]
+game_id = "secretofevermore-usa"
+rom_sha256 = "17c864a76d498feb6479eee8e7d6807b951c66225033228622bb66754baab1db"
+
+[[feature]]
+id = "hud"
+name = "Adaptive HUD"
+description = "Where the HP boxes and portraits are drawn during play. Menus, dialogue and cutscenes stay as the game draws them; at the top, the HUD goes back to the bottom while a window covers the top. Presentation only (src/soe_hud.c)."
+group = "Display"
+default_enabled = false
+presentation_only = true
+
+[[option]]
+feature = "hud"
+id = "position"
+label = "Position"
+description = "Bottom is where the game draws it; Top moves it to the top edge; Hidden removes it (the room shows underneath)."
+type = "choice"
+default = "bottom"
+[[option.choice]]
+value = "bottom"
+label = "Bottom"
+[[option.choice]]
+value = "top"
+label = "Top"
+[[option.choice]]
+value = "hidden"
+label = "Hidden"
+
+[[option]]
+feature = "hud"
+id = "layout"
+label = "Layout in widescreen"
+description = "Screen edges puts the Boy's box at the left edge of a wide picture and the Dog's at the right; Centred keeps both where they are in 4:3. No difference in 4:3."
+type = "choice"
+default = "edges"
+[[option.choice]]
+value = "edges"
+label = "Screen edges"
+[[option.choice]]
+value = "centered"
+label = "Centred"
+
+[[plugin]]
+feature = "hud"
+id = "soe.hud"
