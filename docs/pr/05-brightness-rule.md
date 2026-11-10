@@ -2,7 +2,9 @@
 
 **Status:** draft, no PR yet. Independent of 1-4: it touches only `ppu_brightness.h`, `ppu.c` and the brightness test.
 
-Branch: `brightness-rule` in the fork, `53406604`.
+Branch: `brightness-rule-main` in the fork, `acb298dc` on main `e9c20732` (2026-11-10; the older `brightness-rule` is `53406604` on the
+stack). `ppu_brightness_test` passes on it. Replay 01 on main `e9c20732`, no mods: picture 289 frames differ with the default rule,
+0 with the switch (`SOE_COMPARE_FADE`). Replay 02 not re-run on this main.
 
 ## To do before opening
 
