@@ -1,0 +1,73 @@
+format_version = 1
+id = "soe.debug.overlay"
+version = "1.0.0"
+name = "Debug overlay"
+author = "r-bin"
+description = "Draws the room's collision, triggers, map objects and characters over the running game, in the colours of everscript-vscode's map editor. Only the picture changes: the game runs exactly as without it."
+license = "MIT"
+resolver = "declarative"
+save_compatibility = "shared"
+
+[[target]]
+game_id = "secretofevermore-usa"
+rom_sha256 = "17c864a76d498feb6479eee8e7d6807b951c66225033228622bb66754baab1db"
+
+[[feature]]
+id = "overlay"
+name = "Debug overlay"
+description = "During play (not in menus, cutscene pages or Mode 7): each layer below on or off. Presentation only (src/soe_debug_overlay.c)."
+group = "Debug"
+default_enabled = false
+presentation_only = true
+
+[[option]]
+feature = "overlay"
+id = "collision"
+label = "Collision"
+description = "Walls as a contour in the colour of their level (blue 0, red 1, green 2, violet 3); the walls of the Boy's level tinted red."
+type = "boolean"
+default = true
+
+[[option]]
+feature = "overlay"
+id = "specials"
+label = "Special cells"
+description = "Drift and stairs (cyan), see-through bridges (violet), character gates (white frame)."
+type = "boolean"
+default = true
+
+[[option]]
+feature = "overlay"
+id = "triggers"
+label = "Triggers"
+description = "Step-on boxes (magenta) and B boxes (yellow), each with its script id."
+type = "boolean"
+default = true
+
+[[option]]
+feature = "overlay"
+id = "objects"
+label = "Map objects"
+description = "Every state of every map object (doors, gourds, bridges) as a blue box with the object's number."
+type = "boolean"
+default = true
+
+[[option]]
+feature = "overlay"
+id = "characters"
+label = "Characters"
+description = "Each character's body (the box it collides with): blue for the party and friends, red for enemies, dashed while asleep."
+type = "boolean"
+default = true
+
+[[option]]
+feature = "overlay"
+id = "labels"
+label = "Labels"
+description = "Script ids and object numbers."
+type = "boolean"
+default = true
+
+[[plugin]]
+feature = "overlay"
+id = "soe.debug.overlay"

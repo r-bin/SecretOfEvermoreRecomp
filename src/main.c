@@ -27,6 +27,7 @@
 
 #include "host_main.h"
 #include "game_rtl.h"
+#include "soe_debug_overlay.h"
 #include "soe_hud.h"
 #include "soe_widescreen.h"
 void SoeAfterConfig(void);   /* src/game_rtl.c */
@@ -46,11 +47,12 @@ void SoePrepareFrame(int drawable_w, int drawable_h, int *frame_w, int *frame_h)
 #define SNES_GAME_VERSION "dev"
 #endif
 
-/* After the raster: widescreen blacks the margins outside the room, then the HUD mod draws the
- * HUD it captured (it may sit in those margins). */
+/* After the raster: widescreen blacks the margins outside the room, the debug overlay draws over the
+ * room, then the HUD mod draws the HUD it captured (it may sit in those margins, over the overlay). */
 static void SoeEndSimFrame(const uint8_t *field, unsigned number)
 {
     SoeWsEndFrame(field, number);
+    SoeDebugEndFrame(field, number);
     SoeHudEndFrame(field, number);
 }
 

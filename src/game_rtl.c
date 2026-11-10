@@ -30,6 +30,7 @@
 #include "snes/saveload.h"
 #include "snes/snes.h"
 #include "soe_frame_driver.h"
+#include "soe_debug_overlay.h"
 #include "soe_hud.h"
 #include "soe_widescreen.h"
 #include "desktop/host_main.h"
@@ -481,6 +482,7 @@ void SoeAfterConfig(void) {
 void SoePrepareFrame(int drawable_w, int drawable_h, int *frame_w, int *frame_h) {
     SoeHdMode7Off(); /* the launcher's Settings can switch it on in a running game */
     SoeWsPrepareFrame(drawable_w, drawable_h, frame_w, frame_h);
+    SoeDebugPrepareFrame(*frame_w);
     const int hud = SoeHudPrepareFrame(*frame_w);
     snesrecomp_desktop_set_new_renderer(g_ppu && ((g_ppu->bgmode & 7) == 7 || hud));
 }

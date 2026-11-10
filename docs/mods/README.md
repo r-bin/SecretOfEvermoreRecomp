@@ -6,6 +6,7 @@ mod (this folder); the skill `mods` (`.agents/skills/mods/SKILL.md`) is how to m
 | Mod | Recomp package (`mods/preloaded/packages/`) | Changes the game | MesenCE counterpart (`mods/mesen/`) | Same? | Page |
 |---|---|---|---|---|---|
 | Practice hotkeys | `soe.practice.cheats` 1.0.0, plugin `soe.cheats` | yes | `soe.practice.cheats.lua` | **same** (2026-11-10, replay 02 + every hotkey) | [cheats.md](cheats.md) |
+| Debug overlay | `soe.debug.overlay` 1.0.0, plugin `soe.debug.overlay` | no | none: presentation only, no guest state to compare | — | [debug-overlay.md](debug-overlay.md) |
 | Adaptive HUD | `soe.enhancement.hud` 1.0.0, plugin `soe.hud` | no | none: presentation only, no guest state to compare; MesenCE cannot take a layer out of its picture | — | [hud.md](hud.md) |
 | Widescreen | `soe.enhancement.widescreen` 1.0.0, plugins `soe.widescreen`, `soe.widescreen.alive` | vanilla modes no, experimental yes | none: MesenCE cannot draw past 256 px | — | [widescreen.md](widescreen.md) |
 
