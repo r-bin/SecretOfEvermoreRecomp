@@ -1,5 +1,6 @@
 /*
- * Widescreen "extended" sprites: draw in the margins the entities the game does not put into OAM.
+ * Widescreen margin characters (option Characters = colour or grey): draw in the margins the entities the game does
+ * not put into OAM.
  *
  * The game never places a sprite at X >= 256 and lets far entities sleep, so in the margins the
  * vanilla picture has map but no characters. This draws them from WRAM, the way everscript-vscode's
@@ -28,7 +29,7 @@
  *                 eight facings at 2*facing, bit 6 four at $90:815B[facing]; $90:8124), facing +$22;
  *                 its script's first set-sprite command (0x22..0x2B: bank = cmd + $A8) is the frame
  *                 (everscript-vscode maps/character-animation.ts, resolveCharacterSprite)
- *   ghosts        every extended mode (it only reads WRAM): a spawn record (60 at $5DC3, 16 bytes) with a count left (+$0C) is drawn at
+ *   ghosts        whenever margin characters are drawn (it only reads WRAM): a spawn record (60 at $5DC3, 16 bytes) with a count left (+$0C) is drawn at
  *                 its point (+$02/+$04) as a dark silhouette of the largest frame seen on a live entity of its
  *                 character (record +$00; its standing frame until one is seen),
  *                 thinned by an ordered dither whose density follows the screen distance from the 4:3 edge (half
@@ -110,7 +111,7 @@ static int Depth(uint32_t e, uint8_t *priority)
     return 1;
 }
 
-static void Add(Snapshot *s, uint32_t sprite, int x, int y, uint8_t slot, uint8_t priority, int sort)
+static void Add(Snapshot *s, uint32_t sprite, int x, int y, uint8_t slot, uint8_t priority, int sort, uint8_t ghost)
 {
     if (s->count >= kMaxItems || (sprite >> 16) < 0xC0 || (sprite & 0xffff) < 3) return;
     s->item[s->count].sprite = sprite;
@@ -119,7 +120,7 @@ static void Add(Snapshot *s, uint32_t sprite, int x, int y, uint8_t slot, uint8_
     s->item[s->count].palette_slot = slot;
     s->item[s->count].priority = priority;
     s->item[s->count].sort = (int16_t)sort;
-    s->item[s->count].ghost = 0;
+    s->item[s->count].ghost = ghost;
     s->count++;
 }
 
@@ -181,22 +182,29 @@ static uint32_t StandingSprite(uint16_t record, int facing)
     return sprite;
 }
 
-/* A sprite's bounding box area from its chunk table (count, offset, then 5 bytes per chunk: flags, x, y, block), or 0. */
-static int SpriteArea(uint32_t sprite)
+/* A sprite's bounding box from its chunk table (count, offset, then 5 bytes per chunk: flags, x:s8, y:s8, block): the
+ * chunk count, 0 when there is nothing to draw. */
+static int SpriteBox(uint32_t sprite, int *x0, int *y0, int *x1, int *y1)
 {
     int count = RomU8(sprite), first = RomU8(sprite + 1);
     if (!sprite || count <= 0 || first < 0 || count > 64) return 0;
-    int x0 = 1 << 20, y0 = 1 << 20, x1 = -(1 << 20), y1 = -(1 << 20);
+    *x0 = *y0 = 1 << 20, *x1 = *y1 = -(1 << 20);
     for (int i = 0; i < count; i++) {
         uint32_t c = sprite + (uint32_t)first + 5u * (uint32_t)i;
         int flags = RomU8(c), cx = (int8_t)RomU8(c + 1), cy = (int8_t)RomU8(c + 2), n = (flags & 1) ? 16 : 8;
         if (flags < 0) return 0;
-        if (cx < x0) x0 = cx;
-        if (cy < y0) y0 = cy;
-        if (cx + n > x1) x1 = cx + n;
-        if (cy + n > y1) y1 = cy + n;
+        if (cx < *x0) *x0 = cx;
+        if (cy < *y0) *y0 = cy;
+        if (cx + n > *x1) *x1 = cx + n;
+        if (cy + n > *y1) *y1 = cy + n;
     }
-    return (x1 - x0) * (y1 - y0);
+    return count;
+}
+
+static int SpriteArea(uint32_t sprite)
+{
+    int x0, y0, x1, y1;
+    return SpriteBox(sprite, &x0, &y0, &x1, &y1) ? (x1 - x0) * (y1 - y0) : 0;
 }
 
 /* The largest frame seen on a live entity of each character record: a ghost's silhouette. The standing frame alone
@@ -232,16 +240,13 @@ static void SnapshotEntity(Snapshot *s, uint32_t e)
     uint8_t slot = g_ram[e + 0x0C];
     const uint16_t record = W(e + 0x60);
     if (SoeAliveHeld((uint16_t)e)) {
-        main = GhostSprite(record, g_ram[e + 0x22]);
-        const int before = s->count;
-        Add(s, main, x, y - (z >> 4), slot, priority, y);
-        if (s->count > before) s->item[before].ghost = 1;
+        Add(s, GhostSprite(record, g_ram[e + 0x22]), x, y - (z >> 4), slot, priority, y, 1);
         return;
     }
     if (record >= 0x8000 && W(e + 0x2A) && (W(e + 0x10) & 0x0100) && !(hide & 0x8000) && W(e + 0x06))
         SeeSprite(record, main);
-    if (!(hide & 0x4000)) Add(s, shadow, x, y, slot, priority, y - 1);
-    if (!(hide & 0x8000)) Add(s, main, x, y - (z >> 4), slot, priority, y);
+    if (!(hide & 0x4000)) Add(s, shadow, x, y, slot, priority, y - 1, 0);
+    if (!(hide & 0x8000)) Add(s, main, x, y - (z >> 4), slot, priority, y, 0);
 }
 
 /* Spawn records with a count left, as ghosts at their points. */
@@ -249,10 +254,8 @@ static void SnapshotGhosts(Snapshot *s)
 {
     for (uint32_t r = kSpawnFirst; r < kSpawnEnd; r += kSpawnStride) {
         if (!W(r + 0x0C) || W(r) < 0x8000) continue;
-        const uint32_t sprite = GhostSprite(W(r), 4);   /* facing down */
-        const int x = (int16_t)W(r + 0x02), y = (int16_t)W(r + 0x04), before = s->count;
-        Add(s, sprite, x, y, 0, 2, y);
-        if (s->count > before) s->item[before].ghost = 1;
+        const int y = (int16_t)W(r + 0x04);
+        Add(s, GhostSprite(W(r), 4), (int16_t)W(r + 0x02), y, 0, 2, y, 1);   /* facing down */
     }
 }
 
@@ -282,7 +285,7 @@ static void TakeSnapshot(Snapshot *s)
         uint32_t e = kProjectiles + (uint32_t)p * kProjectileStride;
         if (!W(e + 0x10)) continue;
         int x = (int16_t)W(e + 0x14) >> 4, y = (int16_t)W(e + 0x16) >> 4, z = (int16_t)W(e + 0x18) >> 4;
-        Add(s, (uint32_t)g_ram[e + 0x08] << 16 | W(e + 0x06), x, y - z, g_ram[e + 0x0C], 3, y);
+        Add(s, (uint32_t)g_ram[e + 0x08] << 16 | W(e + 0x06), x, y - z, g_ram[e + 0x0C], 3, y, 0);
     }
     SnapshotGhosts(s);
 }
@@ -338,18 +341,9 @@ static uint16_t Grey(uint16_t bgr)
 /* Compose one sprite into `px` (BGR555 | $8000, 0 = transparent); returns 0 when nothing to draw. */
 static int Compose(const Item *it, int grey, uint16_t *px, int *ox, int *oy, int *w, int *h, int *math)
 {
-    int count = RomU8(it->sprite), first = RomU8(it->sprite + 1);
-    if (count <= 0 || first < 0 || count > 64) return 0;
-    int x0 = 1 << 20, y0 = 1 << 20, x1 = -(1 << 20), y1 = -(1 << 20);
-    for (int i = 0; i < count; i++) {
-        uint32_t c = it->sprite + (uint32_t)first + 5u * (uint32_t)i;
-        int flags = RomU8(c), cx = (int8_t)RomU8(c + 1), cy = (int8_t)RomU8(c + 2), n = (flags & 1) ? 16 : 8;
-        if (flags < 0) return 0;
-        if (cx < x0) x0 = cx;
-        if (cy < y0) y0 = cy;
-        if (cx + n > x1) x1 = cx + n;
-        if (cy + n > y1) y1 = cy + n;
-    }
+    int x0, y0, x1, y1;
+    const int count = SpriteBox(it->sprite, &x0, &y0, &x1, &y1), first = RomU8(it->sprite + 1);
+    if (!count) return 0;
     *w = x1 - x0, *h = y1 - y0;
     if (*w <= 0 || *h <= 0 || *w > kMaxSide || *h > kMaxSide) return 0;
     memset(px, 0, sizeof(uint16_t) * (size_t)(*w) * (size_t)(*h));
@@ -401,9 +395,10 @@ void SoeWsSpritesReset(void)
 void SoeWsSpritesFrame(int enabled, int grey, int cam_x, int cam_y, int left, int right)
 {
     if (!g_ppu) return;
-    if (s_center < 0) { const char *c = getenv("SOE_WS_SPRITES_CENTER"); s_center = c && *c == '1';
-                      const char *d = getenv("SOE_WS_DEBUG"); s_debug = d && *d == '1';
-                      const char *sh = getenv("SOE_WS_SPRITES_SHIFT"); s_shift = sh ? atoi(sh) : 0; }
+    if (s_center < 0) {
+        const char *c = getenv("SOE_WS_SPRITES_CENTER"), *d = getenv("SOE_WS_DEBUG"), *sh = getenv("SOE_WS_SPRITES_SHIFT");
+        s_center = c && *c == '1', s_debug = d && *d == '1', s_shift = sh ? atoi(sh) : 0;
+    }
     TakeSnapshot(&s_next);
     PpuSetExtraObjects(g_ppu, NULL, 0);
     if (enabled && s_prev.room == s_next.room && (left || right)) {
@@ -426,9 +421,9 @@ void SoeWsSpritesFrame(int enabled, int grey, int cam_x, int cam_y, int left, in
              * the centre too (under native OAM), to check the placement against the game's own;
              * SOE_WS_SPRITES_SHIFT=<px> moves them, the control that such a check can fail. */
             if (!s_center)
-            for (int r = 0; r < h; r++)
-                for (int q = 0; q < w; q++)
-                    if (sx + q >= 0 && sx + q < 256) px[r * w + q] = 0;
+                for (int r = 0; r < h; r++)
+                    for (int q = 0; q < w; q++)
+                        if (sx + q >= 0 && sx + q < 256) px[r * w + q] = 0;
             if (it->ghost) GhostFade(px, w, h, sx, sy);
             PpuExtraObject *o = &s_objects[drawn];
             o->x = sx, o->y = sy;

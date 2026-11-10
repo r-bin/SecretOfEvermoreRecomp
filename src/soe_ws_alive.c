@@ -1,7 +1,8 @@
 /*
  * Widescreen experiment E6: the whole room alive, and at most `cap` characters drawn into a fight in the 4:3 view
  * (docs/widescreen/enemies.md, "E6 as built"). This CHANGES the game: an ordinary plugin, never presentation-only,
- * active only while the launcher's "Widescreen (experimental)" feature is on.
+ * active only while the launcher's "Whole room alive (experimental)" feature is on. It runs with or without the
+ * Widescreen feature; its ghosts are drawn by Widescreen's margin characters (src/soe_ws_sprites.c).
  *
  * Three parts:
  *  - Free time (SoeAliveFreeTime; src/soe_bindings.c HleFieldTickFree*, src/soe_frame_driver.c): the script and entity
@@ -39,7 +40,7 @@
  * picks the branch. Not gated on the widescreen field gate: a menu or a narrow room in between would let vanilla put
  * the room back to sleep (the hooks run only in the field tick anyway).
  *
- * Settings: the mod feature "experimental" (options cap, count). SOE_WS_ALIVE=0 switches E6 off (kill switch),
+ * Settings: the mod feature "alive" (options cap, count). SOE_WS_ALIVE=0 switches E6 off (kill switch),
  * SOE_WS_FREE=0 only its free time; nothing switches E6 on but the feature. Test knobs: SOE_WS_ALIVE_RESERVE=<n>
  * (default 4), SOE_WS_ALIVE_DEBUG=1 prints count and budget every 60th frame, SOE_WS_ALIVE_AFTER=<$0B19> keeps E6 off
  * until that logic frame (a vanilla replay stays in sync up to there, then E6 takes over).
@@ -73,7 +74,7 @@ enum {
 };
 
 #define kModPackage "soe.enhancement.widescreen"
-#define kModFeature "experimental"
+#define kModFeature "alive"
 
 static struct { int on, cap, enemies_only; } s_mod;
 static struct { int read, off, free_off, reserve, debug; long after; } s_env;

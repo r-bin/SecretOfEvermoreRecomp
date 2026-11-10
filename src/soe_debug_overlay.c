@@ -31,6 +31,8 @@
  * objects, characters, labels> (replaces the options).
  */
 #include "soe_debug_overlay.h"
+#include "soe_widescreen.h"
+#include "snes_osd.h"
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -52,6 +54,7 @@ enum {
     kScrollBg2H = 0x0112, kScrollBg2V = 0x0114,
     kAwakeHead = 0x3DDF, kAsleepHead = 0x3DE1, kSlotFirst = 0x3DE5, kSlotEnd = 0x4FE5,
     kBoy = 0x4E89, kDog = 0x4F37,
+    kHeld = 0x0EC6, kStart = 0x1000, kSelect = 0x2000, kL = 0x0020,
     kRoomTable = 0x9FFDE7,
     kMaxRects = 512, kMaxChars = 48,
 };
@@ -64,6 +67,9 @@ typedef struct { uint8_t r, g, b; } Rgb;
 static const Rgb kPlane[4] = { { 0, 170, 255 }, { 235, 25, 25 }, { 0, 255, 170 }, { 190, 90, 255 } };
 
 static struct { int on, layers; } s_mod;
+static int s_hotkey_enabled = 1;
+static int s_hotkey_layers = -1;
+static uint16_t s_prev_chord = 0;
 
 /* ---- options ---------------------------------------------------------------------------------- */
 
@@ -74,7 +80,12 @@ static int OptionOn(const char *id, int dflt)
     return !strcmp(v, "true") || !strcmp(v, "1");
 }
 
-static void ModReset(void) { memset(&s_mod, 0, sizeof s_mod); }
+static void ModReset(void) {
+    memset(&s_mod, 0, sizeof s_mod);
+    s_hotkey_enabled = 1;
+    s_hotkey_layers = -1;
+    s_prev_chord = 0;
+}
 
 static void ModActivate(void)
 {
@@ -92,16 +103,26 @@ SNES_MOD_CONSTRUCTOR(soe_register_debug_overlay_plugin)
 
 static int Layers(void)
 {
+    if (!s_hotkey_enabled) return 0;
     const char *on = getenv("SOE_DEBUG_OVERLAY");
     if (on && *on && atoi(on) == 0) return 0;
     const int enabled = (on && *on) || s_mod.on || snes_mod_runtime_feature_enabled_c(kModPackage, kModFeature);
     if (!enabled) return 0;
+    if (s_hotkey_layers >= 0) return s_hotkey_layers;
     const char *list = getenv("SOE_DEBUG_LAYERS");
-    if (!list) return s_mod.on ? s_mod.layers : 63;
-    int layers = 0;
-    for (int i = 0; i < 6; i++)
-        if (strstr(list, kLayerNames[i])) layers |= 1 << i;
-    return layers;
+    if (list) {
+        int layers = 0;
+        for (int i = 0; i < 6; i++)
+            if (strstr(list, kLayerNames[i])) layers |= 1 << i;
+        return layers;
+    }
+    if (snes_mod_runtime_feature_enabled_c(kModPackage, kModFeature)) {
+        int layers = 0;
+        for (int i = 0; i < 6; i++)
+            if (OptionOn(kLayerNames[i], 1)) layers |= 1 << i;
+        return layers;
+    }
+    return s_mod.on ? s_mod.layers : 63;
 }
 
 /* ---- memory ----------------------------------------------------------------------------------- */
@@ -166,12 +187,13 @@ static int Passability(int cw, int plane)
 /* ---- drawing ---------------------------------------------------------------------------------- */
 
 /* The field: frame_w x 224 pixels 0xAARRGGBB; screen x 0 is column `extra`. This frame's layers. */
-static struct { uint32_t *px; int w, extra, layers; } s_out;
+static struct { uint32_t *px; int w, extra, ws_left, ws_right, layers; } s_out;
 
 static void Blend(int sx, int sy, Rgb c, int alpha256)
 {
     const int x = sx + s_out.extra;
     if (x < 0 || x >= s_out.w || sy < 0 || sy >= kLines) return;
+    if (x < s_out.extra - s_out.ws_left || x >= s_out.extra + 256 + s_out.ws_right) return;
     uint32_t *p = &s_out.px[(size_t)sy * s_out.w + x];
     const uint32_t d = *p;
     const int r = (int)(d >> 16 & 255), g = (int)(d >> 8 & 255), b = (int)(d & 255);
@@ -325,7 +347,7 @@ static void Triggers(int cam_x, int cam_y)
 }
 
 /* Every state of every Section 3 object of the room, from the ROM (maps/room.ts readObjects). */
-static struct { int room; uint32_t blob; int count; struct { uint8_t x, y, w, h, index; } r[kMaxRects]; } s_objects = { -1 };
+static struct { int room; uint32_t blob; int count; struct { uint8_t x, y, w, h, index, state; } r[kMaxRects]; } s_objects = { -1 };
 
 static void LoadObjects(int room)
 {
@@ -355,6 +377,7 @@ static void LoadObjects(int room)
             s_objects.r[s_objects.count].w = R8(target) ? R8(target) : 1;
             s_objects.r[s_objects.count].h = R8(target + 1) ? R8(target + 1) : 1;
             s_objects.r[s_objects.count].index = (uint8_t)i;
+            s_objects.r[s_objects.count].state = (uint8_t)s;
             s_objects.count++;
         }
     }
@@ -365,11 +388,14 @@ static void Objects(int cam_x, int cam_y)
     LoadObjects(g_ram[kRoomId]);
     const Rgb blue = { 33, 150, 243 }, ink = { 150, 210, 255 };
     for (int i = 0; i < s_objects.count; i++) {
+        const int obj_idx = s_objects.r[i].index;
+        const int cur_state = g_ram[0x10CE + obj_idx];
+        const int is_active = (s_objects.r[i].state == cur_state);
         const int x1 = s_objects.r[i].x * 16 - cam_x, y1 = s_objects.r[i].y * 16 - cam_y;
         const int x2 = x1 + s_objects.r[i].w * 16, y2 = y1 + s_objects.r[i].h * 16;
-        Box(x1, y1, x2, y2, blue, 230, 82, 0);
+        Box(x1, y1, x2, y2, blue, is_active ? 256 : 140, is_active ? 82 : 25, !is_active);
         char text[8];
-        Number(text, s_objects.r[i].index, 10);
+        Number(text, obj_idx, 10);
         Label(x1, y1, x2, y2, text, ink, 1);
     }
 }
@@ -426,11 +452,36 @@ void SoeDebugPrepareFrame(int frame_w)
 void SoeDebugEndFrame(const uint8_t *field, unsigned number)
 {
     (void)number;
+    if (IsFieldFrame()) {
+        const uint16_t held = W(kHeld);
+        const uint16_t chord = (held & kStart) ? (held & (kSelect | kL)) : 0;
+        if (chord && chord != s_prev_chord) {
+            if (chord & kSelect) {
+                s_hotkey_enabled = !s_hotkey_enabled;
+                snes_osd_push(s_hotkey_enabled ? "Debug overlay: on" : "Debug overlay: off", 0);
+            } else if (chord & kL) {
+                static const int kPresets[6] = { 63, kCollision | kLabels, kSpecials, kTriggers | kLabels, kObjects | kLabels, kCharacters };
+                static const char *const kPresetNames[6] = {
+                    "Debug layers: all", "Debug layers: collision", "Debug layers: specials",
+                    "Debug layers: triggers", "Debug layers: objects", "Debug layers: characters"
+                };
+                static int s_idx = 0;
+                s_idx = (s_idx + 1) % 6;
+                s_hotkey_layers = kPresets[s_idx];
+                snes_osd_push(kPresetNames[s_idx], 0);
+            }
+        }
+        s_prev_chord = chord;
+    }
     const int layers = Layers();
     if (!field || !layers || !IsFieldFrame()) { s_drawn.count = s_now.count = 0; return; }
     s_out.px = (uint32_t *)(uintptr_t)field;
     s_out.w = s_frame_w;
     s_out.extra = (s_frame_w - 256) / 2;
+    int ws_left = 0, ws_right = 0;
+    SoeWsMargins(&ws_left, &ws_right);
+    s_out.ws_left = ws_left;
+    s_out.ws_right = ws_right;
     s_out.layers = layers;
     const int bg2_x = DrawnScroll(g_ppu->hScroll[1], W(kScrollBg2H));
     const int bg2_y = DrawnScroll(g_ppu->vScroll[1], W(kScrollBg2V));

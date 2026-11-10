@@ -19,7 +19,7 @@ enum {
 };
 uint16_t SoeAliveDecide(uint16_t slot, uint16_t cam_x, uint16_t cam_y);
 
-/* E6 is on: only the mod's experimental feature turns it on (SOE_WS_ALIVE=0 turns it off). */
+/* E6 is on: only the mod's feature "alive" turns it on (SOE_WS_ALIVE=0 turns it off). */
 int SoeAliveEnabled(void);
 /* E6 is on: the script and entity part of the field tick runs in free time. */
 int SoeAliveFreeTime(void);

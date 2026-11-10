@@ -1,5 +1,5 @@
 /*
- * Widescreen "extended" sprites: entities drawn in the margins from WRAM (src/soe_ws_sprites.c).
+ * Widescreen margin characters: entities drawn in the margins from WRAM (src/soe_ws_sprites.c).
  * Presentation only.
  */
 #ifndef SOE_WS_SPRITES_H
@@ -8,7 +8,7 @@
 /* Called once per frame from the widescreen begin_sim_frame on field frames. `enabled` 0 still
  * takes the snapshot (so switching on mid-room has last frame's state) but draws nothing; `grey`
  * draws them in grey (the colours still follow CGRAM, so fades apply). The spawn records still to spawn are drawn
- * as dark silhouettes (ghosts) in every extended mode. Camera and margins are those of the field being drawn. */
+ * as dark silhouettes (ghosts) whenever `enabled`. Camera and margins are those of the field being drawn. */
 void SoeWsSpritesFrame(int enabled, int grey, int cam_x, int cam_y, int left, int right);
 /* Drops the snapshot and the PPU's extra objects (room change, non-field frames). */
 void SoeWsSpritesReset(void);

@@ -29,6 +29,7 @@ picture shows them). The facts and their evidence are in the file's head comment
 tags `map.collision`, `map.triggers`, `map.objects`, `map.characters`.
 
 Switches: `SOE_DEBUG_OVERLAY=0|1`, `SOE_DEBUG_LAYERS=collision,specials,triggers,objects,characters,labels`.
+In-game chords: `Start + Select` toggles overlay on/off; `Start + L` cycles layer presets (All, Collision, Specials, Triggers, Objects, Characters) with on-screen OSD toasts.
 
 ## MesenCE counterpart
 
@@ -39,21 +40,15 @@ None: presentation only, no guest state to compare.
 | Date | What | Result |
 |---|---|---|
 | 2026-11-10 | Headless from a save, room `0x51`, two views, 4:3 and 64-px widescreen; overlay on and off | contours on the walls and the fire pit, B-triggers on the pots with their ids, step-on at the exit, objects 5..7, the party and the NPC as friendly bodies; WRAM, VRAM, CGRAM, OAM identical on and off |
-| 2026-11-10 | `ctest`, `replay_0x_widescreen` now also with `SOE_DEBUG_OVERLAY=1` | 8 of 8 pass |
+| 2026-11-10 | `ctest`, `replay_0x_widescreen` with widescreen, adaptive HUD and debug overlay on | 8 of 8 pass |
+| 2026-11-10 | In-game hotkeys and margin clipping | `Start + Select` toggles overlay, `Start + L` cycles presets; widescreen margins clipped via `SoeWsMargins` |
+| 2026-11-10 | Active map object state detection | `$7E:10CE,X` singles out active state with solid border; other states drawn dashed |
 
 ## Missing
 
-- **Launcher options not tried**: boolean options are read as `"true"`/`"1"` (`OptionOn`); only the
-  environment switches were run. Check once from the launcher's Mods page.
-- **No hotkey**: layers change only through the options (and a restart of the feature); a toggle key
-  in play would help.
-- **Widescreen margins**: the overlay draws over the black margins outside the camera limits too
-  (the neighbouring hut of a hut map); the widescreen mod's limits are not exported to cut it.
 - **Not drawn yet** (the editor has them): cuttable grass, elevation changes (orange), drift arrows,
   dashed "covered by the foreground" boundaries, step-on (bit 14) and interact (bit 15) cells,
   enemy spawn records and the room's enter-script placements, projectiles, attack and hurt boxes.
-- **Objects**: every state is drawn as the editor does; the current state (`$10CE,X`, stride unchecked)
-  is not singled out, and object states moved by scripts are not followed.
 - **Wall tint** follows the Boy's level, not the room's main level as in the editor; the B-trigger test
   point (moved toward the facing, `$8FAC84`) is not shown.
 - **Rooms checked**: only `0x51`. Rooms with camera modes 1/3 (parallax) or heat shimmer, and rooms

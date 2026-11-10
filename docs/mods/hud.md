@@ -47,6 +47,7 @@ Writes no guest state: WRAM, VRAM, CGRAM and OAM stay byte-identical with it on 
 Switches: `SOE_HUD=0|1` (off, or on with the defaults), `SOE_HUD_POSITION=bottom|top|hidden`,
 `SOE_HUD_LAYOUT=centered|edges`; `SOE_HUD_DEBUG=1` prints each capture; `SOE_HUD_SHOT=<dir>` with
 `SOE_HUD_SHOT_FRAMES=<n,...>` saves whole wide fields (a script `dump` keeps only the 4:3 part).
+In-game chords: `Start + R` cycles position (bottom -> top -> hidden); `Start + X` toggles layout (screen edges <-> centred) with on-screen OSD toasts.
 
 Traps met on the way:
 - At the field's BG3 scroll, the last line of row 31 is screen line 0, and rows 28..31 hold no
@@ -65,3 +66,4 @@ compare, and MesenCE's Lua cannot take a layer out of its picture.
 | 2026-11-10 | Headless from a save (room `0x51`): field, a ring menu, a dialogue; positions Bottom, Top, Hidden in 4:3; Bottom and Top with Screen edges at 64 px margins; pictures compared by eye and by pixel | Top moves the HUD in the field and keeps it at the bottom under the ring menu's title and the dialogue; Hidden removes it in all three; Bottom + Centred is pixel-identical to off; Screen edges puts the boxes and portraits at the picture's edges |
 | 2026-11-10 | Same runs: WRAM, VRAM, CGRAM, OAM of Hidden against off; two Hidden runs against each other | identical; repeatable |
 | 2026-11-10 | `ctest` (8 tests), with `replay_0x_widescreen` now also running Top + Screen edges (`CMakeLists.txt`) | all pass |
+| 2026-11-10 | In-game hotkeys and live options | `Start + R` cycles position with OSD toasts; `Start + X` toggles layout with OSD toasts; live options sync |

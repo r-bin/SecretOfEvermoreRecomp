@@ -26,6 +26,7 @@
  * saves whole wide fields.
  */
 #include "soe_hud.h"
+#include "snes_osd.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -47,6 +48,8 @@ enum {
     kLines = 224,
     kTopLine = 6,             /* the top edge of the HUD's top row when moved up (mirrors the bottom gap) */
     kHalf = 128,              /* left of it the Boy's half, right of it the Dog's */
+    kHeld = 0x0EC6,           /* INPUT_P1_HELD_BUTTONS */
+    kStart = 0x1000, kR = 0x0010, kX = 0x0040,
 };
 
 #define kModPackage "soe.enhancement.hud"
@@ -61,6 +64,10 @@ static struct {
     enum Layout layout;
 } s_mod;
 
+static int s_hotkey_position = -1;
+static int s_hotkey_layout = -1;
+static uint16_t s_prev_hud_chord = 0;
+
 /* This frame's capture: band lines [y0, kLines), moved by dy and by dx_left / dx_right per half. */
 static struct {
     int active, draw, frame_w, extra, y0, dy, dx_left, dx_right;
@@ -72,6 +79,9 @@ static int s_frame_w = 256;   /* this frame's width, captured or not */
 static void ModReset(void)
 {
     memset(&s_mod, 0, sizeof s_mod);
+    s_hotkey_position = -1;
+    s_hotkey_layout = -1;
+    s_prev_hud_chord = 0;
 }
 
 static int OptionIs(const char *option, const char *value)
@@ -103,15 +113,25 @@ static int Enabled(void)
 
 static enum Position PositionMode(void)
 {
+    if (s_hotkey_position >= 0) return (enum Position)s_hotkey_position;
     const char *v = getenv("SOE_HUD_POSITION");
     if (v && *v) return !strcmp(v, "top") ? kTop : !strcmp(v, "hidden") ? kHidden : kBottom;
+    if (snes_mod_runtime_feature_enabled_c(kModPackage, kModFeature)) {
+        if (OptionIs("position", "top")) return kTop;
+        if (OptionIs("position", "hidden")) return kHidden;
+        return kBottom;
+    }
     return s_mod.on ? s_mod.position : kBottom;
 }
 
 static enum Layout LayoutMode(void)
 {
+    if (s_hotkey_layout >= 0) return (enum Layout)s_hotkey_layout;
     const char *v = getenv("SOE_HUD_LAYOUT");
     if (v && *v) return !strcmp(v, "centered") ? kCentered : kEdges;
+    if (snes_mod_runtime_feature_enabled_c(kModPackage, kModFeature)) {
+        return OptionIs("layout", "centered") ? kCentered : kEdges;
+    }
     return s_mod.on ? s_mod.layout : kEdges;
 }
 
@@ -172,6 +192,22 @@ static void Unbind(void)
 
 int SoeHudPrepareFrame(int frame_w)
 {
+    const uint16_t held = (uint16_t)(g_ram[kHeld] | (g_ram[kHeld + 1] << 8));
+    const uint16_t chord = (held & kStart) ? (held & (kR | kX)) : 0;
+    if (chord && chord != s_prev_hud_chord) {
+        if (chord & kR) {
+            enum Position cur = PositionMode();
+            enum Position next = (cur == kBottom) ? kTop : (cur == kTop) ? kHidden : kBottom;
+            s_hotkey_position = next;
+            snes_osd_push(next == kBottom ? "HUD: bottom" : next == kTop ? "HUD: top" : "HUD: hidden", 0);
+        } else if (chord & kX) {
+            enum Layout cur = LayoutMode();
+            enum Layout next = (cur == kEdges) ? kCentered : kEdges;
+            s_hotkey_layout = next;
+            snes_osd_push(next == kEdges ? "HUD layout: screen edges" : "HUD layout: centred", 0);
+        }
+    }
+    s_prev_hud_chord = chord;
     const enum Position position = Enabled() ? PositionMode() : kBottom;
     const enum Layout layout = LayoutMode();
     const int extra = (frame_w - 256) / 2;
