@@ -32,7 +32,7 @@ Ordered as found. "Fixed in PR n" means in the framework patch, as pull request 
 | [cgram-read-open-bus.md](cgram-read-open-bus.md) | snesrecomp PPU | `$213B` high byte's bit 7 is 0, not the PPU2 open bus | fixed for DMA reads in our glue (`src/soe_ppu_fixes.c`) |
 | [vblank-flag-at-access.md](vblank-flag-at-access.md) | snesrecomp registers | `$4212` bit 7 read at the instruction's start, bits 1-5 read 0 | fixed in our frame driver (bit 7) and `src/soe_ppu_fixes.c` (bits 1-5) |
 | [vram-writes-during-rendering.md](vram-writes-during-rendering.md) | snesrecomp PPU | VRAM writes outside vblank are stored, not dropped | fixed for DMA in our glue (`src/soe_ppu_fixes.c`) |
-| [fade-rounding.md](fade-rounding.md) | snesrecomp PPU | below full brightness a pixel differs by one 5-bit step: snesrecomp rounds (bsnes), MesenCE truncates | explained: with MesenCE's rule (`--fade`, PR 5) both replays' pictures are identical |
+| [fade-rounding.md](fade-rounding.md) | snesrecomp PPU | below full brightness a pixel differs by one 5-bit step: snesrecomp rounds (bsnes), MesenCE truncates | explained: with MesenCE's rule (`--fade`, PR 5, [#281](https://github.com/RetroPortingToolKit/snesrecomp/pull/281), open) both replays' pictures are identical |
 | [dsp-endx-read.md](dsp-endx-read.md) | snesrecomp S-DSP | an SPC700 read sees a voice's ENDX bit a clock early: single keys of `sound`, once of ARAM | open |
 | [dsp-brr-offset-reset.md](dsp-brr-offset-reset.md) | snesrecomp S-DSP | a voice's BRR offset starts at 0, not 1, until its first key-on | open, harmless |
 | [mesen-rom-mirror.md](mesen-rom-mirror.md) | MesenCE | its 4th MB is one file page over and over | copied in compare runs only |

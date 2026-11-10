@@ -28,7 +28,7 @@ rewrite modelled it. Against the new rounding that rewrite was wrong, which is w
 
 ## How `--fade` works
 `SOE_COMPARE_FADE` sets `g_ppu_brightness_truncate`, a switch in snesrecomp's `ppu_brightness_level` (the framework patch,
-[../pr/05-brightness-rule.md](../pr/05-brightness-rule.md)), before the first frame. Every renderer path then scales as MesenCE does.
+[../pr/05-brightness-rule.md](../pr/05-brightness-rule.md), upstream [#281](https://github.com/RetroPortingToolKit/snesrecomp/pull/281)), before the first frame. Every renderer path then scales as MesenCE does.
 Nothing is rewritten after drawing, so a brightness change in the middle of a frame is drawn as it happens.
 
 ## Still open
