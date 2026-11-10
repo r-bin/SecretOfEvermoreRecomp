@@ -198,8 +198,8 @@ jobs:
       - name: Assert no generated C in the tree
         run: |
           set -euo pipefail
-          if compgen -G 'src/gen/*.c' >/dev/null || [[ -f recomp/funcs.h ]]; then
-            echo "::error::src/gen/*.c or recomp/funcs.h is present in the checkout."
+          if compgen -G 'src/gen/*.c' >/dev/null || compgen -G 'src/gen-*/*.c' >/dev/null || [[ -f recomp/funcs.h ]]; then
+            echo "::error::src/gen/*.c, src/gen-*/*.c or recomp/funcs.h is present in the checkout."
             exit 1
           fi
           echo "src/gen is empty — building the setup host."

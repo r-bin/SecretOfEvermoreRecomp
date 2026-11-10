@@ -124,8 +124,10 @@ snesrecomp_rom_identity(SecretOfEvermoreSNESRecomp ${CMAKE_SOURCE_DIR}/rom_ident
 # recompiled code, whose only path is the launcher's Generate & rebuild wizard.
 # That is what release zips contain; the player's machine produces the
 # playable binary from their own ROM. Without the option an empty src/gen/ is
-# still a hard error (the framework owns the message).
-snesrecomp_target_generated_code(SecretOfEvermoreSNESRecomp ${CMAKE_SOURCE_DIR}/src/gen)
+# still a hard error (the framework owns the message). SOE_GEN_DIR builds a variant
+# that tools/regen.sh --out-dir generated elsewhere (docs/testing.md, Variants).
+set(SOE_GEN_DIR ${CMAKE_SOURCE_DIR}/src/gen CACHE PATH "Generated C to build (tools/regen.sh --out-dir)")
+snesrecomp_target_generated_code(SecretOfEvermoreSNESRecomp ${SOE_GEN_DIR})
 
 # The mod catalog. This names WHERE the packages are; the framework owns the
 # layout they are staged into beside the executable, and stages them on every

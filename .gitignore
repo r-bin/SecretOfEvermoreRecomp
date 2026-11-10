@@ -1,5 +1,6 @@
 # Generated recompiler output — derived from a copyrighted ROM. Never commit.
 /src/gen/
+/src/gen-*/
 /recomp/funcs.h
 
 # Imported from everscript-vscode but derived from the ROM (tools/import.mts): names for the generated C

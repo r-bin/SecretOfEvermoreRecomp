@@ -108,6 +108,27 @@ node tools/compare/compare.mts mesen recomp /path/to/rom.sfc --replay tools/comp
 
 The recording is written only from the MesenCE side; the run still compares the recomp against it.
 
+## Variants
+
+To compare generator switches (or a framework change) without touching the normal build, generate and build a variant beside it.
+The normal `src/gen/` and `build/` stay as they are, and nothing has to be regenerated back afterwards.
+
+```sh
+SNESRECOMP_EXACT_BUS=0 bash tools/regen.sh --out-dir src/gen-rp --gen-arg --instruction-blocks --gen-arg --region-paced
+cmake -S . -B build-rp -DCMAKE_BUILD_TYPE=Release "-DCMAKE_C_FLAGS_RELEASE=-O1 -DNDEBUG" "-DCMAKE_CXX_FLAGS_RELEASE=-O1 -DNDEBUG" \
+  -DSOE_GEN_DIR=$PWD/src/gen-rp -DFETCHCONTENT_SOURCE_DIR_SDL3=$PWD/build/_deps/sdl3-src
+cmake --build build-rp -j
+echo '[{"name":"rp","exe":"build-rp/SecretOfEvermoreSNESRecomp"}]' > variants.json
+node tools/compare/probes/ablate.mts tools/compare/replays/01-no-inputs-1-loop.mmo variants.json --rom /path/to/rom.sfc
+```
+
+- **The analysis is cached** (`out/analysis-cache/`, `tools/analysis-cache.mts`): it depends on the ROM, the cfg files and the
+  analyzer, not on emission switches. A regen with a cache hit takes about 16 s instead of about 170 s.
+- **`-O1`**: the emulated clocks do not depend on the optimization level, only the host speed does. The build takes 1.5 min
+  instead of 3.5.
+- `src/gen-*/` is ignored by git like `src/gen/`: it comes from the ROM and is never committed.
+- Measured 2026-11-10 (M4): a variant with a cache hit takes about 2 minutes to build and 25 s to run replay 01.
+
 ## The framework's own tests
 
 The patched framework passes upstream's test suites: `pytest tests/v2 tests/test_snes_cycles.py` in `snesrecomp/` (596 passed,

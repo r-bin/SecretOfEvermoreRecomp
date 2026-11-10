@@ -16,6 +16,12 @@
 #                 not been pinned to yet — expect the generated C to differ)
 #   --cfg-roots   seed analysis from every func declaration in recomp/*.cfg
 #                 (on by default: recomp/bank8x..91.cfg are the CDL seeds)
+#   --out-dir <dir> generate there instead of src/gen, its funcs.h with it: a
+#                 variant next to the normal build (docs/testing.md, Variants)
+#   --gen-arg <a> pass one more argument to snesrecomp's generate (repeatable),
+#                 for example --gen-arg --instruction-blocks
+# The native analysis is cached in out/analysis-cache/ (tools/analysis-cache.mts):
+# it does not depend on the emission switches. SOE_ANALYSIS_CACHE=0 skips it.
 #   -h|--help     this message
 set -euo pipefail
 
@@ -26,11 +32,15 @@ cd "$ROOT"
 VERIFY=1
 CFG_ROOTS=1
 ROM=""
+OUT_DIR=src/gen
+EXTRA_GEN=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --rom) ROM=$2; shift 2 ;;
     --no-verify) VERIFY=0; shift ;;
     --cfg-roots) CFG_ROOTS=1; shift ;;
+    --out-dir) OUT_DIR=$2; shift 2 ;;
+    --gen-arg) EXTRA_GEN+=("$2"); shift 2 ;;
     -h|--help) sed -n '2,/^set -euo/p' "$0" | sed -n '/^# /p' | sed 's/^# //'; exit 0 ;;
     *) echo "regen.sh: unknown flag: $1 (try --help)" >&2; exit 2 ;;
   esac
@@ -97,14 +107,23 @@ export SNESRECOMP_EXACT_BUS="${SNESRECOMP_EXACT_BUS:-1}"
 # SNESRECOMP_AOT_RESUME=0 at regen leaves it out; =0 at run time turns it off, =2 keeps only suspended frames.
 export SNESRECOMP_AOT_RESUME="${SNESRECOMP_AOT_RESUME:-1}"
 
-GEN_ARGS=(--rom "$ROM" --cfg-dir recomp --out-dir src/gen
-          --funcs-h recomp/funcs.h --project-root "$ROOT")
+FUNCS_H=recomp/funcs.h
+if [ "$OUT_DIR" != src/gen ]; then FUNCS_H="$OUT_DIR/funcs.h"; fi
+GEN_ARGS=(--rom "$ROM" --cfg-dir recomp --out-dir "$OUT_DIR"
+          --funcs-h "$FUNCS_H" --project-root "$ROOT")
 if [ "$CFG_ROOTS" -eq 1 ]; then GEN_ARGS+=(--cfg-roots); fi
 if [ "$VERIFY" -eq 1 ]; then GEN_ARGS+=("${VERIFY_ARGS[@]}"); fi
+if [ ${#EXTRA_GEN[@]} -gt 0 ]; then GEN_ARGS+=("${EXTRA_GEN[@]}"); fi
+
+if [ "${SOE_ANALYSIS_CACHE:-1}" != 0 ] && [ -z "${SNESRECOMP_NATIVE_ANALYZER:-}" ] && command -v node >/dev/null 2>&1; then
+  # The framework builds or checks its analyzer first (a stale one is rebuilt), then the cache runs it.
+  SOE_ANALYZER_REAL="$(cd "$SNESRECOMP_ROOT" && "$PYTHON" -c 'from tools.v2_analyze import ensure_native_analyzer as e; print(e())')"
+  export SOE_ANALYZER_REAL SNESRECOMP_NATIVE_ANALYZER="$SCRIPT_DIR/analysis-cache.mts"
+fi
 
 # snesrecomp reuses published output without looking at the switches above: always generate from nothing.
-rm -rf src/gen
-echo "== Generating src/gen =="
+rm -rf "$OUT_DIR"
+echo "== Generating $OUT_DIR =="
 "$PYTHON" "$CLI" generate "${GEN_ARGS[@]}"
 
 # Comments from everscript-vscode's ROM and WRAM maps: before each compiled instruction its assembly with
@@ -112,8 +131,8 @@ echo "== Generating src/gen =="
 # are added. The table comes in with tools/import.mts; without it the C stays as generated.
 ANNOTATIONS="$ROOT/imported/annotations.tsv"
 if [ -f "$ANNOTATIONS" ] && command -v node >/dev/null 2>&1; then
-  echo "== Annotating src/gen from $ANNOTATIONS =="
-  node "$SCRIPT_DIR/annotate.mts" src/gen "$ANNOTATIONS"
+  echo "== Annotating $OUT_DIR from $ANNOTATIONS =="
+  node "$SCRIPT_DIR/annotate.mts" "$OUT_DIR" "$ANNOTATIONS"
 else
   echo "== No annotations (node tools/import.mts brings the names for the C) =="
 fi
