@@ -18,8 +18,9 @@
  *    vanilla; one outside it takes the party as a target only while fewer than `cap` characters are in the view (the
  *    Boy and the Dog counted, as the game's budget counts them). Otherwise it goes the ROM's own way for "no target":
  *    it wanders or keeps its default action, and one already chasing from outside lets go.
- *  - Spawners: a record's 4:3-sized box around its point is "full" with `cap` - 2 enemies (4: vanilla's budget less
- *    the Boy and the Dog; `cap` with Count = enemies only), enemies placed or spawned, alive, not friendly.
+ *  - Spawners: a record's box (every 4:3 view that could hold its point: 256 x 224 either way) is "full" with
+ *    `cap` - 2 enemies (4: vanilla's budget less the Boy and the Dog; `cap` with Count = enemies only), enemies placed
+ *    or spawned, alive, not friendly.
  *    On a room's load (its first 90 logic frames, the fade-in; SoeAliveSpawnPick at the spawner $8F:DDBB) every record
  *    whose box is not full spawns wherever its point is, one per frame. Later the ROM decides when and where (timer,
  *    point 16..48 px off the 4:3 screen) and the spawn step $8F:DE43 (SoeAliveSpawnAllowed) lets it through only while
@@ -242,8 +243,9 @@ static int Placed(uint32_t e)
            (W(e + kNode) & 0x8000) && !Segmented(e);
 }
 
-/* Enemies (placed or spawned, alive, not friendly or on the party's side) within a 4:3-sized box centred on (x, y):
- * held ones and, during the load, placed ones not yet taken do not count. */
+/* Enemies (placed or spawned, alive, not friendly or on the party's side) that could share a 4:3 view with (x, y):
+ * within 256 x 224 of it either way. Held ones and, during the load, placed ones not yet taken do not count. A box
+ * of one view around the point let nearly every record of the east jungle 0x5b spawn (18 of 18); this one lets 10. */
 static int EnemiesAround(uint16_t x, uint16_t y)
 {
     int n = 0;
@@ -254,7 +256,7 @@ static int EnemiesAround(uint16_t x, uint16_t y)
         const int state = LoadState(e);
         if (state == kHeld || (loading && state == kUnseen && Placed(e))) continue;
         int dx = (int16_t)(W(e + kX) - x), dy = (int16_t)(W(e + kY) - y);
-        if (dx >= -kViewWidth / 2 && dx < kViewWidth / 2 && dy >= -kViewHeight / 2 && dy < kViewHeight / 2) n++;
+        if (dx > -kViewWidth && dx < kViewWidth && dy > -kViewHeight && dy < kViewHeight) n++;
     }
     return n;
 }

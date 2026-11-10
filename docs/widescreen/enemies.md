@@ -204,7 +204,8 @@ switch (`tests/replay_recorded.sh` sets it), `SOE_WS_FREE=0` switches off only t
 replay stays in sync up to there).
 
 * **Spawners: load with the room, then as in vanilla, gated by crowding; ghosts** (owner, 2026-11-10). A record's
-  4:3-sized box (256 × 224 around its point) is *full* with `cap` − 2 enemies (4: vanilla's budget less the Boy and
+  box (every 4:3 view that could hold its point: 256 × 224 either way; 2026-11-10, a box of one view let 18 of the
+  east jungle `0x5b`'s 18 spawn on the load, this one 11 with 7 ghosts) is *full* with `cap` − 2 enemies (4: vanilla's budget less the Boy and
   the Dog; `cap` with Count = enemies only), placed or spawned, alive, not friendly.
   * *Room load* (its first 90 logic frames, the fade-in): `hle_func` at the spawner `$8F:DDBB` spawns, one per frame,
     every record whose box is not full, wherever its point is (the helper does `INC $6185` and the `PHA` that the ROM's
@@ -251,7 +252,7 @@ replay stays in sync up to there).
   their last check at one of the three hooks let them, and `+$24` is still the Boy or the Dog. An enemy outside may
   aggro while the crowd, counting only chasers nearer the Boy than itself, is under `cap`, so the nearest keep their
   place and the farthest lets go. Before, only the view counted: all 7 Mosquitoes of `0x38` chased the Dog from across
-  the room while the view held fewer than 6 (the user's "too many spawned" screenshot); now 3 chase and 4 let go. The
+  the room while the view held fewer than 6 (the flower field; the user's screenshot from the east jungle had both causes); now 3 chase and 4 let go. The
   spawn step and a held enemy's wake use the same crowd.
 * **Free time: the logic is not limited to the SNES CPU's speed.** Whole-room AI does not fit the 65816's frame (the
   flower field ran at ~55 % speed with all 21 awake; the cost is spread over the per-entity work: animation, stamina,
