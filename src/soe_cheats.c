@@ -1,5 +1,5 @@
 /*
- * Practice cheats on Start + a direction (docs/cheats.md). This CHANGES the game: an ordinary plugin, active only
+ * Practice cheats on Start + a direction (docs/mods/cheats.md). This CHANGES the game: an ordinary plugin, active only
  * while the launcher's "Practice hotkeys" feature is on.
  *
  * The cheats are the practice ROM's (everscript repo in/practice/main.evs), written to the same WRAM; the two
@@ -20,7 +20,8 @@
  * text box), the gate of the everscript hotkey hack (hacks/hotkeys). Start does nothing else in the field.
  *
  * Settings: the mod feature "hotkeys" (options up, right, left, down, target). SOE_CHEATS=0 switches it off (kill
- * switch for the replay tests, which read the launcher's shared selection).
+ * switch for the replay tests, which read the launcher's shared selection); SOE_CHEATS=1 switches it on with the
+ * options' defaults whatever the launcher holds (the parity check with mods/mesen/soe.practice.cheats.lua).
  */
 #include "soe_cheats.h"
 
@@ -143,8 +144,16 @@ static void Run(enum Action a)
     }
 }
 
+static void ModActivate(void);
+
 void SoeCheatsFieldFrame(void)
 {
+    static int forced = -1;   /* SOE_CHEATS=1: on with the options' defaults, without the launcher (tools/compare) */
+    if (forced < 0) {
+        const char *e = getenv("SOE_CHEATS");
+        forced = e && !strcmp(e, "1");
+        if (forced && !s_mod.on) ModActivate();
+    }
     if (!s_mod.on) return;
     const uint16_t held = W(kHeld);
     const uint16_t chord = (held & kStart) ? held & (kUp | kDown | kLeft | kRight) : 0;

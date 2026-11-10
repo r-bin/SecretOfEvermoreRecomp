@@ -20,3 +20,6 @@ the runtime keeps under its own state beside the executable.
 
 See `snesrecomp/docs/MOD_PACKAGES.md` for the manifest format and the
 trusted-plugin registration a package can activate.
+
+Each mod has a page in `docs/mods/` (what it does, its MesenCE twin in `mods/mesen/`, whether both do the same);
+`node tools/mods/pack.mts` builds the `.snesmod` archives into `out/mods/`. Skill: `mods`.

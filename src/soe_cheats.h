@@ -1,5 +1,5 @@
 /*
- * Practice cheats on Start + a direction (docs/cheats.md): the practice ROM's no clip, Atlas glitch and item
+ * Practice cheats on Start + a direction (docs/mods/cheats.md): the practice ROM's no clip, Atlas glitch and item
  * unlocks, from the launcher's "Practice hotkeys" feature. Changes the game.
  */
 #ifndef SOE_CHEATS_H

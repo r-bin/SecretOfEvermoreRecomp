@@ -1,0 +1,15 @@
+# After replay 02 (the flowers, the Boy free to act): every practice hotkey, then both toggles off (docs/mods/cheats.md).
+wait 120
+press start+up 3      # no clip on
+wait 20
+press left 60
+press start+right 3   # Atlas glitch on
+wait 20
+press start+left 3    # all items
+wait 20
+press start+down 3    # weapon levels 3
+wait 20
+press start+up 3      # no clip off
+wait 20
+press start+right 3   # Atlas glitch off
+wait 120

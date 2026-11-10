@@ -36,12 +36,14 @@ These rules apply to every AI agent working in this repository.
 | `src/soe_bindings.c`, `src/bound-c/` | routines run as reconstructed C (`hle` lines in `recomp/seed-exclusions.txt`; proof rules in `docs/game-rtl.md` §4b) |
 | `src/soe_mesen_state.c` | a MesenCE save state as a run's start (`SOE_COMPARE_MESEN_STATE`) |
 | `recomp/` | seeds (`bank*.cfg`), `seed-exclusions.txt`, `symbols.toml` |
+| `mods/` | `preloaded/packages/` (the mods the build ships), `mesen/` (their MesenCE Lua twins); docs/mods/README.md |
 | `tests/` | ctest scripts and `recorded/` (stored MesenCE runs, CRCs only) |
-| `tools/` | `regen.sh` (ROM to C), `compare/` (MesenCE against the recomp, replays, probes), `import.mts`, `bisect.js` |
+| `tools/` | `regen.sh` (ROM to C), `compare/` (MesenCE against the recomp, replays, probes), `mods/` (pack, parity input), `import.mts`, `bisect.js` |
 | `docs/` | [docs/README.md](docs/README.md): guides, the PR tracker, research notes |
 
 ## Skills
 
 `.agents/skills/<name>/SKILL.md` (Claude Code reads them through `.claude/skills`):
 `recomp` (build, test, ownership, seeds), `recomp-debugging` (reproduce, compare, classify, fix),
+`mods` (a mod's package and plugin, its MesenCE Lua twin, the parity check, docs/mods),
 `reference-emulators` (MesenCE decides, ares by hand, snes9x only probes).

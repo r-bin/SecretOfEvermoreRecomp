@@ -8,6 +8,7 @@
 //   --interpreted: the recomp all-interpreted
 //   --fade: the recomp scales brightness by MesenCE's rule, to see what else differs in the picture
 //   --record: keep the reference's hashes in a file; --reference: compare with that file, no MesenCE needed
+//   --mesen-lua <file>: run a MesenCE mod (mods/mesen/*.lua) with MesenCE, for a mod's parity check (docs/mods/README.md)
 //   backend: mesen | recomp (exe: build/ by default); no ROM after '=' means the clean ROM (--rom, SNESRECOMP_ROM,
 //   a known name at the repo root, rom.cfg)
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
@@ -29,7 +30,7 @@ export const KNOWN_BACKENDS = new Set(['recomp', 'mesen']);
 
 const argv = process.argv.slice(2);
 export function parseArgs(argv: string[]) {
-    const VALUED = new Set(['replay', 'frames', 'regions', 'align', 'out', 'rom', 'backend', 'record', 'reference']);
+    const VALUED = new Set(['replay', 'frames', 'regions', 'align', 'out', 'rom', 'backend', 'record', 'reference', 'mesen-lua']);
     const opts: Record<string, string | true> = {}, positional: string[] = [];
     for (let i = 0; i < argv.length; i++) {
         if (!argv[i].startsWith('--')) { positional.push(argv[i]); continue; }
@@ -95,6 +96,8 @@ const { opts, opt, vanilla, setups } = parseArgs(argv);
 // Every recomp setup all-interpreted, for the reference column of a native build.
 if (opts.interpreted) { const r = setups.find(s => s.backend === 'recomp'); if (r) Object.assign(process.env, allInterpretedEnv(r.exe!)); }
 const replay = opt('replay') ? resolve(opt('replay')!) : null;
+// A MesenCE mod (mods/mesen/*.lua) run with the reference: the parity check of a mod (docs/mods/README.md).
+const mesenLua = opt('mesen-lua') ? readFileSync(resolve(opt('mesen-lua')!), 'utf8') : undefined;
 const hasRecomp = setups.some(s => s.backend === 'recomp');
 // MesenCE and the recomp both sample as each NMI is taken (an instruction boundary on both).
 const atNmi = true;
@@ -143,7 +146,7 @@ const onRef = (k: number, c: Crcs) => {
 const runs: Promise<unknown>[] = [];
 function start(s: Setup, extra: { stride: number }, onCp: (k: number, c: Crcs) => void, onEnd: (k: number) => void, onErr: (m: string) => void) {
     if (s.backend === 'mesen') {
-        const r = runMesen({ exe: s.exe || undefined, rom: s.rom, to: frames, align, regions, stride: extra.stride, replay, atNmi }, onCp);
+        const r = runMesen({ exe: s.exe || undefined, rom: s.rom, to: frames, align, regions, stride: extra.stride, replay, atNmi, lua: mesenLua }, onCp);
         runs.push(r.done.then(dump => { onEnd(frames); return dump; }).catch(e => onErr((e as Error).message)));
         return r.kill;
     }
@@ -168,7 +171,7 @@ if (building) saveRecorded(resolve(opt('record')!), { regions, keys: building, s
 // --- the first divergence of each target, in detail -----------------------------------------------------------------
 async function snapshot(s: Setup, at: number): Promise<Uint8Array[]> {
     if (s.backend === 'mesen') {
-        const dump = await runMesen({ exe: s.exe || undefined, rom: s.rom, to: at, align, regions, dumpAt: at, replay, atNmi }, () => {}).done;
+        const dump = await runMesen({ exe: s.exe || undefined, rom: s.rom, to: at, align, regions, dumpAt: at, replay, atNmi, lua: mesenLua }, () => {}).done;
         if (!dump) throw new Error(`Mesen did not reach counter ${at}`);
         return dump;
     }
