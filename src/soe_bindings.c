@@ -1206,6 +1206,11 @@ RecompReturn HleElevationCompassDirectionResolve(CpuState *cpu) {
     return run_rom_bytes_frame(cpu, COMPASS_DIR, 0xA999, 0xA99B, plain ? shear_first : NULL, 2);
 }
 
+/* kE6Deadline: widescreen E6's helpers below (sleep/wake, the aggro gates, the spawner) take E6's branch even when the
+ * slice's deadline has been reached. Falling back to the ROM there let the ROM decide: 4 spawns in a walk through the
+ * east jungle bypassed the density gate. E6 runs in free time (the clock is put back after every slice), so the one
+ * instruction a helper does natively costs nothing; the ROM's way still stops at the deadline as before. */
+
 /*
  * $8F:C40F entity_sleep_wake (RTS; knowledge/routines/entity_sleep_wake.md). Its C (reconstructed-c/8F/8FC40F) calls
  * routines that are still asm, which no binding here can do yet (docs/widescreen/bindings.md), so the ROM code
@@ -1217,7 +1222,7 @@ RecompReturn HleElevationCompassDirectionResolve(CpuState *cpu) {
 RecompReturn HleEntitySleepWake(CpuState *cpu) {
     stats_init();
     const bool plain = wide_a(cpu) && !cpu->x_flag && dp_in_wram(cpu, 0x5C);
-    if (plain && interp_bridge_in_lle_scheduler() && !interp_bridge_lle_master_deadline_reached(cpu)) {
+    if (plain && interp_bridge_in_lle_scheduler()) {   /* E6's branch, also past the deadline (see kE6Deadline) */
         const uint16_t d = cpu->D;
 #define DP_WORD(o) (uint16_t)(g_ram[(uint16_t)(d + (o))] | g_ram[(uint16_t)(d + (o) + 1)] << 8)
         const uint16_t to = SoeAliveDecide(DP_WORD(0x4C), DP_WORD(0x59), DP_WORD(0x5B));
@@ -1285,7 +1290,7 @@ static void stamina_first(CpuState *cpu) {
 static RecompReturn aggro_gate(CpuState *cpu, int which, uint16_t entry, uint16_t body, uint16_t no, void (*first)(CpuState *)) {
     stats_init();
     const bool plain = wide_a(cpu) && !cpu->x_flag && cpu->DB == 0x7E && dp_in_wram(cpu, 0x5C);
-    if (plain && interp_bridge_in_lle_scheduler() && !interp_bridge_lle_master_deadline_reached(cpu)) {
+    if (plain && interp_bridge_in_lle_scheduler()) {   /* E6's branch, also past the deadline (see kE6Deadline) */
         const uint16_t d = cpu->D;
 #define DP_WORD(o) (uint16_t)(g_ram[(uint16_t)(d + (o))] | g_ram[(uint16_t)(d + (o) + 1)] << 8)
         if (!SoeAliveMayAggro(cpu->Y, DP_WORD(0x59), DP_WORD(0x5B))) {
@@ -1310,7 +1315,7 @@ RecompReturn HleAiStationaryPlayer(CpuState *cpu) { return aggro_gate(cpu, STATI
 RecompReturn HleSpawner(CpuState *cpu) {
     stats_init();
     const bool plain = wide_a(cpu) && !cpu->x_flag && cpu->DB == 0x7E && cpu->S > 4;
-    if (plain && interp_bridge_in_lle_scheduler() && !interp_bridge_lle_master_deadline_reached(cpu)) {
+    if (plain && interp_bridge_in_lle_scheduler()) {   /* E6's branch, also past the deadline (see kE6Deadline) */
         const uint16_t rec = SoeAliveSpawnPick();
         if (rec != kAliveSpawnRom) {
             const uint16_t scans = (uint16_t)((g_ram[0x6185] | g_ram[0x6186] << 8) + 1);
@@ -1338,7 +1343,7 @@ RecompReturn HleSpawner(CpuState *cpu) {
 RecompReturn HleSpawnerSpawn(CpuState *cpu) {
     stats_init();
     const bool plain = wide_a(cpu) && !cpu->x_flag && cpu->DB == 0x7E && dp_in_wram(cpu, 0x5C);
-    if (plain && interp_bridge_in_lle_scheduler() && !interp_bridge_lle_master_deadline_reached(cpu)) {
+    if (plain && interp_bridge_in_lle_scheduler()) {   /* E6's branch, also past the deadline (see kE6Deadline) */
         const uint16_t d = cpu->D;
 #define DP_WORD(o) (uint16_t)(g_ram[(uint16_t)(d + (o))] | g_ram[(uint16_t)(d + (o) + 1)] << 8)
         const int allowed = SoeAliveSpawnAllowed(cpu->X, DP_WORD(0x59), DP_WORD(0x5B));

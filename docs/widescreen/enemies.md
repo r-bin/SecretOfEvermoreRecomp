@@ -206,7 +206,10 @@ replay stays in sync up to there).
 * **Spawners: load with the room, then as in vanilla, gated by crowding; ghosts** (owner, 2026-11-10). A record's
   box (every 4:3 view that could hold its point: 256 × 224 either way; 2026-11-10, a box of one view let 18 of the
   east jungle `0x5b`'s 18 spawn on the load, this one 11 with 7 ghosts) is *full* with `cap` − 2 enemies (4: vanilla's budget less the Boy and
-  the Dog; `cap` with Count = enemies only), placed or spawned, alive, not friendly.
+  the Dog; `cap` with Count = enemies only), placed or spawned, alive, not friendly. Each enemy counts at its home: a spawned one
+  at its record's point (`+$8C`), a placed one where it stood on the load (2026-11-10: counted where they were, the
+  enemies near the player chased or wandered off and every ghost spawned in a few walks); so a box has room again
+  only when its enemies die.
   * *Room load* (its first 90 logic frames, the fade-in): `hle_func` at the spawner `$8F:DDBB` spawns, one per frame,
     every record whose box is not full, wherever its point is (the helper does `INC $6185` and the `PHA` that the ROM's
     spawn code at `$DE43` pulls; at a bound entry the interpreter runs those ROM bytes).
@@ -254,6 +257,10 @@ replay stays in sync up to there).
   place and the farthest lets go. Before, only the view counted: all 7 Mosquitoes of `0x38` chased the Dog from across
   the room while the view held fewer than 6 (the flower field; the user's screenshot from the east jungle had both causes); now 3 chase and 4 let go. The
   spawn step and a held enemy's wake use the same crowd.
+* **E6 decides past the slice deadline too.** The helpers used to fall back to the ROM once the slice's deadline was
+  reached, which let the ROM decide: 4 spawns of a walk through `0x5b` bypassed the density gate. E6's branches run
+  in free time, where the clock is put back after every slice, so they now apply at the deadline as well; the ROM's
+  way still stops there.
 * **Free time: the logic is not limited to the SNES CPU's speed.** Whole-room AI does not fit the 65816's frame (the
   flower field ran at ~55 % speed with all 21 awake; the cost is spread over the per-entity work: animation, stamina,
   gravity, AI, pair overlap tests). So `per_frame_field_tick` from its `JSL script_scheduler_pass` (`$8E:E45C`) to its

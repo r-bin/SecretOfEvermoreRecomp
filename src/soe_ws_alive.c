@@ -78,7 +78,11 @@ static struct { int read, off, free_off, reserve, debug; long after; } s_env;
 static int s_steered;   /* $1076 holds our value: put vanilla's back when E6 stops */
 /* The current room since its load: placed enemies taken (kTaken) or held (kHeld), by slot. */
 enum { kUnseen = 0, kTaken, kHeld };
-static struct { uint16_t room, since; uint8_t state[kSlotCount]; uint16_t record[kSlotCount]; } s_room = { .room = 0xFFFF };
+static struct {
+    uint16_t room, since;
+    uint8_t state[kSlotCount];
+    uint16_t record[kSlotCount], home_x[kSlotCount], home_y[kSlotCount];   /* where it stood when taken or held */
+} s_room = { .room = 0xFFFF };
 /* Enemies whose last aggro check (SoeAliveMayAggro) let them take the party, by slot, with their character record:
  * +$24 alone is no marker (idle enemies hold a party pointer too). */
 static struct { uint8_t on[kSlotCount]; uint16_t record[kSlotCount]; } s_chase;
@@ -243,6 +247,23 @@ static int Placed(uint32_t e)
            (W(e + kNode) & 0x8000) && !Segmented(e);
 }
 
+/* Where an enemy counts for the density: a spawned one at its record's point (+$8C), a placed one taken on the load
+ * where it stood then, any other where it is. Counting where they are let every ghost spawn in time: the enemies near
+ * the player chase or wander off, so the box they came from emptied as the player walked. At home, a box has room
+ * again only when its enemies die. */
+static void Home(uint32_t e, int state, uint16_t *x, uint16_t *y)
+{
+    const uint16_t r = W(e + kSpawnRecord);
+    if (r >= kSpawnFirst && r < kSpawnEnd && !((r - kSpawnFirst) % kSpawnStride)) {
+        *x = W(r + kSpawnX), *y = W(r + kSpawnY);
+    } else if (state == kTaken) {
+        const int i = SlotIndex(e);
+        *x = s_room.home_x[i], *y = s_room.home_y[i];
+    } else {
+        *x = W(e + kX), *y = W(e + kY);
+    }
+}
+
 /* Enemies (placed or spawned, alive, not friendly or on the party's side) that could share a 4:3 view with (x, y):
  * within 256 x 224 of it either way. Held ones and, during the load, placed ones not yet taken do not count. A box
  * of one view around the point let nearly every record of the east jungle 0x5b spawn (18 of 18); this one lets 10. */
@@ -255,7 +276,9 @@ static int EnemiesAround(uint16_t x, uint16_t y)
         if (!(f & (kAwake | kAsleep)) || (f & 0x0006) || !W(e + kHp)) continue;
         const int state = LoadState(e);
         if (state == kHeld || (loading && state == kUnseen && Placed(e))) continue;
-        int dx = (int16_t)(W(e + kX) - x), dy = (int16_t)(W(e + kY) - y);
+        uint16_t hx, hy;
+        Home(e, state, &hx, &hy);
+        int dx = (int16_t)(hx - x), dy = (int16_t)(hy - y);
         if (dx > -kViewWidth && dx < kViewWidth && dy > -kViewHeight && dy < kViewHeight) n++;
     }
     return n;
@@ -287,6 +310,7 @@ static void TakePlaced(void)
         if (!best) return;
         const int i = SlotIndex(best);
         s_room.record[i] = W(best + kRecord);
+        s_room.home_x[i] = W(best + kX), s_room.home_y[i] = W(best + kY);
         s_room.state[i] = Crowded(W(best + kX), W(best + kY)) ? kHeld : kTaken;
     }
 }
@@ -347,7 +371,12 @@ int SoeAliveMayAggro(uint16_t slot, uint16_t cam_x, uint16_t cam_y)
 int SoeAliveSpawnAllowed(uint16_t record, uint16_t cam_x, uint16_t cam_y)
 {
     if (!SoeAliveEnabled()) return 1;
-    return !BoxFull(record) && Crowd(cam_x, cam_y, 0) < Cap();
+    const int around = EnemiesAround(W(record + kSpawnX), W(record + kSpawnY)), crowd = Crowd(cam_x, cam_y, 0);
+    const int allowed = !BoxFull(record) && crowd < Cap();
+    if (s_env.debug)
+        fprintf(stderr, "[alive] frame %u: spawn step, record $%04X: %d around its point, crowd %d/%d: %s\n",
+                W(kFrameCounter), record, around, crowd, Cap(), allowed ? "spawns" : "skipped");
+    return allowed;
 }
 
 uint16_t SoeAliveSpawnPick(void)
