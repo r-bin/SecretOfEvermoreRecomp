@@ -17,7 +17,7 @@ again, below).
 | 4 | [04-compiled-resume.md](04-compiled-resume.md) | not opened | draft | 3 | Follows 3 |
 | 5 | [05-brightness-rule.md](05-brightness-rule.md) | not opened | draft | — | Ask upstream whether a parity switch is welcome |
 | 6 | [06-frame-driver.md](06-frame-driver.md) | not opened | draft, no branch yet | 1 | Port `src/soe_frame_driver.c` (#241 is merged) |
-| 7 | [07-hd-mode7-apple-gl.md](07-hd-mode7-apple-gl.md) | not opened | branch `hd-mode7-no-fp64-main` pushed, checked on an M4 | — | GLSL validator and a non-Mac GL4 run, then open |
+| 7 | [07-hd-mode7-apple-gl.md](07-hd-mode7-apple-gl.md) | not opened | branch `hd-mode7-no-fp64-main` pushed, checked on an M4 | — | GLSL validator passes; a non-Mac GL4 run, then open |
 
 **Why each one, and the doubts:**
 

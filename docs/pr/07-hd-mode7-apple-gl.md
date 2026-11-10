@@ -14,7 +14,8 @@ edges, 660 ROI comparisons at 1-64x pass.
 
 ## To do before opening
 
-1. Run `tests/ppu/validate_hd_glsl.py` with glslangValidator (not installed on the Mac it was made on).
+1. Done 2026-11-10: `tests/ppu/validate_hd_glsl.py --validator glslangValidator` (Khronos glslang 16.6.0, Homebrew) passes all four
+   programs on the branch: register, affine single, affine double, coordinate (main: its three).
 2. Run `ppu_hd_gpu_test` on a GL4 host that is not a Mac, also with `SNESRECOMP_HD_NO_FP64=1`: the double path must stay
    exact and the single path must stay under the 0.1 % bound there too.
 
