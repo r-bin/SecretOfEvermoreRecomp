@@ -52,7 +52,7 @@ Three goals, in this order, each resting on the one before: **WRAM sync** (the r
 | 🟢 | **BRR offset at power-on:** harmless; one line upstream ([imperfections/dsp-brr-offset-reset.md](imperfections/dsp-brr-offset-reset.md)) | Sent with §9 |
 | 🟡 | **Close the DMA-only fixes.** VRAM and CGRAM writes during rendering are handled for DMA alone, and `$213B` bit 7 for DMA reads | CPU-side cases fixed or shown not to occur |
 | 🟡 | **Try the new renderer on the picture comparison** once Mode 4 exists upstream (§9) | `SoeAfterConfig`'s override removed, or the reason written down |
-| 🟢 | **HD Mode 7 on macOS** (2026-11-10): fixed in our framework patch ([pr/07](pr/07-hd-mode7-apple-gl.md), [bugs-and-todos.md](bugs-and-todos.md) §3 item 12); `SoeHdMode7Off` removed | PR 7 opened and merged upstream |
+| 🟢 | **HD Mode 7 on macOS** (2026-11-10): fixed in our framework patch ([pr/07](pr/07-hd-mode7-apple-gl.md), [bugs-and-todos.md](bugs-and-todos.md) §3 item 12); `SoeHdMode7Off` removed PR 7 ([#279](https://github.com/RetroPortingToolKit/snesrecomp/pull/279), open 2026-11-10) merged upstream |
 
 ## 3. Prove the whole game
 

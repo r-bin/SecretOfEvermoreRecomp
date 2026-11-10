@@ -136,6 +136,7 @@ These issues should be submitted to the [RetroPortingToolKit/snesrecomp](https:/
    with snesrecomp's own `ppu_hd_gpu_test` on an M4.
    **Fix:** framework patch [pr/07](pr/07-hd-mode7-apple-gl.md): on Apple the coordinate plane is computed on the CPU and
    the affine shader runs in single precision. The flight in replay 02 now shows in HD at 8x. `SoeHdMode7Off` is removed.
+   Upstream: [#279](https://github.com/RetroPortingToolKit/snesrecomp/pull/279) (open).
    **Lesson:** a GL path that "succeeds" can still draw nothing. Run the framework's GPU test on the platform before
    blaming the data, and read the driver's stderr (Apple logs its software fallback there).
 
