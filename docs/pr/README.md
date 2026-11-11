@@ -16,7 +16,7 @@ again, below).
 | 3 | [03-bus-exact-compiled-code.md](03-bus-exact-compiled-code.md) | — | **obsolete** (2026-11-10): upstream's region-paced emission (#250/#251) keeps both replays in sync | — | — |
 | 4 | [04-compiled-resume.md](04-compiled-resume.md) | [#283](https://github.com/RetroPortingToolKit/snesrecomp/pull/283) | **open** 2026-11-11, fork branch `aot-resume-main` (performance) | — | Run it together with #276; fill in the recipe link |
 | 5 | [05-brightness-rule.md](05-brightness-rule.md) | [#281](https://github.com/RetroPortingToolKit/snesrecomp/pull/281) | **open** 2026-11-10 (no longer a draft on 2026-11-11), fork branch `brightness-rule-main` | — | Wait for the answer to its question (in the PR) |
-| 6 | [06-frame-driver.md](06-frame-driver.md) | not opened | **written as one PR** 2026-11-11: local branch `frame-rules-main` (4 commits); stack `pr6-rp`, glue `pr6-glue` | 1 (merged) | Push and open (owner's OK); this repo runs on it since 2026-11-11 |
+| 6 | [06-frame-driver.md](06-frame-driver.md) | not opened | **pushed** 2026-11-11: fork branch `frame-rules-main` (`f749659e`, 5 commits on main `80a41241`); this repo runs on it | 1 (merged); conflicts with 2 in `snes_beam_at` | Open it (body: [06-frame-driver.md](06-frame-driver.md), PR text) |
 | 7 | [07-hd-mode7-apple-gl.md](07-hd-mode7-apple-gl.md) | [#279](https://github.com/RetroPortingToolKit/snesrecomp/pull/279) | **open** 2026-11-10, fork branch `hd-mode7-no-fp64-main` | — | A non-Mac GL4 run (asked in the PR) |
 
 **Why each one, and the doubts:**

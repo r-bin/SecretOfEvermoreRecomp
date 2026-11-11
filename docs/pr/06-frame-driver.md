@@ -1,7 +1,7 @@
 # 6. The beam: MesenCE's field and interrupt timing
 
 **Status:** prepared as one PR (2026-11-11): local branch `frame-rules-main` in `../snesrecomp`, five commits on main `80a41241`,
-not pushed, not opened. On the fork's stack as branch `pr6-rp` (on `develop-rp`); our glue on that stack: recomp branch
+pushed to the fork (`f749659e`), not opened yet. On the fork's stack as branch `pr6-rp` (on `develop-rp`); our glue on that stack: recomp branch
 `pr6-glue`, not merged into `develop`. [#241](01-access-exact-timing.md) is merged; its access-clock hook and master-clock APU
 timeline now have their callers inside snesrecomp.
 
@@ -51,7 +51,7 @@ then moved the beam's clock back without moving H: the field grid slipped 2 cloc
 
 ## To do before opening
 
-1. Push `frame-rules-main` to the fork and open the PR (needs the owner's OK).
+1. Done 2026-11-11: pushed `frame-rules-main`. Open the PR with the title and text below.
 2. Done 2026-11-11: this repository runs on the new stack (the fork's local `develop` = main + every open PR, [README.md](README.md)).
 
 ## PR title
