@@ -104,7 +104,7 @@ Each rule broke Secret of Evermore in a way a player or a replay sees; each touc
 | Interrupt sequence | every NMI handler ran 55-60 clocks early | every NMI and IRQ handler; where a raster split lands |
 | `$4212` at the access | the NMI handler's `BIT $4212 / BNE` auto-read wait ended up to 9 passes early; `LDA $4212 / BMI` left a pass late in the last 20 clocks before line 0 | the vblank and auto-joypad waits in nearly every game |
 | Refresh at the beam | the sound upload's `CMP $2140 / BNE` polled one pass early about every 25 handshakes | the standard SPC700 upload handshake |
-| Reset clock | the boot ran 186 clocks ahead | anything timed from power-on |
+| Reset clock | the first instruction ran 186 clocks early, so every clock of the boot was off by that | anything timed from power-on |
 
 The cost of not having them: a host that wants hardware timing has to rebuild them outside the framework, as we did (several
 hundred lines that moved the beam after the fact), and that is fragile: walking the beam ahead and syncing back quietly moved
