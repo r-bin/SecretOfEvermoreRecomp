@@ -92,6 +92,25 @@ nothing changes.
 A host needs no timing code of its own for these: no beam alignment after a field, no walking the beam ahead for `$4212`, no
 refresh top-ups. `docs/FRAME_MODEL_HOSTS.md` lists the switches.
 
+### Why
+
+Each rule broke Secret of Evermore in a way a player or a replay sees; each touches code most SNES games contain.
+
+| Rule | What went wrong in Evermore without it | The pattern it affects in any game |
+|---|---|---|
+| Short line | 2 clocks a field ahead of hardware (774 by field 378); the attract demo seeds its RNG from the H counter after three field-long DMAs and read `$F6` for `$F8`: another demo from NMI 11986 | RNG seeded from `$2137`/`$213C`; anything that counts on the field length over minutes |
+| Late NMI | the reset code writes `$4200 = $81` at V=226; the NMI waited a field, so the NMI count was one behind from frame 5 (6 times in the first 4 minutes, at scene loads) | enabling NMI after a forced-blank load, inside vblank |
+| NMI recognition | the idle loop `CMP $0100 / BEQ` was interrupted at the other instruction; the 52-clock phase carried into the next fields | every main loop that waits for the NMI |
+| Interrupt sequence | every NMI handler ran 55-60 clocks early | every NMI and IRQ handler; where a raster split lands |
+| `$4212` at the access | the NMI handler's `BIT $4212 / BNE` auto-read wait ended up to 9 passes early; `LDA $4212 / BMI` left a pass late in the last 20 clocks before line 0 | the vblank and auto-joypad waits in nearly every game |
+| Refresh at the beam | the sound upload's `CMP $2140 / BNE` polled one pass early about every 25 handshakes | the standard SPC700 upload handshake |
+| Reset clock | the boot ran 186 clocks ahead | anything timed from power-on |
+
+The cost of not having them: a host that wants hardware timing has to rebuild them outside the framework, as we did (several
+hundred lines that moved the beam after the fact), and that is fragile: walking the beam ahead and syncing back quietly moved
+the field grid by 2 clocks, which our own alignment hid until this work removed it. Only Evermore is measured; for other games
+the right column says where to look, not what we tested.
+
 ## Evidence
 
 - **Before:** Secret of Evermore's host carried all five rules itself (moving the beam after each field, walking it 20 clocks
