@@ -16,7 +16,7 @@ again, below).
 | 3 | [03-bus-exact-compiled-code.md](03-bus-exact-compiled-code.md) | — | **obsolete** (2026-11-10): upstream's region-paced emission (#250/#251) keeps both replays in sync | — | — |
 | 4 | [04-compiled-resume.md](04-compiled-resume.md) | [#283](https://github.com/RetroPortingToolKit/snesrecomp/pull/283) | **open** 2026-11-11, fork branch `aot-resume-main` (performance) | — | Run it together with #276; fill in the recipe link |
 | 5 | [05-brightness-rule.md](05-brightness-rule.md) | [#281](https://github.com/RetroPortingToolKit/snesrecomp/pull/281) | **open** 2026-11-10 (no longer a draft on 2026-11-11), fork branch `brightness-rule-main` | — | Wait for the answer to its question (in the PR) |
-| 6 | [06-frame-driver.md](06-frame-driver.md) | not opened | planned as five PRs 6.1-6.5; **6.1 written** 2026-11-11, local branch `short-line-main` | — | 6.1: replay 01 with our beam alignment dropped, then open; 6.2 next |
+| 6 | [06-frame-driver.md](06-frame-driver.md) | not opened | **written as one PR** 2026-11-11: local branch `frame-rules-main` (4 commits); stack `pr6-rp`, glue `pr6-glue` | 1 (merged) | Push and open (owner's OK); then move this repo to the new stack |
 | 7 | [07-hd-mode7-apple-gl.md](07-hd-mode7-apple-gl.md) | [#279](https://github.com/RetroPortingToolKit/snesrecomp/pull/279) | **open** 2026-11-10, fork branch `hd-mode7-no-fp64-main` | — | A non-Mac GL4 run (asked in the PR) |
 
 **Why each one, and the doubts:**
@@ -28,7 +28,7 @@ again, below).
 | 3 | Compiled code only, from NMI 1 (2026-11-10) | **Replaced** by #250/#251's region-paced emission: both replays in sync with it |
 | 4 | **No.** Only the native share: region-paced 13 % → 94 %, replay 02 15 % faster end to end | Measured on one game; region-paced code stays at 94 % (bus-exact had 99.65 %) |
 | 5 | **No.** The picture only: 289 (01) and 948 (02) NMIs differ without it, none with it | A switch for parity with one emulator; upstream chose bsnes's rule on purpose |
-| 6 | Yes, from NMI 5 (the late NMI); today supplied by our glue | Large; the fitted 20-clock leads must go first; no game-neutral test yet |
+| 6 | Yes: each switch off alone parts replay 01 by NMI 180 | Measured on one game; a separate exact driver path, so reviewers must accept two paths |
 | 7 | **No.** HD Mode 7 on macOS only (black without it) | Single precision is not bit-exact at texel edges (0.03 % of samples); checked on one Mac |
 
 State values: draft, open, conflicts, merged, closed, obsolete (upstream solved it another way; never opened). Update this table when a state changes, and the file's Status line with it.

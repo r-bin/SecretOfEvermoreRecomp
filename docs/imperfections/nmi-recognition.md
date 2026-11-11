@@ -1,6 +1,6 @@
 # Where the Field's NMI Is Recognised
 
-**Status:** fixed in our frame driver (`src/soe_frame_driver.c`, `NMI_SEEN_CLOCKS`, `finish_nmi_approach`;
+**Status:** fixed in snesrecomp by PR 6 ([../pr/06-frame-driver.md](../pr/06-frame-driver.md)): the beam frame driver and `snes/last_cycle.c`, `SNESRECOMP_BEAM_EXACT`, 2026-11-11; our glue no longer does it. Earlier: fixed in our frame driver (`src/soe_frame_driver.c`, `NMI_SEEN_CLOCKS`, `finish_nmi_approach`;
 `src/soe_last_cycle.c`), 2026-10-30.
 
 ## What hardware does (MesenCE)

@@ -1,6 +1,6 @@
 # Late NMI: Enabling NMI Inside Vblank
 
-**Status:** fixed in our frame driver (`src/soe_frame_driver.c`), 2026-10-30. snesrecomp itself still lacks it.
+**Status:** fixed in snesrecomp by PR 6 ([../pr/06-frame-driver.md](../pr/06-frame-driver.md)): the beam frame driver, `SNESRECOMP_BEAM_EXACT`, 2026-11-11; our glue no longer does it. Earlier: fixed in our frame driver (`src/soe_frame_driver.c`), 2026-10-30. snesrecomp itself still lacks it.
 
 ## What hardware does
 The NMI flag (`$4210` bit 7) is set at V=225 and stays set until `$4210` is read or V=0. Writing `$4200` with

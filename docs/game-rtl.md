@@ -75,26 +75,21 @@ Secret of Evermore's runtime implementation is located in `src/game_rtl.c`:
 
 
 ### 3.1 The Frame Driver (`src/soe_frame_driver.c`)
-Secret of Evermore runs on its own frame driver, derived from snesrecomp's `beam_frame_driver`
-(which the framework lets a host replace). One host frame is one NTSC field, ending where the beam
-reaches V=225; NMI is taken at the start of the field. Added to the framework's logic, each
-measured against MesenCE ([imperfections/README.md](imperfections/README.md)):
-- **Late NMI:** enabling NMI inside vblank fires it at once (the reset code does, at V=226).
-- **Interrupt cost:** the 8-cycle interrupt sequence is charged (60 master clocks).
-- **DRAM refresh:** a 40-clock stall at H=538 of every line, in place of the runtime's per-CPU-time charge.
-- **SPC700 rate:** the APU's guest anchor follows MesenCE's 1,025,280 Hz instead of 17,088 cycles a frame.
-- **Short scanline:** every other field is 4 clocks shorter, aligned from wherever the beam stands on line 225;
-  **reset:** the CPU starts at master clock 186.
-- **Auto-joypad read:** `$4212` bit 0 busy from MesenCE's 256-clock start point, for the interpreter's read lead.
-- **NMI recognition:** the CPU runs to V=225+12 and one instruction more when the last one's last cycle began
-  before +6 (`src/soe_last_cycle.c` sizes it).
-- **APU access point:** the APU's guest anchor starts 20 clocks back (MesenCE syncs the SPC 20 clocks into an
-  absolute `$2140` access).
-- **Sampling hook:** `soe_frame_driver_nmi_hook` runs as each NMI is taken (tools/compare samples there).
+Secret of Evermore runs on snesrecomp's `beam_frame_driver` with its MesenCE rules on (PR 6, each switch on with the
+master-clock APU timeline; [pr/06-frame-driver.md](pr/06-frame-driver.md), evidence in
+[imperfections/README.md](imperfections/README.md)). One host frame is one NTSC field, ending where the beam reaches
+V=225; NMI is taken at the start of the field.
+- **In the framework:** the short line 240 and the reset clock 186; `$4212` bits 0, 6 and 7 at the read's clock; DRAM
+  refresh at H=538 (534) of every line, also in front of an APU port access; the 60-clock interrupt sequence; NMI after
+  the first instruction with a cycle from V=225+6 (`snes/last_cycle.c`); the late NMI (enabled inside vblank, it fires
+  after the next instruction).
+- **Ours, through `SnesBeamFrameHooks`:** a replay's input per field and the memory a compare run starts with (field
+  start), the sampling hook `soe_frame_driver_nmi_hook` (NMI taken), a MesenCE state's start, also inside its NMI
+  handler (field NMI), free time and the PPU fixes (slice end), and the deadlines the C bindings read.
 
-The driver holds hardware rules only, no game: the candidate for upstream ([pr/06-frame-driver.md](pr/06-frame-driver.md)). What
-snesrecomp's PPU and registers lack is next to it in `src/soe_ppu_fixes.c`, applied through the framework's DMA-charge and
-write-log hooks: 15-bit CGRAM, the `$213B` and `$4212` open bus, CGRAM and VRAM writes during rendering (for DMA).
+What snesrecomp's PPU and registers lack is next to it in `src/soe_ppu_fixes.c`, applied through the framework's
+DMA-charge and write-log hooks: 15-bit CGRAM, the `$213B` and `$4212` open bus, CGRAM and VRAM writes during rendering
+(for DMA); it places a DMA's bytes on the beam's lines with the short line (`soe_frame_driver_beam_at`).
 
 The glue adds, around it: the APU anchored at power-on, extended frame timing
 (`RtlEnableExtendedFrameTiming`), and the save-state chunk with the driver's resume point.

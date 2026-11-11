@@ -1,6 +1,6 @@
 # The Short Scanline and the Reset Clock
 
-**Status:** fixed in our frame driver (`src/soe_frame_driver.c`), 2026-10-30; fields a long DMA crosses, 2026-11-03.
+**Status:** fixed in snesrecomp by PR 6 ([../pr/06-frame-driver.md](../pr/06-frame-driver.md)): `snes.c`, `SNESRECOMP_SHORT_LINE` and `SNESRECOMP_RESET_CLOCK`, 2026-11-11; our glue no longer does it. Earlier: fixed in our frame driver (`src/soe_frame_driver.c`), 2026-10-30; fields a long DMA crosses, 2026-11-03.
 
 ## Short scanline
 On NTSC without interlace, line 240 of every other field is 1360 master clocks, not 1364 (MesenCE
@@ -25,7 +25,7 @@ every NMI on MesenCE's clock, but `$213C` read `$F6` instead of `$F8` (the beam 
 on line 124), a different seed, WRAM apart from key 11987 to the end (everscript-vscode
 `tools/compare/probes/ppu-reads.mts`, `nmi-clocks.mts`).
 
-Fix (`align_beam`): after each CPU slice the beam is put where this convention has it at its own clock (the next
+Fix until PR 6 (`align_beam`, removed: the beam now has the short line itself, so no field needs moving): after each CPU slice the beam is put where this convention has it at its own clock (the next
 V=225 on MesenCE's field end), when the move stays on its line and on one side of H=1024 and H=0, so no line, HDMA or
 auto-joypad event is skipped or repeated; otherwise the next slice does it. `SOE_BEAM_LOG=1` prints each move.
 Both replays, native and interpreted: every NMI key identical to MesenCE to the end ([../progress.md](../progress.md)).

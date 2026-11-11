@@ -1,6 +1,6 @@
 # DRAM Refresh
 
-**Status:** fixed in our frame driver (`src/soe_frame_driver.c`), 2026-10-30; the NMI handler too, 2026-11-02.
+**Status:** fixed in snesrecomp by PR 6 ([../pr/06-frame-driver.md](../pr/06-frame-driver.md)): the runtime's refresh charge and the driver's slices, `SNESRECOMP_REFRESH_AT_BEAM`, 2026-11-11; our glue no longer does it. Earlier: fixed in our frame driver (`src/soe_frame_driver.c`), 2026-10-30; the NMI handler too, 2026-11-02.
 
 ## What hardware does
 Every scanline the CPU (and a running DMA) stalls for 40 master clocks at H=538: 40 of the line's 1364

@@ -1,6 +1,6 @@
 # `$4212` Read at the Access, and Its Open Bus
 
-**Status:** fixed in our frame driver (`src/soe_frame_driver.c`: `edge_step`) and `src/soe_ppu_fixes.c` (`soe_ppu_fixes_nmi_entry`, bits 1-5). snesrecomp itself still
+**Status:** fixed in snesrecomp by PR 6 ([../pr/06-frame-driver.md](../pr/06-frame-driver.md)): `$4212` bit 7 at the access in `snes.c`, `SNESRECOMP_HVBJOY_EXACT`, 2026-11-11; our glue no longer does it. Earlier: fixed in our frame driver (`src/soe_frame_driver.c`: `edge_step`) and `src/soe_ppu_fixes.c` (`soe_ppu_fixes_nmi_entry`, bits 1-5). snesrecomp itself still
 has both differences.
 
 ## What MesenCE does

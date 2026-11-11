@@ -8,7 +8,7 @@ These rules apply to every AI agent working in this repository.
    A committed replay holds input and settings only (`compare_units` checks it). Everyone regenerates from their own ROM.
 2. **Never edit the framework by hand.** `snesrecomp/` and `recomp-ui/` are pinned public submodules (`framework_pins.txt`).
    Our framework changes are one file, `framework/snesrecomp.patch`, applied by `tools/regen.sh`; each goes upstream as a
-   PR ([docs/pr/README.md](docs/pr/README.md)). Game timing lives in our glue, mostly `src/soe_frame_driver.c`.
+   PR ([docs/pr/README.md](docs/pr/README.md)). The hardware timing rules are the framework's (PR 6); our glue adds the compare and host features through its hooks.
 3. **This repository stands alone.** Build and test read nothing outside it and its submodules. Seeds, the
    data-region block in `recomp/bank00.cfg` and `src/bound-c/` come from everscript-vscode only through
    `tools/import.mts --from <checkout>`: change them there (or through `recomp/seed-exclusions.txt`), never by hand.
@@ -31,7 +31,7 @@ These rules apply to every AI agent working in this repository.
 | Where | What |
 |---|---|
 | `src/game_rtl.c` | our glue: config hook, save states, the compare harness (`SOE_COMPARE_*`) |
-| `src/soe_frame_driver.c` | frame and interrupt timing: the rules MesenCE has and snesrecomp's beam driver lacks; hardware only, no game (upstream candidate, `docs/pr/06-frame-driver.md`) |
+| `src/soe_frame_driver.c` | runs snesrecomp's beam frame driver with its MesenCE rules (PR 6, `docs/pr/06-frame-driver.md`) and our hooks: the compare, free time, the deadlines for C bindings |
 | `src/soe_ppu_fixes.c` | PPU and register behaviour snesrecomp lacks, applied through its hooks, for DMA (open bus, writes during rendering) |
 | `src/soe_bindings.c`, `src/bound-c/` | routines run as reconstructed C (`hle` lines in `recomp/seed-exclusions.txt`; proof rules in `docs/game-rtl.md` §4b) |
 | `src/soe_mesen_state.c` | a MesenCE save state as a run's start (`SOE_COMPARE_MESEN_STATE`) |

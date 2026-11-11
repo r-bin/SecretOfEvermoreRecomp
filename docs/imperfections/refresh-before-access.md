@@ -1,6 +1,6 @@
 # A Refresh Stall Before a Port Access
 
-**Status:** fixed with PR 1 (our `src/soe_frame_driver.c`, `access_clock`, through the
+**Status:** fixed in snesrecomp by PR 6 ([../pr/06-frame-driver.md](../pr/06-frame-driver.md)): the APU port clock in `common_rtl.c`, `SNESRECOMP_REFRESH_AT_BEAM`, 2026-11-11; our glue no longer does it. Earlier: fixed with PR 1 (our `src/soe_frame_driver.c`, `access_clock`, through the
 framework hook `RtlSetCpuAccessClockHook`). Not applicable on `develop` (its APU clock has no access point).
 
 ## What hardware does (MesenCE)

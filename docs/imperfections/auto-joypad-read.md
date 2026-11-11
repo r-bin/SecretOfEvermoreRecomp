@@ -1,6 +1,6 @@
 # The Automatic Joypad Read's Busy Window
 
-**Status:** fixed in our frame driver (`src/soe_frame_driver.c`, `auto_joypad_begin`), 2026-10-30; the rule
+**Status:** fixed in snesrecomp by PR 6 ([../pr/06-frame-driver.md](../pr/06-frame-driver.md)): `$4212` bit 0 at the access in `snes.c`, `SNESRECOMP_HVBJOY_EXACT`, 2026-11-11; our glue no longer does it. Earlier: fixed in our frame driver (`src/soe_frame_driver.c`, `auto_joypad_begin`), 2026-10-30; the rule
 corrected with PR 1 (2026-10-31, below).
 
 ## What hardware does (MesenCE)

@@ -1,6 +1,6 @@
 # The Interrupt Sequence's Time
 
-**Status:** fixed in our frame driver (`src/soe_frame_driver.c`, `run_interrupt`), 2026-10-30.
+**Status:** fixed in snesrecomp by PR 6 ([../pr/06-frame-driver.md](../pr/06-frame-driver.md)): the beam frame driver, `SNESRECOMP_BEAM_EXACT`, 2026-11-11; our glue no longer does it. Earlier: fixed in our frame driver (`src/soe_frame_driver.c`, `run_interrupt`), 2026-10-30.
 
 snesrecomp's frame driver pushes the interrupt frame without charging it. On the 65816 in native mode an
 interrupt takes 8 cycles: 2 internal (6 master clocks each), PB/PCH/PCL/P pushed to the WRAM stack (8 each),
