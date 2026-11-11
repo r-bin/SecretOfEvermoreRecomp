@@ -52,6 +52,8 @@ add_executable(SecretOfEvermoreSNESRecomp
     src/soe_cheats.c
     src/soe_hud.c
     src/soe_debug_overlay.c
+    src/soe_anim_walk.c
+    src/soe_combat_rng.c
     src/gen_stubs.c
 )
 

@@ -31,6 +31,7 @@
 #include "snes/snes.h"
 #include "soe_ws_alive.h"
 #include "soe_cheats.h"
+#include "soe_combat_rng.h"
 
 #ifdef SOE_RECONSTRUCTED_C
 #define SOE_COST
@@ -255,6 +256,7 @@ static void rng_first(CpuState *cpu) {
  */
 RecompReturn HleRandomNumberGenerator(CpuState *cpu) {
     stats_init();
+    SoeCombatRngOnRandom(cpu);   /* reads who asks for the roll (src/soe_combat_rng.c); nothing while that mod is off */
 #ifdef SOE_RECONSTRUCTED_C
     cpu_mirrors_to_p(cpu);
     const uint32_t db = (uint32_t)cpu->DB << 16;
@@ -1033,6 +1035,7 @@ static void anim_start_first(CpuState *cpu) {
  */
 RecompReturn HleAnimStartRecord(CpuState *cpu) {
     stats_init();
+    SoeCombatRngOnAnimStart(cpu);   /* notes a knockback start (src/soe_combat_rng.c); nothing while that mod is off */
     const bool plain = wide_a(cpu) && !cpu->x_flag && cpu->X < 0xFFFCu;
     return run_rom_bytes(cpu, ANIM_START, 0x8124, 0x8128, plain ? anim_start_first : NULL);
 }

@@ -7,6 +7,7 @@ mod (this folder); the skill `mods` (`.agents/skills/mods/SKILL.md`) is how to m
 |---|---|---|---|---|---|
 | Practice hotkeys | `soe.practice.cheats` 1.0.0, plugin `soe.cheats` | yes | `soe.practice.cheats.lua` | **same** (2026-11-10, replay 02 + every hotkey) | [cheats.md](cheats.md) |
 | Debug overlay | `soe.debug.overlay` 1.0.0, plugin `soe.debug.overlay` | no | none: presentation only, no guest state to compare | — | [debug-overlay.md](debug-overlay.md) |
+| Combat RNG | `soe.debug.combat_rng` 1.0.0, plugin `soe.combat_rng` | no | none: presentation only, no guest state to compare | — | [combat-rng.md](combat-rng.md) |
 | Adaptive HUD | `soe.enhancement.hud` 1.0.0, plugin `soe.hud` | no | none: presentation only, no guest state to compare; MesenCE cannot take a layer out of its picture | — | [hud.md](hud.md) |
 | Widescreen | `soe.enhancement.widescreen` 1.0.0, plugins `soe.widescreen`, `soe.widescreen.alive` | vanilla modes no, experimental yes | none: MesenCE cannot draw past 256 px | — | [widescreen.md](widescreen.md) |
 

@@ -27,6 +27,7 @@
 
 #include "host_main.h"
 #include "game_rtl.h"
+#include "soe_combat_rng.h"
 #include "soe_debug_overlay.h"
 #include "soe_hud.h"
 #include "soe_widescreen.h"
@@ -48,11 +49,13 @@ void SoePrepareFrame(int drawable_w, int drawable_h, int *frame_w, int *frame_h)
 #endif
 
 /* After the raster: widescreen blacks the margins outside the room, the debug overlay draws over the
- * room, then the HUD mod draws the HUD it captured (it may sit in those margins, over the overlay). */
+ * room, the combat RNG labels over that, then the HUD mod draws the HUD it captured (it may sit in those
+ * margins, over the overlay). */
 static void SoeEndSimFrame(const uint8_t *field, unsigned number)
 {
     SoeWsEndFrame(field, number);
     SoeDebugEndFrame(field, number);
+    SoeCombatRngEndFrame(field, number);
     SoeHudEndFrame(field, number);
 }
 

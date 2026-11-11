@@ -1,0 +1,39 @@
+format_version = 1
+id = "soe.debug.combat_rng"
+version = "1.0.0"
+name = "Combat RNG"
+author = "r-bin"
+description = "Shows every dice roll of a fight over the one it lands on: hit or miss and the chance, a swing that whiffed by how many pixels or struck a target that could not be hit and why, the damage within its range, the knockback within its range. Green went the player's way, red did not. Key 9 cycles short, detailed and off. Only the picture changes: the game runs exactly as without it."
+license = "MIT"
+resolver = "declarative"
+save_compatibility = "shared"
+
+[[target]]
+game_id = "secretofevermore-usa"
+rom_sha256 = "17c864a76d498feb6479eee8e7d6807b951c66225033228622bb66754baab1db"
+
+[[feature]]
+id = "combat_rng"
+name = "Combat RNG"
+description = "During play: a floating label per roll on the character it concerns, the Boy's and the Dog's swings and the enemies' swings at them alike. Presentation only (src/soe_combat_rng.c)."
+group = "Debug"
+default_enabled = false
+presentation_only = true
+
+[[option]]
+feature = "combat_rng"
+id = "detail"
+label = "Detail"
+description = "Short: one term per roll (HIT, MISS, WHIFF, IMMUNE, HIGH DMG, LONG KB). Detailed: the numbers (HIT 59% ROLL 23, WHIFF 3PX, INVULNERABLE, DMG 9 (6-10), KB +39 (8-47))."
+type = "choice"
+default = "short"
+[[option.choice]]
+value = "short"
+label = "Short"
+[[option.choice]]
+value = "detailed"
+label = "Detailed"
+
+[[plugin]]
+feature = "combat_rng"
+id = "soe.combat_rng"

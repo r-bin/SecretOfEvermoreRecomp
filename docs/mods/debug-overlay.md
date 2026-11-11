@@ -39,7 +39,8 @@ blended by colour math does not match, so lines run over it.
 **Strikes without a hook.** A strike lives for one tick and leaves nothing in WRAM, and a hook on `$9087BA`
 would need a new `hle` line and a regen. Instead each frame the plugin replays the commands the entity's
 last tick read: from the previous resume pointer (`+$00`, bank `+$02`), or from the restart point `+$03`
-when an animation began, through the first command with bit 7, both ways at a branch. A path counts only
+when an animation began, through the first command with bit 7, both ways at a branch (`src/soe_anim_walk.c`,
+shared with the combat RNG mod). A path counts only
 when it ends where the entity now stands: resume pointer after the last command or after a hold, or
 unchanged with the timer `+$05` one lower. A strike on that path is drawn at the attacker's position at the
 end of the frame. The facts and their evidence are in the file's head comment and in everscript-vscode's
