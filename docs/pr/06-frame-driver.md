@@ -1,6 +1,6 @@
 # 6. The beam: MesenCE's field and interrupt timing
 
-**Status:** written as one PR (2026-11-11): local branch `frame-rules-main` in `../snesrecomp`, four commits on main `80a41241`,
+**Status:** prepared as one PR (2026-11-11): local branch `frame-rules-main` in `../snesrecomp`, five commits on main `80a41241`,
 not pushed, not opened. On the fork's stack as branch `pr6-rp` (on `develop-rp`); our glue on that stack: recomp branch
 `pr6-glue`, not merged into `develop`. [#241](01-access-exact-timing.md) is merged; its access-clock hook and master-clock APU
 timeline now have their callers inside snesrecomp.
@@ -15,6 +15,7 @@ it belongs, behind its own switch, each on by default only with `RtlApuUseMaster
 | `7cc6e1a8` | `snes.c` | `SNESRECOMP_HVBJOY_EXACT` | `$4212` bits 7 and 0 at the read's clock, as bit 6 |
 | `159fbdf1` | runtime, `common_rtl.c` | `SNESRECOMP_REFRESH_AT_BEAM` | DRAM refresh per refresh point crossed (H = 538 - (line start & 7)), in front of APU port accesses too |
 | `ee9cb738` | driver, `snes/last_cycle.c` | `SNESRECOMP_BEAM_EXACT` | interrupt sequence 60 clocks; NMI after the first instruction with a cycle from V=225 H=6; late NMI; slices to each refresh point; hooks |
+| `f749659e` | tests | — | `snes_refresh_charge` at the beam and per CPU time |
 
 The old driver path stays as it was; the exact path is a separate function (`run_frame_exact`).
 
@@ -62,31 +63,77 @@ Beam: MesenCE's field and interrupt timing (short line, $4212 at the access, DRA
 ````markdown
 ## Summary
 
-Five timing rules a frame driver needs to match hardware clock for clock, each in the place it belongs and each behind its own
-switch. All five are on by default only with the master-clock APU timeline (`RtlApuUseMasterClock`, #241); nothing changes for
-any other host.
+Five hardware timing rules that let a frame driver match MesenCE clock for clock. Each sits where its hardware lives, has its
+own switch, and is on by default only with the master-clock APU timeline (`RtlApuUseMasterClock`, #241). Without that timeline
+nothing changes.
 
-| Switch | Rule | Before |
-|---|---|---|
-| `SNESRECOMP_SHORT_LINE` | line 240 of every other non-interlaced field lasts 1360 clocks, no long dots | every field 357,368 clocks: 2 clocks a field ahead |
-| `SNESRECOMP_RESET_CLOCK` | the CPU starts at master clock 186, the beam at 0 | both at 0 |
-| `SNESRECOMP_HVBJOY_EXACT` | `$4212` bits 7 and 0 at the read's own clock, as bit 6 already is | at the beam's last sync |
-| `SNESRECOMP_REFRESH_AT_BEAM` | DRAM refresh: 40 clocks at H = 538 - (line start & 7) of every line, per point crossed; an APU port access behind a point sees the stall | 40 per 1364 clocks of CPU time, anywhere |
-| `SNESRECOMP_BEAM_EXACT` | interrupt sequence 8 cycles / 60 clocks; the field's NMI after the first instruction with a cycle from V=225 H=6; an NMI enabled inside vblank fires after the next instruction; slices end at refresh points | sequence free; NMI after the first instruction to end past V=225; a late enable waits a field |
+```diff
+ snes.c
+-  every line 1364 clocks, every field 357,368
++  line 240 of every other non-interlaced field: 1360 clocks, no long dots   SNESRECOMP_SHORT_LINE
++    (Snes.fieldParity, toggled at V=0; savestate v12)
+   $4212 read
+-  bits 7, 0: from the beam's last sync
++  bits 7, 0: at the read's own clock, as bit 6 already is                   SNESRECOMP_HVBJOY_EXACT
+ snes_refresh_charge
+-  40 clocks per 1364 clocks of CPU time, anywhere
++  40 clocks per refresh point crossed, at H = 538 - (line start & 7)        SNESRECOMP_REFRESH_AT_BEAM
++  an APU port access behind a point sees the stall first
+ snes_beam_frame_driver_run_frame
++  if SNESRECOMP_BEAM_EXACT: run_frame_exact (the old path is untouched)
++    CPU starts at master clock 186                                          SNESRECOMP_RESET_CLOCK
++    interrupt sequence: 8 cycles, 60 clocks, a refresh point stalls it
++    field NMI after the first instruction with a cycle from V=225 H=6       (snes/last_cycle.c)
++    NMI enabled inside vblank (RDNMI set): after the next instruction, same field
++    slices end at each refresh point; the beam follows the CPU after each
++    SnesBeamFrameHooks: frame_start, interrupt_entry, nmi_taken, field_nmi, slice_end
+```
 
-With these, a host needs no beam alignment of its own. `SnesBeamFrameHooks` lets it add its own work (field start, interrupt
-entry, NMI taken, a field NMI it takes itself, slice end); `snes_beam_frame_driver_deadlines` gives the running slice's limits.
-The driver's old path is unchanged; the rules run in a separate `run_frame_exact`. `Snes.fieldParity` is new guest state:
-savestate v12 (v11 files load with a fresh reset's parity). docs/FRAME_MODEL_HOSTS.md lists the switches.
+A host needs no timing code of its own for these: no beam alignment after a field, no walking the beam ahead for `$4212`, no
+refresh top-ups. `docs/FRAME_MODEL_HOSTS.md` lists the switches.
 
 ## Evidence
 
-Each rule is MesenCE 2.2.1's (and fullsnes where it describes it). On Secret of Evermore, with the host's own timing code
-removed and only these switches: two replays identical to MesenCE in WRAM, VRAM, CGRAM and OAM at every NMI from power-on
-(8,592 and 23,756 NMIs), native and all-interpreted. Turning any one switch off parts the first replay within 3 seconds of play.
+- **Before:** Secret of Evermore's host carried all five rules itself (moving the beam after each field, walking it 20 clocks
+  ahead at vblank edges, topping up refresh). With that code removed and any one switch off, replay 01 (power-on, attract demo)
+  parts from MesenCE 2.2.1:
+  ```
+  SNESRECOMP_SHORT_LINE=0       differs at NMI 60
+  SNESRECOMP_RESET_CLOCK=0      differs at NMI 60
+  SNESRECOMP_HVBJOY_EXACT=0     differs at NMI 180
+  SNESRECOMP_REFRESH_AT_BEAM=0  differs at NMI 60
+  ```
+  **After:** host timing code removed, all switches at their defaults, WRAM, VRAM, CGRAM and OAM compared at every NMI from
+  power-on:
+  ```
+  replay 01 (attract demo)       in sync, 8,592 of 8,592 NMIs (native and all-interpreted)
+  replay 02 (new game, 6.5 min)  in sync, 23,756 of 23,756 NMIs
+  ```
+  Measured together with #278 (OAM/CGRAM reads during rendering), which replay 01 needs from NMI 5998.
+- **Tests, no ROM:**
+  ```
+  tests/dma/short_line_test.c           field lengths from reset 306,900 / 357,368 / 357,364 ..., interlace (on and off)
+  tests/dma/hvbjoy_refresh_test.c       $4212 vblank and auto-read edges at the access, refresh points
+  tests/dma/refresh_charge_test.c       one stall per point crossed, none for a teleport (on and off)
+  tests/dma/last_cycle_test.c           last bus cycle: internal, I/O, joypad, WRAM, branches, stack
+  tests/frame_driver/exact_rules_test.c scripted CPU on the real beam: NMI position, 60-clock sequence, late NMI
+  ```
+  `pytest tests/v2 tests/test_snes_cycles.py tests/test_beam_events.py tests/test_beam_frame_state.py tests/snapshot_guard`:
+  645 passed (macOS). Same speed: 322 frames/s, 94.06 % native (318, 94.05 % before).
 
-Tests, none needing a ROM: `tests/dma/short_line_test.c`, `tests/dma/hvbjoy_refresh_test.c`, `tests/dma/last_cycle_test.c`,
-`tests/frame_driver/exact_rules_test.c` (a scripted CPU on the real beam), run from `tests/test_beam_events.py`.
+## Merge Danger
+
+**Door:** two-way
+
+Every rule has a switch, and the default turns them on only with the master-clock APU timeline. One part does not revert by
+switch: savestate v12 adds `Snes.fieldParity`, so a v12 state does not load in an older build (v11 states load here with a
+fresh reset's parity).
+
+**Blast Radius:** opt-in
+
+Only hosts that call `RtlApuUseMasterClock`. For them, field lengths, `$4212` and refresh timing change, and the frame driver
+takes its exact path. Conflicts with #278 in `snes_beam_at` (a few lines); the resolution is ready, whichever merges second.
+Checked on one game and on macOS only.
 ````
 
 ## The rules
