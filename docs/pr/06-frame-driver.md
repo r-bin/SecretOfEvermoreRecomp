@@ -51,7 +51,7 @@ then moved the beam's clock back without moving H: the field grid slipped 2 cloc
 ## To do before opening
 
 1. Push `frame-rules-main` to the fork and open the PR (needs the owner's OK).
-2. Move this repository to the new stack: `develop-rp` = `pr6-rp`, regenerate `framework/snesrecomp.patch`, merge `pr6-glue`.
+2. Done 2026-11-11: this repository runs on the new stack (the fork's local `develop` = main + every open PR, [README.md](README.md)).
 
 ## PR title
 
