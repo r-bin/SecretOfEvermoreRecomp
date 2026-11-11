@@ -3,7 +3,7 @@ id = "soe.debug.overlay"
 version = "1.0.0"
 name = "Debug overlay"
 author = "r-bin"
-description = "Draws the room's collision, triggers, map objects and characters over the running game, in the colours of everscript-vscode's map editor. Only the picture changes: the game runs exactly as without it."
+description = "Draws the room's collision, cuttable grass, triggers, map objects, characters and their strikes over the running game, in the colours of everscript-vscode's map editor. Keys 1 to 8 toggle the layers, 0 the overlay. Only the picture changes: the game runs exactly as without it."
 license = "MIT"
 resolver = "declarative"
 save_compatibility = "shared"
@@ -15,7 +15,7 @@ rom_sha256 = "17c864a76d498feb6479eee8e7d6807b951c66225033228622bb66754baab1db"
 [[feature]]
 id = "overlay"
 name = "Debug overlay"
-description = "During play (not in menus, cutscene pages or Mode 7): each layer below on or off. Presentation only (src/soe_debug_overlay.c)."
+description = "During play (not in menus, cutscene pages or Mode 7): each layer below on or off, and in game with the keys 1 (collision) to 8 (strikes), 0 for all. Map layers lie under the sprites. Presentation only (src/soe_debug_overlay.c)."
 group = "Debug"
 default_enabled = false
 presentation_only = true
@@ -23,7 +23,7 @@ presentation_only = true
 [[option]]
 feature = "overlay"
 id = "collision"
-label = "Collision"
+label = "Collision (1)"
 description = "Walls as a contour in the colour of their level (blue 0, red 1, green 2, violet 3); the walls of the Boy's level tinted red."
 type = "boolean"
 default = true
@@ -31,7 +31,7 @@ default = true
 [[option]]
 feature = "overlay"
 id = "specials"
-label = "Special cells"
+label = "Special cells (2)"
 description = "Drift and stairs (cyan), see-through bridges (violet), character gates (white frame)."
 type = "boolean"
 default = true
@@ -39,7 +39,7 @@ default = true
 [[option]]
 feature = "overlay"
 id = "triggers"
-label = "Triggers"
+label = "Triggers (3)"
 description = "Step-on boxes (magenta) and B boxes (yellow), each with its script id."
 type = "boolean"
 default = true
@@ -47,7 +47,7 @@ default = true
 [[option]]
 feature = "overlay"
 id = "objects"
-label = "Map objects"
+label = "Map objects (4)"
 description = "Every state of every map object (doors, gourds, bridges) as a blue box with the object's number."
 type = "boolean"
 default = true
@@ -55,16 +55,32 @@ default = true
 [[option]]
 feature = "overlay"
 id = "characters"
-label = "Characters"
-description = "Each character's body (the box it collides with): blue for the party and friends, red for enemies, dashed while asleep."
+label = "Characters (5)"
+description = "Each character's body (the box it collides with): blue for the party and friends, salmon for enemies, bright red with a double edge while charging (contact damage), dashed while asleep."
 type = "boolean"
 default = true
 
 [[option]]
 feature = "overlay"
 id = "labels"
-label = "Labels"
+label = "Labels (6)"
 description = "Script ids and object numbers."
+type = "boolean"
+default = true
+
+[[option]]
+feature = "overlay"
+id = "grass"
+label = "Cuttable grass (7)"
+description = "Cells the weapon can cut, a soft green fill with a thick green contour drawn over the walls; a cell drops out once cut."
+type = "boolean"
+default = true
+
+[[option]]
+feature = "overlay"
+id = "strikes"
+label = "Strikes (8)"
+description = "The damage box an animation swings for one tick (attacks), fading out over 12 frames."
 type = "boolean"
 default = true
 
