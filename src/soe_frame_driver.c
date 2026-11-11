@@ -197,32 +197,14 @@ static void slow_apu_to_reference(void) {
 static bool s_free_apu;
 static uint64_t access_clock(uint64_t start, uint32_t lead) {
     s_free_apu = true; /* free time: this slice talked to the APU (or synced it) and keeps its time */
-    const uint64_t a = start + lead;
-    return refresh_points_upto(a) > refresh_points_upto(start - 1) ? a + REFRESH_CLOCKS : a;
+    return start + lead; /* the refresh stall in front of the access is the framework's (snes_refresh_at_beam) */
 }
 
-static uint64_t s_refresh_from; /* where the refresh count of this slice stands */
-static void refresh_begin(void) { s_refresh_from = g_cpu.master_cycles; snes_refresh_state_set(0, g_cpu.master_cycles); }
-
-static void refresh_end(void) {
-    const uint64_t before = s_refresh_from;
-    uint64_t phase = 0, upto = 0;
-    snes_refresh_state_get(&phase, &upto);
-    const uint64_t after = g_cpu.master_cycles;
-    /* From phase 0 at `before`: upto = before + work + 40 * charged, phase = work - 1364 * charged. By `upto`, not the
-     * clock now: the framework has not seen what a C binding charged since its last count. */
-    const uint64_t charged = upto > before + phase ? (upto - before - phase) / (LINE_CLOCKS + REFRESH_CLOCKS) : 0;
-    uint64_t crossed = refresh_points_upto(after) - refresh_points_upto(before);
-    while (crossed > charged) {
-        const uint64_t was = g_cpu.master_cycles;
-        g_cpu.master_cycles += REFRESH_CLOCKS;
-        crossed += refresh_points_upto(g_cpu.master_cycles) - refresh_points_upto(was);
-        crossed--;
-    }
-    s_refresh_from = g_cpu.master_cycles;
-    snes_refresh_state_set(0, g_cpu.master_cycles);
-    slow_apu_to_reference();
-}
+/* DRAM refresh is the framework's (snes_refresh_at_beam): one stall per refresh point the CPU crosses, charged per
+ * opcode or block. The slices stop at each point so the stall falls between the right instructions; a slice's tail
+ * is charged when it ends. */
+static void refresh_begin(void) {}
+static void refresh_end(void) { snes_refresh_charge(); slow_apu_to_reference(); }
 
 /*
  * Free time: a host feature for game-changing options of the glue (widescreen E6, src/soe_ws_alive.c), never on in
@@ -251,7 +233,6 @@ static void free_rewind(void) {
     s_free_stats.rewound++;
     g_cpu.master_cycles = s_free_mark;
     g_cpu.cycles = s_free_cycles;
-    s_refresh_from = s_free_mark;
     snes_refresh_state_set(0, s_free_mark);
 }
 static void print_free_stats(void) {
@@ -302,7 +283,8 @@ static void run_interrupt(uint32_t vector, uint64_t deadline, bool nmi) {
      * own refresh accounting below only starts after it. */
     const uint64_t seq = g_cpu.master_cycles;
     g_cpu.master_cycles += INTERRUPT_CLOCKS;
-    if (refresh_points_upto(g_cpu.master_cycles - 1) > refresh_points_upto(seq - 1)) g_cpu.master_cycles += REFRESH_CLOCKS;
+    (void)seq;
+    snes_refresh_charge();
     run_handler(vector, deadline, nmi, true);
 }
 
