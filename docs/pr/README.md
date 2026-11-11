@@ -13,8 +13,8 @@ again, below).
 |---|---|---|---|---|---|
 | 1 | [01-access-exact-timing.md](01-access-exact-timing.md) | [#241](https://github.com/RetroPortingToolKit/snesrecomp/pull/241) | **merged** 2026-11-09, squashed as `c1f84f61` | — | Trim the [Not proposed](#not-proposed) parts in a follow-up PR |
 | 2 | [02-ppu-reads-during-rendering.md](02-ppu-reads-during-rendering.md) | [#278](https://github.com/RetroPortingToolKit/snesrecomp/pull/278) | **open** 2026-11-10, fork branch `ppu-render-reads-main` | 1 (merged) | Game-neutral test in `tests/ppu/` |
-| 3 | [03-bus-exact-compiled-code.md](03-bus-exact-compiled-code.md) | — | **not opened**: upstream's region-paced emission keeps both replays in sync (2026-11-10) | — | — |
-| 4 | [04-compiled-resume.md](04-compiled-resume.md) | not opened | draft | — | Move resume onto region-paced emission |
+| 3 | [03-bus-exact-compiled-code.md](03-bus-exact-compiled-code.md) | — | **obsolete** (2026-11-10): upstream's region-paced emission (#250/#251) keeps both replays in sync | — | — |
+| 4 | [04-compiled-resume.md](04-compiled-resume.md) | not opened | prototype on region-paced: suspended frames in sync (38 % native), frameless stalls | — | Fix the frameless stall at `$80:8034` |
 | 5 | [05-brightness-rule.md](05-brightness-rule.md) | [#281](https://github.com/RetroPortingToolKit/snesrecomp/pull/281) | **open** 2026-11-10 (draft), fork branch `brightness-rule-main` | — | Wait for the answer to its question (in the PR) |
 | 6 | [06-frame-driver.md](06-frame-driver.md) | not opened | planned as five PRs 6.1-6.5 | — | 6.1: the short line and the reset clock in `snes.c` |
 | 7 | [07-hd-mode7-apple-gl.md](07-hd-mode7-apple-gl.md) | [#279](https://github.com/RetroPortingToolKit/snesrecomp/pull/279) | **open** 2026-11-10, fork branch `hd-mode7-no-fp64-main` | — | A non-Mac GL4 run (asked in the PR) |
@@ -26,12 +26,12 @@ again, below).
 | 1 | Yes, from NMI 1 | Full result needs our frame driver; NTSC only; hooks without a caller; measured on one game |
 | 2 | Yes, from NMI 5998 (replay 01 only) | Checked against one game's reads; one CGRAM case not modelled |
 | 3 | Compiled code only, from NMI 1 (2026-11-10) | **Replaced** by #250/#251's region-paced emission: both replays in sync with it |
-| 4 | **No.** Only the native share, 16.31 % → 99.70 % | Speed gain not measured; built on 3, so it moves with 3; can be dropped |
+| 4 | **No.** Only the native share: region-paced 13 % → 38 % (suspended frames), bus-exact 15 % → 99.65 % | Speed gain not measured; frameless entries stall on region-paced code |
 | 5 | **No.** The picture only: 289 (01) and 948 (02) NMIs differ without it, none with it | A switch for parity with one emulator; upstream chose bsnes's rule on purpose |
 | 6 | Yes, from NMI 5 (the late NMI); today supplied by our glue | Large; the fitted 20-clock leads must go first; no game-neutral test yet |
 | 7 | **No.** HD Mode 7 on macOS only (black without it) | Single precision is not bit-exact at texel edges (0.03 % of samples); checked on one Mac |
 
-State values: draft, open, conflicts, merged, closed. Update this table when a state changes, and the file's Status line with it.
+State values: draft, open, conflicts, merged, closed, obsolete (upstream solved it another way; never opened). Update this table when a state changes, and the file's Status line with it.
 
 The framework side of all of them is `framework/snesrecomp.patch` in this repository: the tree of `develop` in our fork
 https://github.com/r-bin/snesrecomp against main ([../framework.md](../framework.md)). A reviewer needs only this repository.

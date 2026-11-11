@@ -116,8 +116,9 @@ if [ "$VERIFY" -eq 1 ]; then GEN_ARGS+=("${VERIFY_ARGS[@]}"); fi
 if [ ${#EXTRA_GEN[@]} -gt 0 ]; then GEN_ARGS+=("${EXTRA_GEN[@]}"); fi
 
 if [ "${SOE_ANALYSIS_CACHE:-1}" != 0 ] && [ -z "${SNESRECOMP_NATIVE_ANALYZER:-}" ] && command -v node >/dev/null 2>&1; then
-  # The framework builds or checks its analyzer first (a stale one is rebuilt), then the cache runs it.
-  SOE_ANALYZER_REAL="$(cd "$SNESRECOMP_ROOT" && "$PYTHON" -c 'from tools.v2_analyze import ensure_native_analyzer as e; print(e())')"
+  # The framework builds or checks its analyzer first (a stale one is rebuilt, which prints progress first: the
+  # path is the last line), then the cache runs it.
+  SOE_ANALYZER_REAL="$(cd "$SNESRECOMP_ROOT" && "$PYTHON" -c 'from tools.v2_analyze import ensure_native_analyzer as e; print(e())' | tail -n 1)"
   export SOE_ANALYZER_REAL SNESRECOMP_NATIVE_ANALYZER="$SCRIPT_DIR/analysis-cache.mts"
 fi
 

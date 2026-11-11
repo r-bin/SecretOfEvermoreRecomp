@@ -1,14 +1,39 @@
 # 4. Compiled resume
 
-**Status:** draft, no PR yet. Was built on [PR 3](03-bus-exact-compiled-code.md), which is not opened: upstream's region-paced
-emission replaces it. Next: make resume work on region-paced code (`--instruction-blocks --region-paced`), then measure the native
-share again; region-paced code also needs counting in `SNESRECOMP_TIER_STATS`.
+**Status:** draft, no PR yet. Was built on [PR 3](03-bus-exact-compiled-code.md), which is obsolete: upstream's region-paced emission
+replaces it. Being moved onto region-paced code (below): suspended frames work (38 % native, in sync), frameless entries stall.
 
 Branch: `aot-resume` in the fork, up to the fix `09cf15ec` (first written as `25d2f42f`, `88bc5ef8` on an older main, not published).
 
 This one is not needed for sync. It is what makes the native build native: without it most of a run stays in the interpreter.
 Replay 01, native share of instructions: **16.31 % → 99.70 %** (`SNESRECOMP_TIER_STATS=1`, resume off and on). If that is not worth the
 size of the change upstream, this PR is the one to drop.
+
+## On region-paced code (prototype, 2026-11-11)
+
+Fork branch `aot-resume-region-paced` (local, on `develop`): `bdcdb6a2`, `252760a1`. What ties resume to bus-exact code is one condition
+in `emit_function.py` (`bus_exact.resume_enabled()` needs `SNESRECOMP_EXACT_BUS=1`); the switch per instruction, the resume table
+and the runtime are general. The prototype:
+
+- enables resume with `--region-paced` and `SNESRECOMP_AOT_RESUME=1` (`bus_exact.resume_requested()`), the switch in the bank cache key;
+- has each region-paced instruction that stays compiled report itself as bus-exact code does (`cpu_aot_insn_begin`: tier stats and the
+  bridge's PC hook, which our frame driver's NMI rule reads);
+- runs an instruction compiled code handed back in place (`interp_tier_dispatch_tail` with target = site, region-paced's fallback for
+  what it does not model) once in the interpreter before resuming there again. Without it the reset code never ran a compiled
+  instruction: resume and fallback took turns at `$80:8037`.
+
+Replay 01, main `e9c20732` + our stack, region-paced, ours off, built against the fork checkout (`SNESRECOMP_ROOT`):
+
+| Resume | Replay 01 | Native share |
+|---|---|---|
+| off | in sync | about 13 % (57.6 M interpreted) |
+| suspended frames only (`SNESRECOMP_AOT_RESUME=2` at run time) | **in sync** | **38.26 %** (24.3 M compiled, 39.2 M interpreted) |
+| with frameless entries (`=1`) | **stalls** in the reset code: `$80:8034` (`LDA #0`) runs again and again, no NMI | — |
+| bus-exact + resume, for comparison | in sync | 99.65 % |
+
+Open: why a frameless entry at `$80:8037` (`TCD`, after `TXS / PEA $0000`) sends the run back to `$80:8034`. Next step is a trace of
+the resume path there (`SNESRECOMP_CYC_WATCH=808030-808045` shows the repeats). Once frameless entries work, measure the share again;
+the gap to 99.65 % is what decides whether region-paced code needs more of what it now hands back.
 
 ## To do before opening
 

@@ -3,7 +3,8 @@
 **Status:** fixed with PR 1 (2026-11-03) with PR 3:
 generated with `SNESRECOMP_EXACT_BUS=1` (our `tools/regen.sh` sets it), compiled code keeps the interpreter's timing
 instruction for instruction; native runs of both replays are identical to MesenCE at every NMI key
-([../progress.md](../progress.md)). Open on develop and upstream.
+([../progress.md](../progress.md)). Upstream fixed it another way: `--instruction-blocks --region-paced` (#250/#251, on main since
+2026-11-09) keeps both replays in sync too, so PR 3 is obsolete ([../pr/03-bus-exact-compiled-code.md](../pr/03-bus-exact-compiled-code.md)).
 
 ## What hardware does
 Each bus access costs master clocks by region: 6 for FastROM (`$80`–`$FF:8000`+ with `$420D` = 1), 8 for
