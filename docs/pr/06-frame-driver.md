@@ -1,9 +1,10 @@
 # 6. The beam: MesenCE's field and interrupt timing
 
-**Status:** prepared as one PR (2026-11-11): local branch `frame-rules-main` in `../snesrecomp`, five commits on main `80a41241`,
-pushed to the fork (`f749659e`), not opened yet. On the fork's stack as branch `pr6-rp` (on `develop-rp`); our glue on that stack: recomp branch
-`pr6-glue`, not merged into `develop`. [#241](01-access-exact-timing.md) is merged; its access-clock hook and master-clock APU
-timeline now have their callers inside snesrecomp.
+**Status:** open, https://github.com/RetroPortingToolKit/snesrecomp/pull/284 (2026-11-11), from the fork branch
+`frame-rules-main` (`f749659e`, five commits on main `80a41241`). The owner's opening note: part 2 of the mid-frame RNG work
+after #278, minor conflicts with #278 expected, three dependent PRs were suggested and one was chosen for simplicity. The text
+below is the body as posted (after that note). On the fork's stack it is merged into `develop` (main + every open PR,
+[README.md](README.md)), which this repository runs on; our glue is the hooks only (recomp `b24a0af`).
 
 Our frame driver (`src/soe_frame_driver.c`) used to hold these rules, patched in from outside (it moved the beam after each
 field, walked it 20 clocks ahead of the CPU at the vblank edges, topped up the refresh after each slice). Now each rule is where
@@ -49,9 +50,9 @@ Found on the way: our glue's edge stepping walked the beam ahead of the CPU, and
 then moved the beam's clock back without moving H: the field grid slipped 2 clocks (fields 338 and 362 of replay 01). Our old
 `align_beam` had hidden it. With `$4212` read at the access nothing walks the beam ahead any more.
 
-## To do before opening
+## Before and after opening
 
-1. Done 2026-11-11: pushed `frame-rules-main`. Open the PR with the title and text below.
+1. Done 2026-11-11: pushed and opened as #284.
 2. Done 2026-11-11: this repository runs on the new stack (the fork's local `develop` = main + every open PR, [README.md](README.md)).
 
 ## PR title
