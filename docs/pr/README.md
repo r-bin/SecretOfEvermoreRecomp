@@ -14,7 +14,7 @@ again, below).
 | 1 | [01-access-exact-timing.md](01-access-exact-timing.md) | [#241](https://github.com/RetroPortingToolKit/snesrecomp/pull/241) | **merged** 2026-11-09, squashed as `c1f84f61` | — | Trim the [Not proposed](#not-proposed) parts in a follow-up PR |
 | 2 | [02-ppu-reads-during-rendering.md](02-ppu-reads-during-rendering.md) | [#278](https://github.com/RetroPortingToolKit/snesrecomp/pull/278) | **open** 2026-11-10, fork branch `ppu-render-reads-main` | 1 (merged) | Game-neutral test in `tests/ppu/` |
 | 3 | [03-bus-exact-compiled-code.md](03-bus-exact-compiled-code.md) | — | **obsolete** (2026-11-10): upstream's region-paced emission (#250/#251) keeps both replays in sync | — | — |
-| 4 | [04-compiled-resume.md](04-compiled-resume.md) | not opened | **ready**: branch `aot-resume-main` (`ef46b5da`), merges cleanly into main `80a41241` | — | Open it |
+| 4 | [04-compiled-resume.md](04-compiled-resume.md) | [#283](https://github.com/RetroPortingToolKit/snesrecomp/pull/283) | **open** 2026-11-11, fork branch `aot-resume-main` (performance) | — | Run it together with #276; fill in the recipe link |
 | 5 | [05-brightness-rule.md](05-brightness-rule.md) | [#281](https://github.com/RetroPortingToolKit/snesrecomp/pull/281) | **open** 2026-11-10 (draft), fork branch `brightness-rule-main` | — | Wait for the answer to its question (in the PR) |
 | 6 | [06-frame-driver.md](06-frame-driver.md) | not opened | planned as five PRs 6.1-6.5 | — | 6.1: the short line and the reset clock in `snes.c` |
 | 7 | [07-hd-mode7-apple-gl.md](07-hd-mode7-apple-gl.md) | [#279](https://github.com/RetroPortingToolKit/snesrecomp/pull/279) | **open** 2026-11-10, fork branch `hd-mode7-no-fp64-main` | — | A non-Mac GL4 run (asked in the PR) |
