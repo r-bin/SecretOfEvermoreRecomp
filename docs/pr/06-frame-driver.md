@@ -1,6 +1,7 @@
 # 6. The beam frame driver's interrupt and field rules
 
-**Status:** planned as five PRs (below), no code on a snesrecomp branch yet. [#241](01-access-exact-timing.md) is merged; its
+**Status:** planned as five PRs (below). 6.1 is written (2026-11-11): local branch `short-line-main`, not pushed, not opened
+([6.1](#61-the-short-line-and-the-reset-clock)); 6.2-6.5 have no code yet. [#241](01-access-exact-timing.md) is merged; its
 access-clock hook and master-clock APU timeline have no caller inside snesrecomp until these land.
 
 The code is ours today: `src/soe_frame_driver.c`, which started as a copy of snesrecomp's `runner/src/beam_frame_driver.c`. Since
@@ -33,6 +34,69 @@ from a MesenCE state, through a hook the driver offers.
 
 Each needs a test that does not depend on our game: a tiny CPU program (enable NMI inside vblank, poll `$4212`, a long DMA across
 V=225) checked against MesenCE's clocks.
+
+## 6.1 The short line and the reset clock
+
+Branch `short-line-main` in `../snesrecomp`, on main `80a41241` (2026-11-11), local only. Two switches, each on by default only with
+`RtlApuUseMasterClock`:
+
+- `SNESRECOMP_SHORT_LINE` (`snes.c`): `Snes.fieldParity` toggles at each V=0 wrap, false after reset; line 240 of a field with it set
+  lasts 1360 clocks unless the PPU is interlaced (`snes_line_clocks`). Every beam walk in `snes.c` uses it: the advance, the clocks to
+  a line and to an IRQ, the next IRQ clock, the `$2137` latch (no long dots on the short line) and `$4212` bit 6. The parity is
+  saved after the RDNMI latch: RTLS v12 (v11 files load with a fresh reset's parity).
+- `SNESRECOMP_RESET_CLOCK` (`beam_frame_driver.c`): the first frame parks the CPU to master clock 186 before the reset vector.
+
+Checked: `tests/dma/short_line_test.c` (both switch settings; `tests/test_beam_events.py::test_short_line`): field lengths from
+reset 306,900, then 357,368 and 357,364 by turns (MesenCE's V=225 edges, `field_end` in our driver), the wrap at H=1360, IRQ and
+line distances across the short line, interlace. Upstream's beam, frame-state, snapshot and cycle tests pass (24), and
+`pytest tests/v2 tests/test_snes_cycles.py` 630 passed (`test_disconnect_diagnostics` deselected: it needs the `lib/` submodules).
+
+### To do before opening
+
+1. Our glue without `align_beam`, `align_field_length`, `mesen_line0` and `RESET_CLOCKS`, on the framework patch plus this
+   branch: replay 01 in sync (native and interpreted), and parting at NMI 11986 with `SNESRECOMP_SHORT_LINE=0`. Not run yet
+   (a regen and build, ~15 min).
+
+### PR title
+
+Beam: the short line 240 of every other field, and the CPU's reset clock
+
+### PR text
+
+````markdown
+## Summary
+
+On NTSC without interlace, line 240 of every other field lasts 1360 master clocks, not 1364, so fields alternate 357,368
+and 357,364 clocks. The beam made every field 357,368: 2 clocks a field ahead of hardware, about 1,800 clocks a minute.
+Anything that reads the beam after many fields (an H counter seed, `$4212` polling, the next field's NMI) drifts.
+
+```diff
+ Snes
++  fieldParity: toggles at each wrap to V=0, false after reset (savestate v12)
+ snes_advance_beam, snes_master_clocks_until_line / _until_irq, snes_next_irq_master,
+ the $2137 latch, $4212 bit 6
+-  every line 1364 clocks
++  line 240 of a field with fieldParity set: 1360 clocks, no long dots, unless interlaced
+ snes_beam_frame_driver_run_frame, first frame
++  the CPU starts at master clock 186 (the 65816 reset sequence); the beam at 0
+```
+
+Each rule has a switch, on by default only with the master-clock APU timeline (`RtlApuUseMasterClock`):
+`SNESRECOMP_SHORT_LINE`, `SNESRECOMP_RESET_CLOCK`.
+
+## Evidence
+
+MesenCE 2.2.1 from power-on: the Nth V=225 starts at 225 x 1364 + N x 357,366 clocks, plus 2 when N is odd, so the first
+field after reset has the long line. The first instruction runs at master clock 186. fullsnes describes the same short line.
+
+On Secret of Evermore our frame driver applied the same rule from outside, moving the beam after each field; with it both
+of our replays stay in sync with MesenCE at every NMI (8,592 and 23,756). Without it the attract demo parts at NMI 11986:
+its RNG seed reads the H counter 12 clocks early after three field-long DMAs. <!-- TODO before opening: the same with this
+branch and our alignment removed -->
+
+`tests/dma/short_line_test.c` (both settings): field lengths from reset, the wrap at H=1360, IRQ and line distances across
+the short line, interlace.
+````
 
 ## The rules
 
