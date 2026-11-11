@@ -114,7 +114,7 @@ To compare generator switches (or a framework change) without touching the norma
 The normal `src/gen/` and `build/` stay as they are, and nothing has to be regenerated back afterwards.
 
 ```sh
-SNESRECOMP_EXACT_BUS=0 bash tools/regen.sh --out-dir src/gen-rp --gen-arg --instruction-blocks --gen-arg --region-paced
+SOE_GEN_PLAIN=1 bash tools/regen.sh --out-dir src/gen-rp --gen-arg --instruction-blocks --gen-arg --region-paced   # no resume
 cmake -S . -B build-rp -DCMAKE_BUILD_TYPE=Release "-DCMAKE_C_FLAGS_RELEASE=-O1 -DNDEBUG" "-DCMAKE_CXX_FLAGS_RELEASE=-O1 -DNDEBUG" \
   -DSOE_GEN_DIR=$PWD/src/gen-rp -DFETCHCONTENT_SOURCE_DIR_SDL3=$PWD/build/_deps/sdl3-src
 cmake --build build-rp -j

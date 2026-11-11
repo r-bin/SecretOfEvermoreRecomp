@@ -98,14 +98,13 @@ else
   echo "== Skipping ROM verification (--no-verify) =="
 fi
 
-# Bus-exact compiled code (snesrecomp v2/bus_exact.py, in framework/snesrecomp.patch): every instruction charged as the
-# interpreter charges it, so native runs keep MesenCE's timing. SNESRECOMP_EXACT_BUS=0 generates the old
-# block-folded charges (docs/imperfections/compiled-cycle-charges.md).
-export SNESRECOMP_EXACT_BUS="${SNESRECOMP_EXACT_BUS:-1}"
-# Compiled resume (snesrecomp v2, in framework/snesrecomp.patch): every instruction of a compiled variant is also an entry, so
-# code a CPU slice stopped in goes on compiled instead of interpreted (docs/progress.md, native share).
-# SNESRECOMP_AOT_RESUME=0 at regen leaves it out; =0 at run time turns it off, =2 keeps only suspended frames.
-export SNESRECOMP_AOT_RESUME="${SNESRECOMP_AOT_RESUME:-1}"
+# Compiled code charged per instruction as the interpreter charges it (upstream's --instruction-blocks --region-paced),
+# so native runs keep MesenCE's timing, and compiled resume (--aot-resume, framework/snesrecomp.patch, docs/pr/04): every
+# instruction of a compiled variant is also an entry, so code a CPU slice stopped in goes on compiled. SOE_GEN_PLAIN=1
+# leaves all three out (block-folded charges, docs/imperfections/compiled-cycle-charges.md). At run time
+# SNESRECOMP_AOT_RESUME=0 turns resume off, =2 keeps only suspended frames.
+TIMING_GEN=(--instruction-blocks --region-paced --aot-resume)
+if [ "${SOE_GEN_PLAIN:-0}" = 1 ]; then TIMING_GEN=(); fi
 
 FUNCS_H=recomp/funcs.h
 if [ "$OUT_DIR" != src/gen ]; then FUNCS_H="$OUT_DIR/funcs.h"; fi
@@ -113,6 +112,7 @@ GEN_ARGS=(--rom "$ROM" --cfg-dir recomp --out-dir "$OUT_DIR"
           --funcs-h "$FUNCS_H" --project-root "$ROOT")
 if [ "$CFG_ROOTS" -eq 1 ]; then GEN_ARGS+=(--cfg-roots); fi
 if [ "$VERIFY" -eq 1 ]; then GEN_ARGS+=("${VERIFY_ARGS[@]}"); fi
+if [ ${#TIMING_GEN[@]} -gt 0 ]; then GEN_ARGS+=("${TIMING_GEN[@]}"); fi
 if [ ${#EXTRA_GEN[@]} -gt 0 ]; then GEN_ARGS+=("${EXTRA_GEN[@]}"); fi
 
 if [ "${SOE_ANALYSIS_CACHE:-1}" != 0 ] && [ -z "${SNESRECOMP_NATIVE_ANALYZER:-}" ] && command -v node >/dev/null 2>&1; then

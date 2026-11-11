@@ -1,7 +1,8 @@
 # 3. Bus-exact compiled code
 
 **Status:** obsolete (2026-11-10), never opened: upstream's region-paced emission (#250/#251, merged) does the same job (below).
-Our build still generates with `bus_exact.py` until [PR 4](04-compiled-resume.md) runs on region-paced code; then it leaves our patch.
+Since 2026-11-11 our build generates with upstream's flags plus `--aot-resume` ([PR 4](04-compiled-resume.md)); `bus_exact.py` is out
+of our patch.
 
 Branch: `aot-bus-exact` in the fork, `b8eed84c` (first written as `9a4dc97c` on an older main, not published), without its nested-deadline part ([Not proposed](README.md#not-proposed)).
 

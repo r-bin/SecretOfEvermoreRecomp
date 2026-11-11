@@ -1,6 +1,6 @@
 // Instruction by instruction in a master-clock window: the recomp's native build against itself all-interpreted.
-// Both run with SNESRECOMP_CYC_WATCH: the interpreter's `[cyc] ... start=` lines and the bus-exact compiled code's
-// `[acyc] pc= start=` lines (snesrecomp built with SNESRECOMP_EXACT_BUS=1). Prints where the (pc, start clock)
+// Both run with SNESRECOMP_CYC_WATCH: the interpreter's `[cyc] ... start=` lines and the region-paced compiled code's
+// `[acyc] pc= start=` lines (cpu_aot_insn_begin). Prints where the (pc, start clock)
 // streams part, with the instructions before it. Take the window from native-vs-interp.mts (the last NMI both
 // agree on, to the first that differs).
 //

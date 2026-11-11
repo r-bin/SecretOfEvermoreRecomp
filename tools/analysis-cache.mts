@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // A cache in front of snesrecomp's native analyzer (recompiler-rs snesrecomp-analyze), the 139 s of a 166 s regen. Its
 // result depends only on the analyzer binary, the ROM, the cfg files and its arguments, not on the emission switches
-// (SNESRECOMP_EXACT_BUS, SNESRECOMP_AOT_RESUME, --region-paced), so a variant regen reuses it. tools/regen.sh puts this
+// (--instruction-blocks, --region-paced, --aot-resume), so a variant regen reuses it. tools/regen.sh puts this
 // file in SNESRECOMP_NATIVE_ANALYZER and the real binary in SOE_ANALYZER_REAL; v2_emit calls it with the analyzer's
 // own arguments. Kept in out/analysis-cache/, keyed by a hash of all inputs. SOE_ANALYSIS_CACHE=0 in regen.sh skips it.
 import { createHash } from 'node:crypto';

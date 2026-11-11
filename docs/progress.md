@@ -1,7 +1,8 @@
 # Progress: Replays Against MesenCE
 
 How much of each committed replay plays exactly as MesenCE 2.2.1 plays it, at every NMI from power-on, every byte, nothing
-copied in or masked. Measured 2026-11-07 on `develop` with `framework/snesrecomp.patch`, to the end of each replay
+copied in or masked. Measured 2026-11-07 on `develop` with `framework/snesrecomp.patch`, to the end of each replay; since 2026-11-11
+the build generates with upstream's region-paced code plus our resume (PR 4): sync rechecked, native 94.05 % (01) and 92.43 % (02)
 (`node tools/compare/full.mts`, native and `--interpreted`, the picture with `--fade`; `tools/compare/probes/run-stats.mts --stats`). How to reproduce:
 [testing.md](testing.md).
 

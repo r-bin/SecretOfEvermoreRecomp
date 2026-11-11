@@ -1,7 +1,8 @@
 # Compiled Code Is Billed at Code-Fetch Speed
 
 **Status:** fixed with PR 1 (2026-11-03) with PR 3:
-generated with `SNESRECOMP_EXACT_BUS=1` (our `tools/regen.sh` sets it), compiled code keeps the interpreter's timing
+first generated with `SNESRECOMP_EXACT_BUS=1`, since 2026-11-11 with upstream's `--instruction-blocks --region-paced` (our
+`tools/regen.sh` passes them), compiled code keeps the interpreter's timing
 instruction for instruction; native runs of both replays are identical to MesenCE at every NMI key
 ([../progress.md](../progress.md)). Upstream fixed it another way: `--instruction-blocks --region-paced` (#250/#251, on main since
 2026-11-09) keeps both replays in sync too, so PR 3 is obsolete ([../pr/03-bus-exact-compiled-code.md](../pr/03-bus-exact-compiled-code.md)).

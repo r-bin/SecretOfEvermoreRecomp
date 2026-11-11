@@ -20,8 +20,8 @@ ctest --test-dir build --output-on-failure           # 4-6 min: tool tests, rese
 
 - Headless: `build/SecretOfEvermoreSNESRecomp --no-launcher --script s.txt <rom>` with `SNESRECOMP_DUMP_DIR`. Copy `build/`
   to a scratch folder before experimenting: `saves/`, `config.ini` belong to the user.
-- `regen.sh` deletes `src/gen` first: upstream's emitter reuses it without looking at `SNESRECOMP_EXACT_BUS` /
-  `SNESRECOMP_AOT_RESUME`.
+- `regen.sh` generates with `--instruction-blocks --region-paced --aot-resume` (upstream's timing, our PR 4) and deletes its
+  output folder first. Compare switches in a variant beside the normal build (`--out-dir`, docs/testing.md Variants).
 - New seeds, bound C, names: `npm run recomp` in an everscript-vscode checkout (writes nothing here), then
   `node tools/import.mts --from <checkout>`. Nothing else reads another checkout.
 - No `timeout` on macOS: bound a long run with `perl -e 'alarm 900; exec @ARGV' <command>`.

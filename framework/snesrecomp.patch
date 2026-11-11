@@ -1,246 +1,5 @@
-diff --git a/recompiler/v2/bus_exact.py b/recompiler/v2/bus_exact.py
-new file mode 100644
-index 00000000..2f1e1037
---- /dev/null
-+++ b/recompiler/v2/bus_exact.py
-@@ -0,0 +1,235 @@
-+"""Bus-exact instruction timing for generated code (SNESRECOMP_EXACT_BUS=1 at generation).
-+
-+The interpreter tier charges an instruction the region speed of each bus transfer
-+it makes (opcode and operand fetches, pointer, data and stack bytes) plus 6
-+master clocks per remaining (internal) cycle, and lets an I/O register access
-+see the clock of its own bus cycle (interp_bridge.c, bridge_timing_bus /
-+bridge_note_access). The default emitter folds a whole block into
-+`cycles x code speed`, so every WRAM or I/O access is billed at code speed, and
-+the block's clocks are all charged before any of its accesses.
-+
-+With this switch on, every instruction is its own CFG block (the deadline is
-+checked between instructions, as the interpreter does) and each instruction
-+charges exactly what the interpreter charges for it:
-+
-+    master = 6 x cycles + sum over transfers of (region speed - 6)
-+
-+which equals `sum of transfer speeds + 6 x internal cycles` while the
-+transfers do not outnumber the cycles. Instructions that touch memory through
-+an operand charge after their effect, with `g_aot_access_prefix` holding the
-+clocks from the instruction's start to its data access, so an I/O register
-+sees the same clock it sees under the interpreter. Everything else charges
-+before its effect (a call's callee and a branch target come after it).
-+"""
-+
-+import os
-+from typing import List, Optional, Tuple
-+
-+import snes65816 as _d
-+from snes65816 import (
-+    IMP, ACC, IMM, DP, DP_X, DP_Y, ABS, ABS_X, ABS_Y, LONG, LONG_X, REL,
-+    REL16, STK, INDIR, INDIR_X, INDIR_Y, INDIR_LY, INDIR_L, INDIR_DPX,
-+    DP_INDIR, STK_IY,
-+)
-+from snes_cycles import instr_static_cycles, dp_add
-+
-+from v2.ir import SegKind
-+
-+
-+def enabled() -> bool:
-+    return os.environ.get('SNESRECOMP_EXACT_BUS') == '1'
-+
-+
-+def resume_enabled() -> bool:
-+    """SNESRECOMP_AOT_RESUME=1 (with bus-exact code): every instruction of a
-+    variant is also an entry, so a frame suspended at a deadline resumes compiled
-+    (emit_function's resume switch, program_emit's g_aot_resume_table)."""
-+    return enabled() and os.environ.get('SNESRECOMP_AOT_RESUME') == '1'
-+
-+
-+_STORE = {'STA', 'STX', 'STY', 'STZ'}
-+_RMW = {'ASL', 'LSR', 'ROL', 'ROR', 'INC', 'DEC', 'TSB', 'TRB'}
-+_XW = {'LDX', 'LDY', 'STX', 'STY', 'CPX', 'CPY'}
-+_MEM = {'LDA', 'LDX', 'LDY', 'ADC', 'SBC', 'AND', 'ORA', 'EOR', 'CMP',
-+        'CPX', 'CPY', 'BIT'} | _STORE | _RMW
-+_NO_OPERAND_MODES = {IMP, ACC, IMM, REL, REL16}
-+# Pointer bytes the indirect modes read before the data (bank $00).
-+_PTR_BYTES = {DP_INDIR: 2, INDIR_DPX: 2, INDIR_Y: 2, INDIR_L: 3,
-+              INDIR_LY: 3, STK_IY: 2}
-+_READ_XCROSS_MODES = {ABS_X, ABS_Y, INDIR_Y}
-+
-+
-+def _stack_bytes(op: int, mnem: str, m: int, x: int) -> int:
-+    if mnem in ('PHA', 'PLA'):
-+        return 1 if m else 2
-+    if mnem in ('PHX', 'PHY', 'PLX', 'PLY'):
-+        return 1 if x else 2
-+    if mnem in ('PHB', 'PLB', 'PHK', 'PHP', 'PLP'):
-+        return 1
-+    if mnem in ('PHD', 'PLD', 'PEA', 'PEI', 'PER', 'JSR', 'RTS'):
-+        return 2
-+    if mnem in ('JSL', 'RTL'):
-+        return 3
-+    if mnem == 'RTI':
-+        return 4                       # native mode: P, PC, PB
-+    if mnem in ('BRK', 'COP'):
-+        return 4
-+    return 0
-+
-+
-+def _rs(bank_expr: str, addr_expr: str) -> str:
-+    return (f"cpu_region_speed(((uint32)({bank_expr}) << 16) | "
-+            f"(uint32)(uint16)({addr_expr}))")
-+
-+
-+def _rs0(addr_expr: str) -> str:
-+    return f"cpu_region_speed((uint32)(uint16)({addr_expr}))"
-+
-+
-+class Plan:
-+    """What one instruction charges and where."""
-+
-+    def __init__(self):
-+        self.cycles_const = 0
-+        self.cycles_dyn: List[str] = []    # C expressions, each 0 or 1
-+        self.master_const = 0              # clocks above 6 x cycles
-+        self.master_dyn: List[str] = []    # C expressions in clocks
-+        self.after = False                 # charge after the effect
-+        self.prefix_expr: Optional[str] = None   # clocks to the data access
-+        self.wprefix_expr: Optional[str] = None  # to the write of an RMW
-+        self.open_bus: Optional[int] = None      # the last fetch before the access
-+
-+    def lines(self, tag: str) -> Tuple[List[str], List[str]]:
-+        """(lines before the effect, lines after it)."""
-+        cyc = " + ".join([str(self.cycles_const)] + self.cycles_dyn)
-+        extra = " + ".join([str(self.master_const)] + self.master_dyn)
-+        decl = [f"uint32 _bc{tag} = {cyc};",
-+                f"uint32 _bx{tag} = 6u * _bc{tag} + {extra};"]
-+        charge = [f"cpu->cycles += _bc{tag};",
-+                  f"cpu->master_cycles += _bx{tag};"]
-+        if not self.after:
-+            return decl + charge, []
-+        pre = decl + [f"g_aot_access_prefix = {self.prefix_expr};",
-+                      f"g_aot_access_wprefix = {self.wprefix_expr};"]
-+        if self.open_bus is not None:
-+            pre.append(f"cpu->open_bus = 0x{self.open_bus:02X};")
-+        post = charge + ["g_aot_access_prefix = AOT_NO_ACCESS;"]
-+        return pre, post
-+
-+
-+def _first_seg(ir_ops):
-+    for op in ir_ops:
-+        seg = getattr(op, 'seg', None)
-+        if seg is not None:
-+            return seg
-+    return None
-+
-+
-+def plan(insn, ir_ops, code_speed: Tuple[str, Optional[int]]) -> Plan:
-+    from v2.codegen import _segref_addr_expr
-+
-+    p = Plan()
-+    op, mnem, mode = insn.opcode, insn.mnem, insn.mode
-+    m = 1 if (getattr(insn, 'm_flag', 1) & 1) else 0
-+    x = 1 if (getattr(insn, 'x_flag', 1) & 1) else 0
-+    cs_expr, cs_const = code_speed
-+    cs = str(cs_const) if cs_const is not None else f"({cs_expr})"
-+
-+    p.cycles_const = instr_static_cycles(op, m, x)
-+    if dp_add(op):
-+        p.cycles_dyn.append("((cpu->D & 0xFF) ? 1u : 0u)")
-+
-+    # Opcode and operand fetches, at the code region's speed.
-+    if cs_const is not None:
-+        p.master_const += insn.length * (cs_const - 6)
-+    else:
-+        p.master_dyn.append(f"{insn.length}u * ({cs} - 6u)")
-+
-+    sb = _stack_bytes(op, mnem, m, x)
-+    if sb:
-+        p.master_dyn.append(f"{sb}u * ({_rs0('cpu->S')} - 6u)")
-+    if mnem in ('BRK', 'COP'):
-+        p.master_dyn.append(f"2u * ({_rs0('0xFFE6')} - 6u)")
-+
-+    operand = insn.operand if isinstance(insn.operand, int) else 0
-+    if op == 0x6C:                     # JMP (abs): pointer in bank $00
-+        p.master_dyn.append(f"2u * ({_rs0(hex(operand & 0xFFFF))} - 6u)")
-+        return p
-+    if op == 0xDC:                     # JML [abs]
-+        p.master_dyn.append(f"3u * ({_rs0(hex(operand & 0xFFFF))} - 6u)")
-+        return p
-+    if op in (0x7C, 0xFC):             # JMP/JSR (abs,X): pointer in PB
-+        p.master_dyn.append(
-+            f"2u * ({_rs('cpu->PB', f'{operand & 0xFFFF:#06x} + cpu->X')} - 6u)")
-+        return p
-+    if mnem == 'PEI':
-+        p.master_dyn.append(
-+            f"2u * ({_rs0(f'cpu->D + {operand & 0xFF:#04x}')} - 6u)")
-+        return p
-+    if mnem in ('MVN', 'MVP'):
-+        bm = next(o for o in ir_ops if hasattr(o, 'src_bank'))
-+        src, dst = bm.src_bank, bm.dst_bank
-+        p.master_dyn.append(f"({_rs(hex(src), 'cpu->X')} - 6u)")
-+        p.master_dyn.append(f"({_rs(hex(dst), 'cpu->Y')} - 6u)")
-+        return p
-+    if mnem not in _MEM or mode in _NO_OPERAND_MODES:
-+        return p
-+
-+    seg = _first_seg(ir_ops)
-+    if seg is None:
-+        return p
-+    width = (1 if x else 2) if mnem in _XW else (1 if m else 2)
-+    nbytes = width * (2 if mnem in _RMW else 1)
-+    prefix = [f"{insn.length}u * {cs}"]
-+
-+    nptr = _PTR_BYTES.get(mode, 0)
-+    if nptr:
-+        off = seg.offset & 0xFF
-+        if mode == STK_IY:
-+            pa = f"cpu->S + {off:#04x}"
-+        elif mode == INDIR_DPX:
-+            pa = f"cpu->D + {off:#04x} + cpu->X"
-+        else:
-+            pa = f"cpu->D + {off:#04x}"
-+        p.master_dyn.append(f"{nptr}u * ({_rs0(pa)} - 6u)")
-+        prefix.append(f"{nptr}u * {_rs0(pa)}")
-+
-+    # The data bus holds the last byte fetched: with no pointer read between,
-+    # the operand's last byte, which an undriven register ($2137, open-bus
-+    # bits) reads back, as the interpreter's fetches leave it.
-+    if not nptr and insn.length >= 2:
-+        p.open_bus = (operand >> (8 * (insn.length - 2))) & 0xFF
-+
-+    bank, addr = _segref_addr_expr(seg)
-+    ds = _rs(bank, addr)
-+    if width == 1:
-+        p.master_dyn.append(f"{nbytes}u * ({ds} - 6u)")
-+    else:
-+        # A word's second byte is at the next address and is charged at its
-+        # own region's speed, as the interpreter charges it: a word across a
-+        # speed boundary ($xx:7FFF/$8000, the end of WRAM's low mirror) costs
-+        # one byte at each speed.
-+        ds_hi = (f"cpu_region_speed((((uint32)({bank}) << 16) + "
-+                 f"(uint32)(uint16)({addr}) + 1u) & 0xFFFFFFu)")
-+        reps = nbytes // 2
-+        p.master_dyn.append(f"{reps}u * ({ds} - 6u)")
-+        p.master_dyn.append(f"{reps}u * ({ds_hi} - 6u)")
-+
-+    if x and mnem not in _STORE and mnem not in _RMW and mode in _READ_XCROSS_MODES:
-+        if mode == INDIR_Y:
-+            base = f"cpu_read16(cpu, 0x00, (uint16)(cpu->D + {seg.offset & 0xFF:#04x}))"
-+            idx = "cpu->Y"
-+        else:
-+            base = f"{operand & 0xFFFF:#06x}u"
-+            idx = "cpu->X" if mode == ABS_X else "cpu->Y"
-+        p.cycles_dyn.append(
-+            f"((((uint32)({base}) >> 8) != (((uint32)({base}) + (uint32){idx}) >> 8)) ? 1u : 0u)")
-+
-+    p.after = True
-+    p.prefix_expr = " + ".join(prefix)
-+    if mnem in _RMW:
-+        rd = f"{ds}" if width == 1 else f"{ds} + {ds_hi}"
-+        p.wprefix_expr = f"{p.prefix_expr} + {rd}"
-+    else:
-+        p.wprefix_expr = p.prefix_expr
-+    return p
 diff --git a/recompiler/v2/codegen.py b/recompiler/v2/codegen.py
-index 72ddd6a4..377e05f5 100644
+index 72ddd6a4..af6d3934 100644
 --- a/recompiler/v2/codegen.py
 +++ b/recompiler/v2/codegen.py
 @@ -2486,10 +2486,12 @@ def _emit_return(op: Return) -> List[str]:
@@ -259,124 +18,39 @@ index 72ddd6a4..377e05f5 100644
          ]
      # ── Option-1 cpu->S return-frame ABI (RTS / RTL) ──────────────────
      # ALWAYS pop the hardware return frame the matching JSR/JSL pushed
-@@ -2739,6 +2741,11 @@ def _emit_pea_per_pei(op: PushEffectiveAddress) -> List[str]:
-     return ["/* TODO PushEffectiveAddress unsupported kind */"]
- 
- 
-+def bus_exact_enabled() -> bool:
-+    from v2.bus_exact import enabled
-+    return enabled()
-+
-+
- def _emit_blockmove(op: BlockMove) -> List[str]:
-     delta = "+1" if op.direction == "mvn" else "-1"
-     et = "CPU_TR_MVN" if op.direction == "mvn" else "CPU_TR_MVP"
-@@ -2768,7 +2775,11 @@ def _emit_blockmove(op: BlockMove) -> List[str]:
-         f"        return interp_bridge_lle_yield_unwind(cpu, {_transfer_target_expr(_CURRENT_SOURCE_PC24, False)});",
-         "      }",
-         "      cpu->cycles += 7;",
--        f"      cpu->master_cycles += 7 * {speed_expr};",
-+        (f"      cpu->master_cycles += 42u + 3u * (({speed_expr}) - 6u)"
-+         f" + cpu_region_speed(((uint32)_src_b << 16) | cpu->X) - 6u"
-+         f" + cpu_region_speed(((uint32)_dst_b << 16) | cpu->Y) - 6u;"
-+         if bus_exact_enabled() else
-+         f"      cpu->master_cycles += 7 * {speed_expr};"),
-         "    }",
-         "  } while (cpu->A != 0xFFFF);",
-         "}",
+diff --git a/recompiler/v2/emit_bank.py b/recompiler/v2/emit_bank.py
+index f94ddc43..bae87a08 100644
+--- a/recompiler/v2/emit_bank.py
++++ b/recompiler/v2/emit_bank.py
+@@ -86,6 +86,7 @@ def emit_bank(rom: bytes, bank: int,
+               brk_rti_sites=None,
+               instruction_blocks: bool = False,
+               region_paced: bool = False,
++              aot_resume: bool = False,
+               suppressed_collector=None,
+               const_z_fold_collector=None,
+               dispatch_target_suppressed_collector=None,
+@@ -214,6 +215,7 @@ def emit_bank(rom: bytes, bank: int,
+             brk_rti_sites=brk_rti_sites,
+             instruction_blocks=instruction_blocks,
+             region_paced=region_paced,
++            aot_resume=aot_resume,
+             suppressed_collector=suppressed_collector,
+             const_z_fold_collector=const_z_fold_collector,
+             dispatch_target_suppressed_collector=
 diff --git a/recompiler/v2/emit_function.py b/recompiler/v2/emit_function.py
-index 301e594d..9e185e7e 100644
+index 301e594d..6132633d 100644
 --- a/recompiler/v2/emit_function.py
 +++ b/recompiler/v2/emit_function.py
-@@ -35,6 +35,7 @@ from v2.decoder import (  # noqa: E402
- from v2.cfg import V2Block, V2CFG, build_cfg  # noqa: E402
- from v2.lowering import lower  # noqa: E402
- from v2.codegen import emit_op, _transfer_target_expr  # noqa: E402
-+from v2 import bus_exact  # noqa: E402
- from v2.naming import (  # noqa: E402
-     default_func_name as _default_func_name,
-     variant_suffix as _variant_suffix,
-@@ -347,7 +348,8 @@ def scan_tail_call_stack_delta(
-     except Exception:
-         return {}
+@@ -538,6 +538,7 @@ def emit_function(rom: bytes, bank: int, start: int,
+                   brk_rti_sites=None,
+                   instruction_blocks: bool = False,
+                   region_paced: bool = False,
++                  aot_resume: bool = False,
+                   entry_s_offset: int = 0) -> str:
+     """Emit a complete v2 C function source for one 65816 function.
  
--    cfg = build_cfg(graph, instruction_blocks=get_rom_mapping() == ROM_MAP_SA1)
-+    cfg = build_cfg(graph, instruction_blocks=(get_rom_mapping() == ROM_MAP_SA1
-+                                        or bus_exact.enabled()))
-     if cfg.entry not in cfg.blocks:
-         return {}
- 
-@@ -454,7 +456,8 @@ def scan_rts_stack_deltas(
-     except Exception:
-         return None
- 
--    cfg = build_cfg(graph, instruction_blocks=get_rom_mapping() == ROM_MAP_SA1)
-+    cfg = build_cfg(graph, instruction_blocks=(get_rom_mapping() == ROM_MAP_SA1
-+                                        or bus_exact.enabled()))
-     if cfg.entry not in cfg.blocks:
-         return None
- 
-@@ -693,7 +696,8 @@ def emit_function(rom: bytes, bank: int, start: int,
-     hook_by_pc24 = {pc24 & 0xFFFFFF: name
-                     for pc24, name in (entry_hooks or {}).items()
-                     if ((pc24 >> 16) & 0xFF) == bank}
--    cfg = build_cfg(graph, instruction_blocks=instruction_blocks or get_rom_mapping() == ROM_MAP_SA1,
-+    cfg = build_cfg(graph, instruction_blocks=(instruction_blocks or get_rom_mapping() == ROM_MAP_SA1
-+                                        or bus_exact.enabled()),
-                     extra_leader_pcs={pc24 & 0xFFFF for pc24 in hook_by_pc24})
- 
-     # A tight, side-effect-free memory poll cannot execute atomically under
-@@ -1568,6 +1572,12 @@ def emit_function(rom: bytes, bank: int, start: int,
-                     f"(uint8)RECOMP_RETURN_SKIP_{skip}, \"{func_name}\");"
-                 )
- 
-+            if ii in skip_emit_idx and bus_exact.enabled():
-+                # The interpreter executes the elided setup instruction.
-+                _pre, _ = bus_exact.plan(
-+                    di_insn, ir_ops, (_blk_spd_expr, _blk_spd_const)
-+                ).lines(f"{_label_for(key)[1:]}_{ii}")
-+                lines.extend(_pre)
-             if ii in skip_emit_idx:
-                 if ii in nlr_pla_insn_indices:
-                     lines.append(
-@@ -1582,8 +1592,17 @@ def emit_function(rom: bytes, bank: int, start: int,
-                 continue
-             # Axis-2 step C dynamics: charge runtime-only modifiers (D.l != 0,
-             # abs,X/Y read page-cross) for this instruction before its effect.
--            for _ln in _dynamic_charge_lines(di_insn, _blk_spd_expr):
--                lines.append(_ln)
-+            _exact_post: List[str] = []
-+            if bus_exact.enabled():
-+                # One instruction per block: its exact bus charge, before
-+                # its effect or (operand accesses) after it.
-+                _pre, _exact_post = bus_exact.plan(
-+                    di_insn, ir_ops, (_blk_spd_expr, _blk_spd_const)
-+                ).lines(f"{_label_for(key)[1:]}_{ii}")
-+                lines.extend(_pre)
-+            else:
-+                for _ln in _dynamic_charge_lines(di_insn, _blk_spd_expr):
-+                    lines.append(_ln)
-             for op in ir_ops:
-                 if isinstance(op, CondBranch):
-                     # Cond branch: block has TWO successors: fall-through (0)
-@@ -1601,7 +1620,7 @@ def emit_function(rom: bytes, bank: int, start: int,
-                         # code runs e=0).
-                         lines.append(
-                             f"if ({pred}) {{ cpu->cycles += 1; "
--                            f"cpu->master_cycles += {_blk_spd_expr}; {target_stmt} }}")
-+                            f"cpu->master_cycles += {'6' if bus_exact.enabled() else _blk_spd_expr}; {target_stmt} }}")
-                     if fall is not None:
-                         lines.append(_goto_or_return(fall, source_pc24=blk_pc24)
-                                      + " /* fall-through */")
-@@ -2003,6 +2022,7 @@ def emit_function(rom: bytes, bank: int, start: int,
-                     # ReadReg, ALU, Read/Write, etc. — non-terminating.
-                     for ln in emit_op(op, getattr(di_insn, 'addr', None)):
-                         lines.append(ln)
-+            lines.extend(_exact_post)
-         # NLR with no terminator IR (block IR was pure-PullReg, like
-         # $01:A3CB's [PLA, PLA, fall-through]). The SKIP setter wasn't
-         # injected during the per-insn loop because there was no
-@@ -2169,6 +2189,15 @@ def emit_function(rom: bytes, bank: int, start: int,
+@@ -2169,6 +2170,15 @@ def emit_function(rom: bytes, bank: int, start: int,
      src.append(f'  if (cpu_take_tailcall_return_context(&_entry_s, &_hrv)) {{')
      src.append(f'    cpu->host_return_valid = _hrv;')
      src.append(f'  }}')
@@ -386,13 +60,24 @@ index 301e594d..9e185e7e 100644
 +    # Not for variants that yield to the LLE scheduler at entry: they would
 +    # yield before taking the resume. Interrupt handlers resume too: under the
 +    # scheduler their RTI goes on at the popped PC (interp_bridge_aot_rti).
-+    resume = bus_exact.resume_enabled() and not has_lle_memory_poll
++    resume = aot_resume and region_paced and not has_lle_memory_poll
 +    if resume:
 +        src.append(f'  const uint32 _aot_resume = cpu_take_aot_resume(&_entry_s, &_hrv);')
      # Debug bisection guard (codegen-flag gated): after the prologue has
      # established the ACTUAL invocation's _entry_s/_hrv (incl. tail-call
      # context), tier the whole body to the interpreter if this node's PC is in
-@@ -2215,6 +2244,19 @@ def emit_function(rom: bytes, bank: int, start: int,
+@@ -2183,6 +2193,10 @@ def emit_function(rom: bytes, bank: int, start: int,
+     src.append(f'  uint32 _host_return_pc24 = 0xFFFFFFFFu;')
+     if region_paced:
+         src.append('  if (cpu->emulation || (cpu->S >= 0x1FFBu && cpu->S < 0x6005u)) { RecompStackPop();')
++        if resume:
++            # A resumed frame goes on at the instruction it stopped at, not at
++            # the variant's entry, which it has already run past.
++            src.append('    if (_aot_resume) return interp_tier_dispatch_tail(cpu, _aot_resume, _aot_resume, _entry_s, _hrv);')
+         src.append(f'    return interp_tier_dispatch_tail(cpu, {_transfer_target_expr(fn_entry_pc, False)}, '
+                    f'0x{fn_entry_pc:06X}u, _entry_s, _hrv); }} /* native-mode pacing only */')
+     src.append(f'  if (_hrv == 2 || _hrv == 3) {{')
+@@ -2215,6 +2229,19 @@ def emit_function(rom: bytes, bank: int, start: int,
      # resolved to a SKIP_N non-local return (cpu_resolve_ancestor_skip).
      # Index by the just-pushed g_recomp_stack_top; pop is implicit (top--).
      src.append(f'  if (g_recomp_stack_top >= 1) g_cpu_entry_s[g_recomp_stack_top - 1] = _entry_s;')
@@ -412,24 +97,16 @@ index 301e594d..9e185e7e 100644
      # `entry_hook`: observational host callbacks (docs/ENTRY_HOOK.md).
      for hook_name in sorted({hook_by_pc24[(bank << 16) | (key.pc & 0xFFFF)]
                               for key in block_order
-@@ -2259,6 +2301,8 @@ def emit_function(rom: bytes, bank: int, start: int,
-         # Once per execution of the hooked instruction: after the deadline
-         # check (a yield there hands the instruction, and with it the report,
-         # to the interpreter) and before the block's cycles are charged.
-+        if bus_exact.enabled():
-+            src.append(f'    cpu_aot_insn_begin(cpu, 0x{block_pc24 & 0xFFFF:04X}u);')
-         if block_pc24 in hook_by_pc24:
-             src.append(f'    {hook_by_pc24[block_pc24]}(cpu, 0x{block_pc24:06X}u);')
-         # Cartridge coprocessors observe CPU bus accesses no earlier than this
-@@ -2300,7 +2344,7 @@ def emit_function(rom: bytes, bank: int, start: int,
+@@ -2300,6 +2327,9 @@ def emit_function(rom: bytes, bank: int, start: int,
                             f'0x{block_pc24:06X}u, _entry_s, _hrv); }} /* MMIO remains authoritative LLE */')
              _fetch_last = rom_offset(bank, (_insn.addr + _insn.length - 1) & 0xFFFF)
              src.append(f'    cpu->open_bus = 0x{rom[_fetch_last]:02X}u; /* last opcode/operand fetch */')
--        if _cyc_const:
-+        if _cyc_const and not bus_exact.enabled():
++            # Compiled from here on: reported as the interpreter reports each
++            # instruction (the bridge's PC hook).
++            src.append(f'    cpu_aot_insn_begin(cpu, 0x{block_pc24 & 0xFFFF:04X}u);')
+         if _cyc_const:
              src.append(f'    cpu->cycles += {_cyc_const};')
              _spd_expr, _spd_const = _block_speed(bank, key.pc)
-             if _paced_plan is not None:
 diff --git a/recompiler/v2/emitter_helpers.py b/recompiler/v2/emitter_helpers.py
 index 90cd16d7..dfd64e35 100644
 --- a/recompiler/v2/emitter_helpers.py
@@ -444,18 +121,10 @@ index 90cd16d7..dfd64e35 100644
          "  cpu->PB = _saved_pb;",
          "}",
 diff --git a/recompiler/v2/program_emit.py b/recompiler/v2/program_emit.py
-index 6a750a02..ac7748de 100644
+index 6a750a02..4c91f7f5 100644
 --- a/recompiler/v2/program_emit.py
 +++ b/recompiler/v2/program_emit.py
-@@ -36,6 +36,7 @@ from .decoder import (
-     set_decode_cache_enabled,
- )
- from .emit_bank import BankEntry, emit_bank, _default_file_header
-+from . import bus_exact
- from .link_closure import assert_closed
- from .program_analysis import NodeDisposition, ProgramManifest, VariantKey
- from .translation_units import (_TOP_LEVEL_CPU_FN_RE,
-@@ -717,6 +718,50 @@ def emit_dispatch_table(manifest: ProgramManifest, emitted_variants: Mapping,
+@@ -717,6 +717,50 @@ def emit_dispatch_table(manifest: ProgramManifest, emitted_variants: Mapping,
      return "\n".join(lines)
  
  
@@ -465,7 +134,7 @@ index 6a750a02..ac7748de 100644
 +
 +def emit_aot_resume_table(sources: Iterable[pathlib.Path]) -> str:
 +    """g_aot_resume_table: every instruction a generated variant can resume at
-+    (the resume switch emit_function writes under SNESRECOMP_AOT_RESUME=1),
++    (the resume switch emit_function writes with --aot-resume),
 +    sorted by (pc24, mx). Collected from the bank sources so cached banks count
 +    too. Where several variants hold an instruction (shared tails, a routine
 +    entered mid-way), the one with the most instructions serves it: its CFG
@@ -506,16 +175,50 @@ index 6a750a02..ac7748de 100644
  def _stable_hash(value) -> str:
      data = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
      return hashlib.sha256(data).hexdigest()
-@@ -766,6 +811,8 @@ def _bank_cache_key(bank: int, manifest: ProgramManifest, rom_digest: str,
+@@ -729,7 +773,8 @@ def _bank_cache_key(bank: int, manifest: ProgramManifest, rom_digest: str,
+                     shard_threshold_bytes: int, shard_pc_span: int,
+                     module_prefix: str | None = None,
+                     instruction_blocks: bool = False,
+-                    region_paced: bool = False) -> str:
++                    region_paced: bool = False,
++                    aot_resume: bool = False) -> str:
+     nodes = [
+         (key.manifest_key, node.digest, node.disposition.value)
+         for key, node in sorted(manifest.nodes.items())
+@@ -766,6 +811,7 @@ def _bank_cache_key(bank: int, manifest: ProgramManifest, rom_digest: str,
          "hle": bool(enable_hle),
          "instruction_blocks": bool(instruction_blocks),
          "region_paced": bool(region_paced),
-+        # Emission switches read from the environment change every body.
-+        "bus_exact": [bus_exact.enabled(), bus_exact.resume_enabled()],
++        "aot_resume": bool(aot_resume),
          "sharding": [int(shard_threshold_bytes), int(shard_pc_span)],
          "module_prefix": module_prefix or "",
      })
-@@ -1019,7 +1066,8 @@ def emit_program(*, rom: bytes, parsed, manifest: ProgramManifest,
+@@ -781,6 +827,7 @@ def emit_program(*, rom: bytes, parsed, manifest: ProgramManifest,
+                  enable_hle: bool = True,
+                  instruction_blocks: bool = False,
+                  region_paced: bool = False,
++                 aot_resume: bool = False,
+                  shard_threshold_bytes: int = 4 * 1024 * 1024,
+                  shard_pc_span: int = 0x0800,
+                  check_link_closure: bool = True,
+@@ -856,7 +903,7 @@ def emit_program(*, rom: bytes, parsed, manifest: ProgramManifest,
+                 bank, manifest, rom_digest, generator_digest, config_digest,
+                 dispatch_helpers, inline_arg_map, enable_hle,
+                 host_alias_entries, shard_threshold_bytes, shard_pc_span,
+-                module_prefix, instruction_blocks, region_paced)
++                module_prefix, instruction_blocks, region_paced, aot_resume)
+             new_bank_keys[f"{bank:02X}"] = cache_key
+             previous_names = old_bank_outputs.get(f"{bank:02X}", ())
+             reusable_output = bool(previous_names) and all(
+@@ -939,6 +986,7 @@ def emit_program(*, rom: bytes, parsed, manifest: ProgramManifest,
+                 rom, bank, entries_by_bank.get(bank, []),
+                 instruction_blocks=instruction_blocks,
+                 region_paced=region_paced,
++                aot_resume=aot_resume,
+                 dispatch_helpers=dict(dispatch_helpers) or None,
+                 indirect_call_tables=indirect_call_tables,
+                 indirect_dispatch=indirect_dispatch or None,
+@@ -1019,7 +1067,8 @@ def emit_program(*, rom: bytes, parsed, manifest: ProgramManifest,
              staging / "dispatch_v2.c",
              emit_dispatch_table(manifest, emitted, name_for_pc, inline_arg_map,
                                  ram_routines=_collect_ram_routines(parsed),
@@ -526,7 +229,7 @@ index 6a750a02..ac7748de 100644
              staging / "unresolved_stubs_v2.c",
              "/* Manifest-driven generation: unresolved execution remains LLE. */\n")
 diff --git a/runner/src/common_cpu_infra.c b/runner/src/common_cpu_infra.c
-index c1539db2..ae2d8a9f 100644
+index c1539db2..f8dd24ce 100644
 --- a/runner/src/common_cpu_infra.c
 +++ b/runner/src/common_cpu_infra.c
 @@ -142,6 +142,12 @@ static uint8_t g_cpu_entry_return_frame[RECOMP_STACK_DEPTH];
@@ -563,7 +266,7 @@ index c1539db2..ae2d8a9f 100644
 +  return 1;
 +}
 +
-+/* Compiled resume (SNESRECOMP_AOT_RESUME=1 at regen): the next generated
++/* Compiled resume (generate --aot-resume): the next generated
 + * prologue to run adopts this frame (entry S, return contract) and jumps to
 + * the instruction at pc instead of its entry. Armed by cpu_dispatch_resume_paired
 + * right before it calls the variant that holds that instruction. */
@@ -663,7 +366,7 @@ index 06bbf03d..2b8de8bd 100644
  /* Architectural interrupt handlers may cross AOT/LLE boundaries before their
   * terminal RTI.  Keep that host-boundary context independent of any one
 diff --git a/runner/src/common_rtl.c b/runner/src/common_rtl.c
-index ca145807..81ee22c9 100644
+index ca145807..edf72f22 100644
 --- a/runner/src/common_rtl.c
 +++ b/runner/src/common_rtl.c
 @@ -1916,8 +1916,13 @@ uint8 ReadRegOpenBus(uint16 reg, uint8 open_bus) {
@@ -675,15 +378,15 @@ index ca145807..81ee22c9 100644
 +  /* The beam at the instruction's start, where the interpreter leaves it
 +   * (it syncs after every opcode): the H/V latch, PPU reads during rendering
 +   * ($2138/$213B fetch-dependent), $4210-$4212 and the joypad ports all read
-+   * beam state. Compiled bus-exact code charges an instruction after its
-+   * access, so g_cpu.master_cycles is that start clock. */
++   * beam state. Compiled code reaches here at its own clock, which the
++   * beam has not walked to yet. */
 +  if (g_snes && ((reg >= 0x2100 && reg < 0x2140) || reg == 0x4016 || reg == 0x4017 ||
 +                 (reg >= 0x4200 && reg < 0x4220)))
      snes_sync_master_clock(g_snes, g_cpu.master_cycles);
    if (reg >= 0x3000 && reg < 0x3300 && g_snes->cart->type == CART_SUPERFX) {
      cart_sync_coprocessors(g_snes->cart, g_cpu.master_cycles);
 diff --git a/runner/src/cpu_state.c b/runner/src/cpu_state.c
-index 72515994..ec9b622a 100644
+index 72515994..68fbcc26 100644
 --- a/runner/src/cpu_state.c
 +++ b/runner/src/cpu_state.c
 @@ -31,6 +31,7 @@
@@ -694,72 +397,7 @@ index 72515994..ec9b622a 100644
  #include "snes/snes.h"
  #include "snes/cart.h"
  #include "snes/cx4.h"
-@@ -347,6 +348,31 @@ static inline void cpu_pace_cycles_word(uint16 addr) {
-     cpu_pace_cycles(addr);
- }
- 
-+/* Bus-exact generated code (SNESRECOMP_EXACT_BUS=1 at generation, recompiler
-+ * v2/bus_exact.py): an instruction that accesses memory through an operand
-+ * charges its clocks after its effect and sets these to the clocks from its
-+ * start to its data access (the write of a read-modify-write: wprefix). An I/O
-+ * register access in it then gets the lead the interpreter would give it. */
-+uint32_t g_aot_access_prefix = AOT_NO_ACCESS;
-+uint32_t g_aot_access_wprefix = AOT_NO_ACCESS;
-+static uint16 s_aot_access_adr;
-+static uint32_t s_aot_lead_lo, s_aot_lead_hi;
-+static inline void cpu_aot_note_access(uint16 addr, int word, int write) {
-+    (void)word;
-+    if (g_aot_access_prefix == AOT_NO_ACCESS) return;
-+    /* MesenCE's sample point: 2 clocks into the access's bus cycle. */
-+    s_aot_access_adr = addr;
-+    s_aot_lead_lo = (write ? g_aot_access_wprefix : g_aot_access_prefix) + 2;
-+    s_aot_lead_hi = s_aot_lead_lo + cpu_region_speed(addr);
-+}
-+int cpu_aot_access_lead(uint16 adr, uint32_t *lead) {
-+    if (g_aot_access_prefix == AOT_NO_ACCESS || !s_aot_access_adr) return 0;
-+    if (adr == s_aot_access_adr) *lead = s_aot_lead_lo;
-+    else if (adr == (uint16)(s_aot_access_adr + 1)) *lead = s_aot_lead_hi;
-+    else return 0;
-+    return 1;
-+}
-+
- /* Master clocks for ONE bus access at a 24-bit address (region speed).
-  * Mirrors Recompiler/snes_cycles.py::region_speed exactly. The LLE
-  * (interp_bridge.c bridge_region_speed) and the AOT paced accessors below
-@@ -447,6 +473,7 @@ uint8 cpu_read8(CpuState *cpu, uint8 bank, uint16 addr) {
-     if (off >= 0) return cpu_latch_read8(cpu, cpu->ram[off]);
-     if (is_hw_reg(bank, addr)) {
-         cpu_pace_cycles(addr);
-+        cpu_aot_note_access(addr, 0, 0);
-         cpu_hw_log(addr, 1, 0);
-         return cpu_latch_read8(cpu, ReadRegOpenBus(addr, cpu->open_bus));
-     }
-@@ -496,6 +523,7 @@ uint16 cpu_read16(CpuState *cpu, uint8 bank, uint16 addr) {
-         uint8 lo;
-         uint8 hi;
-         cpu_pace_cycles_word(addr);
-+        cpu_aot_note_access(addr, 1, 0);
-         cpu_hw_log(addr, 1, 0);
-         if (addr >= 0x2140 && addr <= 0x217F)
-             return cpu_latch_read16(cpu, ReadRegWord(addr));
-@@ -621,7 +649,7 @@ void cpu_write8(CpuState *cpu, uint8 bank, uint16 addr, uint8 v) {
- #endif
-         return;
-     }
--    if (is_hw_reg(bank, addr)) { cpu_pace_cycles(addr); cpu_hw_log(addr, 0, v); WriteReg(addr, v); return; }
-+    if (is_hw_reg(bank, addr)) { cpu_pace_cycles(addr); cpu_aot_note_access(addr, 0, 1); cpu_hw_log(addr, 0, v); WriteReg(addr, v); return; }
-     if (g_snes && g_snes->cart && g_snes->cart->type == CART_SUPERFX) {
-         cart_write(g_snes->cart, bank, addr, v); return;
-     }
-@@ -708,6 +736,7 @@ void cpu_write16(CpuState *cpu, uint8 bank, uint16 addr, uint16 v) {
-     }
-     if (is_hw_reg(bank, addr)) {
-         cpu_pace_cycles_word(addr);
-+        cpu_aot_note_access(addr, 1, 1);
-         cpu_hw_log(addr, 0, v);
-         WriteRegWord(addr, v);
-         cpu->open_bus = (uint8)(v >> 8);
-@@ -1374,6 +1403,72 @@ RecompReturn cpu_dispatch_pc_paired(CpuState *cpu, uint32 pc24, uint8 frame_size
+@@ -1374,6 +1375,72 @@ RecompReturn cpu_dispatch_pc_paired(CpuState *cpu, uint32 pc24, uint8 frame_size
      return fp(cpu);
  }
  
@@ -833,29 +471,24 @@ index 72515994..ec9b622a 100644
   * Mirrors cpu_dispatch_pc_from's lookup + LoROM bank-mirror fallback so
   * the interpreter bounce never leaves LLE for a NULL manifest variant. */
 diff --git a/runner/src/cpu_state.h b/runner/src/cpu_state.h
-index 66a16c5a..f1d3d9b2 100644
+index 66a16c5a..b336ec6f 100644
 --- a/runner/src/cpu_state.h
 +++ b/runner/src/cpu_state.h
-@@ -431,6 +431,14 @@ void cpu_add_aot_master_cycles(CpuState *cpu, uint64 clocks);
+@@ -427,6 +427,9 @@ uint32_t  cpu_region_speed(uint32_t adr);
+  * refresh, DMA and interpreted instructions must not call this helper. */
+ extern void (*g_cpu_aot_master_credit_hook)(CpuState *cpu, uint64 clocks);
+ void cpu_add_aot_master_cycles(CpuState *cpu, uint64 clocks);
++/* A region-paced instruction that stays compiled, at its start: reported as
++ * the interpreter reports each of its instructions (g_interp_bridge_pc_hook). */
++void cpu_aot_insn_begin(const CpuState *cpu, uint32_t pc16);
+ /* Called only at architectural boundaries by opt-in paced emission. This
   * reports completion, not elapsed time, and must never credit clocks again. */
  extern void (*g_cpu_aot_instruction_boundary_hook)(CpuState *cpu);
- void cpu_aot_instruction_boundary(CpuState *cpu);
-+/* Bus-exact generated code: clocks from the running compiled instruction's
-+ * start to its data access (and to an RMW's write); AOT_NO_ACCESS outside. */
-+#define AOT_NO_ACCESS 0xFFFFFFFFu
-+extern uint32_t g_aot_access_prefix, g_aot_access_wprefix;
-+void cpu_aot_insn_begin(const CpuState *cpu, uint32_t pc16);
-+/* The lead of an I/O access made by the running bus-exact instruction: 1 and
-+ * *lead when adr is the low or high byte of its noted access. */
-+int cpu_aot_access_lead(uint16 adr, uint32_t *lead);
- /* SNESRECOMP_WLOG_ADDR hook for direct-WRAM stores that bypass cpu_write8/16
-  * (DMA A-bus writes in snes_write, WMDATA $2180). wa = g_ram offset. */
- void wlog_addr_note_direct(uint32_t wa, uint8_t v, const char *via);
-@@ -654,6 +662,33 @@ RecompReturn cpu_dispatch_call_pc_pushed(CpuState *cpu, uint32 pc24,
+@@ -654,6 +657,33 @@ RecompReturn cpu_dispatch_call_pc_pushed(CpuState *cpu, uint32 pc24,
   * is a registered function entry). Returns the callee's value. */
  RecompReturn cpu_dispatch_pc_paired(CpuState *cpu, uint32 pc24, uint8 frame_size);
  
-+/* Compiled resume (regen with SNESRECOMP_AOT_RESUME=1, bus-exact code): every
++/* Compiled resume (generate --aot-resume, region-paced code): every
 + * instruction of a compiled variant is also an entry. The generated
 + * g_aot_resume_table lists them, sorted by (pc24, mx); each names one variant
 + * whose prologue, when a resume is armed, adopts the suspended frame's entry S
@@ -885,7 +518,7 @@ index 66a16c5a..f1d3d9b2 100644
  /* Read-only exact-AOT probe used by interpreter bounce and RTS rewriting.
   * A known LLE-only row intentionally returns false. */
  int cpu_dispatch_has_entry(CpuState *cpu, uint32 pc24);
-@@ -780,6 +815,10 @@ int interp_bridge_in_lle_scheduler(void);
+@@ -780,6 +810,10 @@ int interp_bridge_in_lle_scheduler(void);
  int interp_bridge_lle_master_deadline_reached(const CpuState *cpu);
  int interp_bridge_lle_unwind_pending(void);
  RecompReturn interp_bridge_lle_yield_unwind(CpuState *cpu, uint32 resume_pc24);
@@ -1168,23 +801,10 @@ index bbc1c1c5..a3ed6ee3 100644
  void SnesHdGpuReset(SnesHdGpu *gpu);
  /* No full-resolution staging image. Allocation belongs to the host; this
 diff --git a/runner/src/snes/interp_bridge.c b/runner/src/snes/interp_bridge.c
-index 8f997a51..1a5fcf1d 100644
+index 8f997a51..b21da481 100644
 --- a/runner/src/snes/interp_bridge.c
 +++ b/runner/src/snes/interp_bridge.c
-@@ -219,6 +219,12 @@ static void bridge_note_access(uint32_t adrl, int word) {
-     s_access_lead_hi = s_access_lead_lo + sl;
- }
- uint32_t interp_bridge_access_lead(uint16_t adr, uint32_t fallback) {
-+    /* Bus-exact compiled code: the instruction's start is the master clock
-+     * while it runs; cpu_state.c noted the access's lead. */
-+    if (!s_interp_bus_timing_active && g_aot_access_prefix != AOT_NO_ACCESS) {
-+        uint32_t lead;
-+        return cpu_aot_access_lead(adr, &lead) ? lead : fallback;
-+    }
-     if (!s_interp_bus_timing_active || !s_access_adr) return fallback;
-     if (adr == s_access_adr) return s_access_lead_lo;
-     if (adr == (uint16_t)(s_access_adr + 1)) return s_access_lead_hi;
-@@ -769,6 +775,8 @@ uint32_t g_interp_wlog_pc24 = 0;
+@@ -769,6 +769,8 @@ uint32_t g_interp_wlog_pc24 = 0;
  static uint32_t s_lle_bounce_exclusions[16];
  static size_t   s_lle_bounce_exclusion_count;
  
@@ -1193,7 +813,7 @@ index 8f997a51..1a5fcf1d 100644
  bool interp_bridge_guest_scope_idle(void) {
      return !s_interp_bridge_depth && !s_lle_sched_depth &&
             !s_interp_bounce_owner_depth && !s_lle_unwind_active;
-@@ -783,6 +791,7 @@ void interp_bridge_guest_scope_unwind(void) {
+@@ -783,6 +785,7 @@ void interp_bridge_guest_scope_unwind(void) {
      s_lle_unwind_active = s_lle_unwind_owner_depth = 0;
      s_lle_unwind_pc24 = 0;
      s_lle_unwind_is_deadline = s_lle_next_unwind_is_deadline = 0;
@@ -1201,7 +821,7 @@ index 8f997a51..1a5fcf1d 100644
      g_interp_wlog_pc24 = 0;
  }
  
-@@ -1056,6 +1065,7 @@ void interp_bridge_rb_state_load(const void *in) {
+@@ -1056,6 +1059,7 @@ void interp_bridge_rb_state_load(const void *in) {
      s_lle_resume_pc24             = s->lle_resume_pc24;
      s_lle_wai_yield               = s->lle_wai_yield;
      s_lle_master_deadline         = s->lle_master_deadline;
@@ -1209,18 +829,11 @@ index 8f997a51..1a5fcf1d 100644
      memcpy(s_bridge_dynamic_values, s->dynamic_values,
             sizeof(s_bridge_dynamic_values));
  }
-@@ -1079,6 +1089,227 @@ void interp_bridge_set_master_deadline(uint64_t master_clock) {
+@@ -1079,6 +1083,204 @@ void interp_bridge_set_master_deadline(uint64_t master_clock) {
      s_lle_master_deadline = master_clock;
  }
  
-+/* Bus-exact compiled code (SNESRECOMP_EXACT_BUS=1) at each instruction's start,
-+ * after its deadline check: the host's per-instruction hook, as the interpreter
-+ * calls it (a frame driver that judges the last instruction before an
-+ * interrupt needs every one), and SNESRECOMP_CYC_WATCH's line with the start
-+ * clock (the interpreter's `start=`). */
-+static int s_aot_exact_seen;
-+
-+/* Compiled resume (regen with SNESRECOMP_AOT_RESUME=1; SNESRECOMP_AOT_RESUME=0
++/* Compiled resume (generate --aot-resume; SNESRECOMP_AOT_RESUME=0
 + * at run time turns it off). A deadline unwinds every compiled frame of the
 + * bounce it hits, and the scheduler used to interpret the rest of each: the
 + * suspended routine and, after its RTS, its callers, until the next call
@@ -1231,7 +844,7 @@ index 8f997a51..1a5fcf1d 100644
 + * code at the instruction it is at (cpu_dispatch_resume_paired), and the
 + * frame's RTS/RTL host-returns to the scheduler as a bounced call's does.
 + * Compiled code charges and checks the deadline per instruction exactly as the
-+ * interpreter does (bus-exact code), so which tier runs an instruction does not
++ * interpreter does (region-paced code), so which tier runs an instruction does not
 + * change the run. Records whose frame is gone (S above them) are dropped. */
 +typedef struct AotResumeRec {
 +    uint32_t pc;      /* the instruction to resume at; 0 = wherever the return lands */
@@ -1308,31 +921,18 @@ index 8f997a51..1a5fcf1d 100644
 +    aot_resume_walk(slot, pc24 & 0xFFFFFFu, cpu->S, chain, 0);
 +}
 +
-+/* The interpreted callee compiled code is running (interp_tier_run_call_frame):
-+ * its frame, and the S its compiled caller continues at. */
-+static int s_gap_valid;
-+static uint16_t s_gap_entry_s;
-+static uint8_t s_gap_fs;
-+
-+/* At a deadline inside that callee: its own frame (resumable if another
-+ * variant compiles the instruction), then the compiled frames that called it,
-+ * the innermost of which is still on the recomp stack. */
-+static void aot_resume_capture_gap(uint32_t pc24, uint16_t sp) {
-+    if (!aot_resume_on() || !s_gap_valid) return;
-+    AotResumeRec chain[AOT_RESUME_RECS];
-+    chain[0] = (AotResumeRec){ pc24 & 0xFFFFFFu, sp, s_gap_entry_s, s_gap_fs };
-+    /* The run's own attribution slot (RecompStackPushInterpreter) sits on top. */
-+    int slot = g_recomp_stack_top - 1;
-+    uint16_t e; uint8_t h; int t;
-+    if (slot >= 0 && !cpu_entry_frame(slot, &e, &h, &t)) slot--;
-+    aot_resume_walk(slot, 0, (uint16_t)(s_gap_entry_s + s_gap_fs), chain, 1);
-+}
-+
 +/* A tail transfer out of a variant's CFG (interp_tier_dispatch_tail): the
 + * target runs in the transferring frame, whose entry S and contract the call
 + * site passes. Its slot may still be live (a switch-case call site) or popped
 + * (a `return` call site); a live one has this entry S. */
 +static int s_aot_captured;
++/* The instruction compiled code last handed back to the interpreter in place
++ * (a tail transfer to its own PC), or all ones. */
++static uint32_t s_aot_resume_skip = 0xFFFFFFFFu;
++static void aot_resume_note_handback(uint32_t target_pc24, uint32_t site_pc24) {
++    if (((target_pc24 ^ site_pc24) & 0xFFFFFFu) == 0)
++        s_aot_resume_skip = target_pc24 & 0xFFFFFFu;
++}
 +static void aot_resume_capture_tail(const CpuState *cpu, uint32_t pc24,
 +                                    uint16_t entry_s, uint8_t hrv) {
 +    if (!aot_resume_on() || !cpu) return;
@@ -1368,10 +968,11 @@ index 8f997a51..1a5fcf1d 100644
 +static uint32_t aot_resume_return_pc(CpuState *cpu, uint16_t entry_s, uint8_t hrv,
 +                                     uint32_t pc24);
 +
++
 +/* SNESRECOMP_TIER_STATS=1: how many instructions each tier ran, printed at
 + * exit, and the interpreted runs that ran the most (by the PC each run
 + * started at: a routine called from compiled code, or where the scheduler
-+ * resumed). Compiled instructions are counted in bus-exact code only
++ * resumed). Compiled instructions are counted in region-paced code
 + * (cpu_aot_insn_begin). */
 +static int s_tier_stats = -1;
 +static uint64_t s_tier_aot, s_tier_interp;
@@ -1408,17 +1009,13 @@ index 8f997a51..1a5fcf1d 100644
 +    }
 +    return s_tier_stats;
 +}
-+static int nested_deadline_enabled(void) {
-+    static int on = -1;
-+    if (on < 0) {
-+        const char *e = getenv("SNESRECOMP_NESTED_DEADLINE");
-+        on = !(e && e[0] == '0');
-+    }
-+    return on;
-+}
++/* A region-paced compiled instruction that stays compiled, at its start: the
++ * host's per-instruction hook, as the interpreter calls it (a frame driver that
++ * judges the last instruction before an interrupt needs every one), and
++ * SNESRECOMP_CYC_WATCH's line with the start clock (the interpreter's
++ * `start=`). */
 +void cpu_aot_insn_begin(const CpuState *cpu, uint32_t pc16) {
 +    const uint32_t pc24 = ((uint32_t)cpu->PB << 16) | (pc16 & 0xFFFF);
-+    s_aot_exact_seen = 1;
 +    if (tier_stats_on()) s_tier_aot++;
 +    if (g_interp_bridge_pc_hook)
 +        g_interp_bridge_pc_hook(pc24, cpu->m_flag ? 1 : 0, cpu->x_flag ? 1 : 0);
@@ -1437,7 +1034,7 @@ index 8f997a51..1a5fcf1d 100644
  int interp_bridge_lle_master_deadline_reached(const CpuState *cpu) {
      /* SNESRECOMP_DEADLINE_DIAG=1: report why the bound is not firing.
       *
-@@ -1126,6 +1357,15 @@ int interp_bridge_lle_master_deadline_reached(const CpuState *cpu) {
+@@ -1126,6 +1328,15 @@ int interp_bridge_lle_master_deadline_reached(const CpuState *cpu) {
      return reached;
  }
  
@@ -1453,7 +1050,7 @@ index 8f997a51..1a5fcf1d 100644
  RecompReturn interp_bridge_lle_yield_unwind(CpuState *cpu, uint32 resume_pc24) {
      /* DIAGNOSTIC (SNESRECOMP_TRAP_YIELD=<lo>-<hi> hex pc24 range): print every
       * LLE yield unwind whose resume PC falls in the range, with the live guest
-@@ -1164,6 +1404,10 @@ RecompReturn interp_bridge_lle_yield_unwind(CpuState *cpu, uint32 resume_pc24) {
+@@ -1164,6 +1375,10 @@ RecompReturn interp_bridge_lle_yield_unwind(CpuState *cpu, uint32 resume_pc24) {
       * never takes it (the hle wrapper has no prologue). Swallow it here so
       * the NEXT emitted function entered (the next bounce) can't adopt a
       * stale _entry_s/_hrv. */
@@ -1464,7 +1061,7 @@ index 8f997a51..1a5fcf1d 100644
      cpu_take_tailcall_return_context(NULL, NULL);
      lle_unwind_arm(resume_pc24, s_interp_bounce_owner_depth,
                     s_lle_next_unwind_is_deadline,
-@@ -1667,6 +1911,16 @@ static void interp_hist_init(void) {
+@@ -1667,6 +1882,32 @@ static void interp_hist_init(void) {
  }
  #endif
  
@@ -1478,33 +1075,26 @@ index 8f997a51..1a5fcf1d 100644
 +    return (bank << 16) | (uint16_t)(((hi << 8) | lo) + 1u);
 +}
 +
++/* A frameless entry's frame is assumed, not known: a normal return from it (a
++ * bound routine that ran its own RTS/RTL) popped the real frame, which sat on
++ * top of the stack at entry. Its size is how far S rose: 2 for RTS (the bank
++ * stays), 3 for RTL. */
++static uint32_t aot_frameless_return_pc(CpuState *cpu, uint16_t sp_entry, uint16_t entry_s,
++                                        uint8_t hrv, uint32_t pc24) {
++    const uint16_t rose = (uint16_t)(cpu->S - sp_entry);
++    if (rose != 2 && rose != 3)
++        return aot_resume_return_pc(cpu, entry_s, hrv, pc24);
++    const uint8_t *st = cpu->ram;
++    const uint16_t lo = st[(uint16_t)(sp_entry + 1u) & 0x1FFFu];
++    const uint16_t hi = st[(uint16_t)(sp_entry + 2u) & 0x1FFFu];
++    const uint32_t bank = rose == 3 ? st[(uint16_t)(sp_entry + 3u) & 0x1FFFu] : cpu->PB;
++    return (bank << 16) | (uint16_t)(((hi << 8) | lo) + 1u);
++}
++
  static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
                                   uint16_t s_exit, uint32_t *out_landing,
                                   uint32_t *out_return_pc,
-@@ -1891,6 +2145,22 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
-             bridge_apu_flush(cpu);
-             return 1;
-         }
-+        /* A nested run (compiled code called this routine) under bus-exact
-+         * compiled code stops at the deadline as well, between the same two
-+         * instructions the scheduler's own run would: the deadline unwind
-+         * carries the PC out through the compiled callers to the scheduler.
-+         * SNESRECOMP_NESTED_DEADLINE=0 turns it off. */
-+        if (!yield_pc && s_aot_exact_seen && nested_deadline_enabled() &&
-+            interp_bridge_lle_master_deadline_reached(cpu)) {
-+            s_lle_next_unwind_is_deadline = 0;
-+            if (s_gap_valid && s_gap_entry_s == s_enter)
-+                aot_resume_capture_gap(pc_before, in.sp);
-+            lle_unwind_arm(pc_before, s_interp_bridge_depth - 1, 1,
-+                           INTERP_RESUME_SITE_DEADLINE, in.sp);
-+            sync_interp_to_cpu(&in, cpu);
-+            bridge_apu_flush(cpu);
-+            return 1;
-+        }
-         /* Star Ocean battle $00D9 work-wait specialization. This does not skip
-          * the wait; it executes the LDA $00D9 / BEQ loop with the same master
-          * timing and IRQ/deadline sampling, but avoids the full interpreter bus
-@@ -2753,6 +3023,50 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
+@@ -2753,6 +2994,58 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
          const int call_len = (op == 0x22) ? 4 : 3;
          const int is_ret   = (op == 0x60 || op == 0x6B);
  
@@ -1515,7 +1105,14 @@ index 8f997a51..1a5fcf1d 100644
 +        RecompReturn (*resume_fn)(CpuState *) = NULL;
 +        uint16_t resume_entry_s = 0;
 +        uint8_t resume_hrv = 0;
-+        if (auto_quiescent && s_aot_resume_n && !in.e) {
++        int resume_frameless = 0;
++        /* Compiled code just handed this instruction back (a region-paced
++         * fallback: unmodeled, MMIO, a pointer it cannot preview). Run it here
++         * once; resuming at it again would hand it back again, forever. */
++        const int resume_skip = s_aot_resume_skip != 0xFFFFFFFFu &&
++                                ((s_aot_resume_skip ^ pc_before) & 0x7FFFFFu) == 0;
++        s_aot_resume_skip = 0xFFFFFFFFu;
++        if (auto_quiescent && s_aot_resume_n && !in.e && !resume_skip) {
 +            /* A suspended frame continues here (its record's S). */
 +            while (s_aot_resume_n && in.sp > s_aot_resume[s_aot_resume_n - 1].s)
 +                s_aot_resume_n--;
@@ -1540,7 +1137,7 @@ index 8f997a51..1a5fcf1d 100644
 +         * that entry, which compiled code hands back to the scheduler at the
 +         * popped address (interp_bridge_return_targets_owner), as the
 +         * interpreter would have continued. */
-+        if (auto_quiescent && !resume_fn && !in.e && aot_resume_on() && aot_resume_frameless_on() &&
++        if (auto_quiescent && !resume_fn && !resume_skip && !in.e && aot_resume_on() && aot_resume_frameless_on() &&
 +            cpu_aot_resume_maybe(pc_before)) {
 +            sync_interp_to_cpu(&in, cpu);
 +            resume_fn = cpu_aot_resume_fn(cpu, pc_before);
@@ -1548,6 +1145,7 @@ index 8f997a51..1a5fcf1d 100644
 +                target = pc_before;
 +                resume_entry_s = (uint16_t)(in.sp - 1u);
 +                resume_hrv = 2;
++                resume_frameless = 1;
 +                goto aot_bounce;
 +            }
 +        }
@@ -1555,15 +1153,7 @@ index 8f997a51..1a5fcf1d 100644
          const uint8_t coverage_mx = (uint8_t)((in.mf << 1) | in.xf);
          const uint8_t coverage_e = in.e;
          const uint16_t dp_before = in.dp;
-@@ -2777,6 +3091,7 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
-             g_interp_bridge_pc_hook(pc_before & 0xFFFFFFu,
-                                     in.mf ? 1 : 0, in.xf ? 1 : 0);
-         if (s_idle_poll_count) s_idle_poll_now = bridge_is_idle_poll(pc_before);
-+        const uint64_t _cyc_start = cpu->master_cycles;
-         int _cyc = interp816_runOpcode(&in);   /* executes the opcode; pushes/pops frames */
-         s_idle_poll_now = 0;
-         if (s_interp_pctrace && steps < 4)
-@@ -2810,6 +3125,10 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
+@@ -2810,6 +3103,10 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
                                 ? (unsigned)_cyc - s_interp_bus_cycles : 0;
              uint64_t _master = s_interp_bus_master + (uint64_t)_internal * 6u;
              g_interp_bridge_steps++;
@@ -1574,26 +1164,7 @@ index 8f997a51..1a5fcf1d 100644
              cpu->cycles        += (uint64_t)_cyc;
              cpu->master_cycles += _master;
              /* DRAM refresh tax — shared watermark with the AOT tier's
-@@ -2859,7 +3178,7 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
-             extern int snes_frame_counter;
-             fprintf(stderr,
-                     "[cyc] f=%d pc=$%06X op=$%02X cyc=%d bus_xfers=%u "
--                    "bus_master=%llu internal=%u master_delta=%llu now=%llu\n",
-+                    "bus_master=%llu internal=%u master_delta=%llu now=%llu start=%llu\n",
-                     snes_frame_counter, (unsigned)pc_before, (unsigned)op,
-                     _cyc, s_interp_bus_cycles,
-                     (unsigned long long)s_interp_bus_master,
-@@ -2869,7 +3188,8 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
-                         (uint64_t)((unsigned)_cyc > s_interp_bus_cycles
-                                        ? (unsigned)_cyc - s_interp_bus_cycles
-                                        : 0) * 6u),
--                    (unsigned long long)cpu->master_cycles);
-+                    (unsigned long long)cpu->master_cycles,
-+                    (unsigned long long)_cyc_start);
-         }
- 
-         if (auto_quiescent &&
-@@ -2943,7 +3263,7 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
+@@ -2943,7 +3240,7 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
               * and set pc to the target. If the target has a compiled body for
               * the current (m,x), run it compiled. */
              sync_interp_to_cpu(&in, cpu);          /* expose (m,x) + frame to AOT */
@@ -1602,7 +1173,7 @@ index 8f997a51..1a5fcf1d 100644
              /* Cooperative-scheduler (yield_pc) mode bounces too (fiber-free
               * rich-LLE, docs/LLE_SCHEDULER.md): a bounced body that reaches a
               * yield primitive no longer corrupts the paired-call stack — its
-@@ -2964,8 +3284,10 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
+@@ -2964,8 +3261,10 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
                   * on the popped return addr — and over-pop whenever that addr is
                   * itself a registered function entry (e.g. $90:EB55 sub_90EB55
                   * right after HandleChargingBeamGfxAudio's JSR), the Samus-draw
@@ -1615,7 +1186,7 @@ index 8f997a51..1a5fcf1d 100644
                  uint16_t _sp_pre = in.sp;
                  /* Compiled body paces its own APU (RtlApuRead/Write); un-suppress
                   * the per-touch catch-up for its duration, then restore the
-@@ -3007,7 +3329,9 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
+@@ -3007,7 +3306,9 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
                  interp_edge_note(pc_before, target, INTERP_EDGE_AOT_CALL, op,
                                   (uint16_t)_sp_pre);
                  g_interp_wlog_pc24 = 0;
@@ -1626,7 +1197,7 @@ index 8f997a51..1a5fcf1d 100644
                  if (s_apu_pending_master) {
                      snes_refresh_charge();
                      cpu_aot_instruction_boundary(cpu);
-@@ -3015,15 +3339,21 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
+@@ -3015,15 +3316,23 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
                  s_interp_bounce_owner_depth = _saved_bounce_owner;
                  s_interp_bounce_recomp_base = _saved_bounce_base;
                  g_interp_apu_driving = _apu_drv;
@@ -1644,14 +1215,16 @@ index 8f997a51..1a5fcf1d 100644
 -                const uint32_t ret =
 -                    (pc_before + (uint32_t)call_len +
 -                     (uint32_t)cpu_dispatch_inline_arg_bytes(target)) & 0xFFFFFF;
-+                const uint32_t ret = resume_fn
++                const uint32_t ret = resume_frameless
++                    ? aot_frameless_return_pc(cpu, _sp_pre, resume_entry_s, _fs, pc_before)
++                    : resume_fn
 +                    ? aot_resume_return_pc(cpu, resume_entry_s, _fs, pc_before)
 +                    : (pc_before + (uint32_t)call_len +
 +                       (uint32_t)cpu_dispatch_inline_arg_bytes(target)) & 0xFFFFFF;
                  edge_expect = ret;
                  if (_air != RECOMP_RETURN_NORMAL) {
                      if (s_lle_unwind_active) {
-@@ -3382,12 +3712,18 @@ static int interp_bridge_run_ex2(CpuState *cpu, uint32_t entry_pc24,
+@@ -3382,12 +3691,15 @@ static int interp_bridge_run_ex2(CpuState *cpu, uint32_t entry_pc24,
      const char *_scope_name = interp_scope_name(entry_pc24);
      g_last_recomp_func = _scope_name;
      RecompStackPushInterpreter(_scope_name);
@@ -1663,18 +1236,16 @@ index 8f997a51..1a5fcf1d 100644
                                reset_cap_on_bounce, stop_pcs, n_stop,
                                stop_on_rti);
      g_interp_wlog_pc24 = 0;  /* control returns to compiled code */
-+    /* Back to the host: the beam to the CPU's clock, however the run ended (compiled code advances it only at
-+     * its own sync points; the host reads the beam for its next slice's line grid and its beam-gated events). */
-+    if (s_interp_bridge_depth == 1 && g_snes) snes_sync_master_clock(g_snes, cpu->master_cycles);
 +    s_tier_entry = _saved_tier_entry;
      RecompStackPop();
      g_last_recomp_func = _saved_func;
      s_interp_bridge_depth--;
-@@ -3801,8 +4137,10 @@ RecompReturn interp_tier_dispatch_tail_ex(CpuState *cpu, uint32_t target_pc24,
+@@ -3801,8 +4113,11 @@ RecompReturn interp_tier_dispatch_tail_ex(CpuState *cpu, uint32_t target_pc24,
       * sentinel to unwind to the owning interpreter and resume there at the tail
       * target.  The guest S/register state is untouched, and ordinary top-level
       * AOT tail fallbacks retain the balanced nested-interpreter path below. */
 -    if (s_interp_bounce_owner_depth > 0)
++    aot_resume_note_handback(target_pc24, site_pc24);
 +    if (s_interp_bounce_owner_depth > 0) {
 +        aot_resume_capture_tail(cpu, target_pc24, entry_s, hrv);
          return interp_bridge_lle_yield_unwind(cpu, target_pc24);
@@ -1682,24 +1253,6 @@ index 8f997a51..1a5fcf1d 100644
      /* A subroutine called inside NMI/IRQ still returns with RTS/RTL. Let an
       * owning interpreter resume first; a nested interrupt interpreter would
       * consume its continuation and RTI before returning to a live AOT caller.
-@@ -4003,8 +4341,17 @@ RecompReturn interp_tier_run_call_frame(CpuState *cpu, uint32_t target_pc24,
-     const uint16_t watermark = cpu->S;
-     const uint16_t post_call = (uint16_t)(cpu->S + frame_size);
-     uint32_t landing = target_pc24;
-+    const int gap_valid = s_gap_valid;
-+    const uint16_t gap_entry_s = s_gap_entry_s;
-+    const uint8_t gap_fs = s_gap_fs;
-+    s_gap_valid = frame_size == 2 || frame_size == 3;
-+    s_gap_entry_s = watermark;
-+    s_gap_fs = frame_size;
-     int ok = interp_bridge_run_ex2(cpu, target_pc24, watermark, &landing,
-                                    return_pc24, 0, 0, 0, 0, NULL, 0, 0);
-+    s_gap_valid = gap_valid;
-+    s_gap_entry_s = gap_entry_s;
-+    s_gap_fs = gap_fs;
-     tier2_record(source_pc24, target_pc24, mx, TIER2_KIND_DISPATCH, tier2_outcome(ok));
-     if (s_lle_unwind_active)   /* yield unwound through this nested frame */
-         return (RecompReturn)RECOMP_RETURN_LLE_UNWIND_BASE;
 diff --git a/runner/src/snes/ppu.c b/runner/src/snes/ppu.c
 index 38793f07..9be0513a 100644
 --- a/runner/src/snes/ppu.c
@@ -1900,7 +1453,7 @@ index 626041b4..8140f8b3 100644
  }
  
 diff --git a/runner/src/snes/snes.c b/runner/src/snes/snes.c
-index 8a144499..b7d5f315 100644
+index 8a144499..bb71d250 100644
 --- a/runner/src/snes/snes.c
 +++ b/runner/src/snes/snes.c
 @@ -71,18 +71,45 @@ static void snes_trace_direct_wram_write(uint32_t off, uint8_t old, uint8_t val)
@@ -1962,44 +1515,27 @@ index 8a144499..b7d5f315 100644
    snes->multiplyA = 0xff;
    snes->multiplyResult = 0xfe01;
    snes->divideA = 0xffff;
-@@ -700,7 +728,10 @@ uint8_t snes_readReg(Snes* snes, uint16_t adr) {
-        * clocked native reads have the same contract, without changing APU
-        * ownership through g_interp_apu_driving. */
-       extern int g_interp_apu_driving;
--      if (!g_interp_apu_driving && !snes->cpuReadClocked)
-+      /* Bus-exact compiled code (an access prefix is set) keeps the beam on its own clock, as the interpreter
-+       * does: no polling tick for it either. */
-+      extern uint32_t g_aot_access_prefix;
-+      if (!g_interp_apu_driving && !snes->cpuReadClocked && g_aot_access_prefix == 0xFFFFFFFFu /* AOT_NO_ACCESS */)
-         snes_advance_beam(snes, 64, false);
-       // Bit 7 = vblank. The real frame loop drives vblank via inNmi, not
-       // inVblank (inVblank is never set true), so on the static-recomp
 diff --git a/tests/dma/hdma_timing_test.c b/tests/dma/hdma_timing_test.c
-index 7f7b1559..b99b76ee 100644
+index 7f7b1559..f6a70bcf 100644
 --- a/tests/dma/hdma_timing_test.c
 +++ b/tests/dma/hdma_timing_test.c
-@@ -50,6 +50,10 @@ void ppu_rasterRecord(uint16_t reg, uint16_t line, uint8_t val) {
+@@ -50,6 +50,8 @@ void ppu_rasterRecord(uint16_t reg, uint16_t line, uint8_t val) {
  void ppu_rasterFieldBoundary(void) {}
  void ppu_rasterReset(void) {}
  void (*g_ppu_latch_position_hook)(uint16_t *h_dot, uint16_t *v);
 +/* ppu.c's beam hook for register accesses during rendering: ppu.c is not linked here. */
 +bool (*g_ppu_beam_hook)(uint16_t adr, uint16_t *h_clock, uint16_t *v);
-+/* Bus-exact compiled code's I/O lead (cpu_state.c): no compiled code here. */
-+uint32_t g_aot_access_prefix = AOT_NO_ACCESS;
  
  void RtlApuLock(void) {}
  void RtlApuUnlock(void) {}
 diff --git a/tests/interp816/bridge_test.c b/tests/interp816/bridge_test.c
-index 58edcbff..75c6746f 100644
+index 58edcbff..f45adac9 100644
 --- a/tests/interp816/bridge_test.c
 +++ b/tests/interp816/bridge_test.c
-@@ -97,6 +97,25 @@ void ppudma_note_interrupt(int is_nmi) { (void)is_nmi; }
+@@ -97,6 +97,22 @@ void ppudma_note_interrupt(int is_nmi) { (void)is_nmi; }
  uint32_t cpu_region_speed(uint32_t addr24) {
      return (uint32_t)snes_region_speed(addr24, g_memsel);
  }
-+/* Bus-exact compiled code's I/O lead (cpu_state.c): no compiled code here. */
-+uint32_t g_aot_access_prefix = AOT_NO_ACCESS, g_aot_access_wprefix = AOT_NO_ACCESS;
-+int cpu_aot_access_lead(uint16 adr, uint32_t *lead) { (void)adr; (void)lead; return 0; }
 +/* Compiled resume (cpu_state.c, common_cpu_infra.c): no compiled code here, so nothing resumes and no frame is live. */
 +const unsigned g_aot_resume_count = 0;
 +int g_recomp_yield_popped_top;
@@ -2185,6 +1721,106 @@ index 60520042..3f1de557 100644
              frag = folder / (name + '.frag')
              frag.write_bytes((prefix + body).encode('utf-8'))
              subprocess.run([args.validator, '-l', str(vert), str(frag)], check=True)
+diff --git a/tests/v2/test_aot_resume.py b/tests/v2/test_aot_resume.py
+new file mode 100644
+index 00000000..283a3992
+--- /dev/null
++++ b/tests/v2/test_aot_resume.py
+@@ -0,0 +1,94 @@
++"""Compiled resume (generate --aot-resume): every region-paced instruction is also an entry."""
++import re
++
++import pytest
++
++from _helpers import make_lorom_bank0
++from snes65816 import get_rom_mapping, set_rom_mapping, ROM_MAP_LOROM
++from v2.emit_function import emit_function
++from v2.program_emit import emit_aot_resume_table
++
++
++def _emit(code, **options):
++    old = get_rom_mapping()
++    try:
++        set_rom_mapping(ROM_MAP_LOROM)
++        rom = make_lorom_bank0({0x8000: bytes.fromhex(code)})
++        return emit_function(rom, 0, 0x8000, 1, 1, func_name="Case",
++                             instruction_blocks=True, region_paced=True, **options)
++    finally:
++        set_rom_mapping(old)
++
++
++# LDA $00 / INC A / STA $02 / RTS
++_CODE = "A5 00 1A 85 02 60"
++
++
++def test_every_instruction_is_a_resume_entry():
++    source = _emit(_CODE, aot_resume=True)
++    assert "cpu_take_aot_resume(&_entry_s, &_hrv)" in source
++    cases = re.findall(r"/\* aot-resume \$([0-9A-F]{6}) m1x1 \*/", source)
++    assert cases == ["008000", "008002", "008003", "008005"]
++
++
++def test_off_by_default():
++    source = _emit(_CODE)
++    assert "cpu_take_aot_resume" not in source
++    assert "aot-resume $" not in source
++
++
++def test_needs_region_pacing():
++    old = get_rom_mapping()
++    try:
++        set_rom_mapping(ROM_MAP_LOROM)
++        source = emit_function(make_lorom_bank0({0x8000: bytes.fromhex(_CODE)}), 0, 0x8000, 1, 1,
++                               func_name="Case", instruction_blocks=True, aot_resume=True)
++    finally:
++        set_rom_mapping(old)
++    assert "cpu_take_aot_resume" not in source
++
++
++def test_whole_variant_fallback_hands_back_the_resume_point():
++    # The prologue's stack-window guard hands the variant to the interpreter;
++    # a resumed frame has run past the entry and goes on where it stopped.
++    source = _emit(_CODE, aot_resume=True)
++    guard = source.index("native-mode pacing only")
++    take = source.index("cpu_take_aot_resume")
++    resume = source.index("if (_aot_resume) return interp_tier_dispatch_tail(cpu, _aot_resume, _aot_resume,")
++    assert take < resume < guard
++
++
++def test_compiled_instructions_report_themselves():
++    source = _emit(_CODE, aot_resume=True)
++    for pc16 in ("8000", "8002", "8003", "8005"):
++        assert f"cpu_aot_insn_begin(cpu, 0x{pc16}u);" in source
++
++
++def test_resume_table_keeps_the_longest_variant(tmp_path):
++    a = tmp_path / "a.c"
++    a.write_text("RecompReturn Short(CpuState *cpu) {\n"
++                 "      case 1u: goto L;  /* aot-resume $008002 m1x1 */\n")
++    b = tmp_path / "b.c"
++    b.write_text("RecompReturn Long(CpuState *cpu) {\n"
++                 "      case 1u: goto L;  /* aot-resume $008000 m1x1 */\n"
++                 "      case 2u: goto L;  /* aot-resume $008002 m1x1 */\n")
++    table = emit_aot_resume_table([a, b])
++    assert "{ 0x008000u, 3, Long }," in table
++    assert "{ 0x008002u, 3, Long }," in table
++    assert "Short }" not in table
++
++
++@pytest.mark.parametrize("flags,message", [
++    (["--aot-resume"], "--aot-resume requires --region-paced"),
++])
++def test_v2_emit_refuses_resume_without_region_pacing(flags, message, capsys):
++    import sys
++    from tools import v2_emit
++    old = sys.argv
++    sys.argv = ["v2_emit", "--rom", "x", "--cfg-dir", "y", "--out-dir", "z", *flags]
++    try:
++        with pytest.raises(SystemExit):
++            v2_emit.main()
++    finally:
++        sys.argv = old
++    assert message in capsys.readouterr().err
 diff --git a/tests/v2/test_hle_func_seam.py b/tests/v2/test_hle_func_seam.py
 index 1a3cc2b3..ebb8a2e7 100644
 --- a/tests/v2/test_hle_func_seam.py
@@ -2200,3 +1836,180 @@ index 1a3cc2b3..ebb8a2e7 100644
  int cpu_dispatch_has_entry(CpuState *cpu, uint32 pc24) {
    (void)cpu; (void)pc24; return 0;
  }
+diff --git a/tests/v2/test_region_pacing.py b/tests/v2/test_region_pacing.py
+index f701f0cb..9eb304fc 100644
+--- a/tests/v2/test_region_pacing.py
++++ b/tests/v2/test_region_pacing.py
+@@ -89,6 +89,13 @@ static int g_balanced_calls, s_interp_bounce_owner_depth;
+ static uint64 credited_master;
+ static void record_credit(CpuState *cpu, uint64 clocks) { (void)cpu; credited_master += clocks; }
+ int cpu_interrupt_context_active(void) { return 0; }
++/* The per-instruction report of region-paced code (interp_bridge.c): no hook here. */
++void cpu_aot_insn_begin(const CpuState *cpu, uint32_t pc16) { (void)cpu; (void)pc16; }
++/* Compiled resume's bookkeeping in the tail helper: nothing resumes here. */
++static void aot_resume_note_handback(uint32 target, uint32 site) { (void)target; (void)site; }
++static void aot_resume_capture_tail(const CpuState *cpu, uint32 pc, uint16 entry, uint8 hrv) {
++  (void)cpu; (void)pc; (void)entry; (void)hrv;
++}
+ RecompReturn interp_tier_dispatch_interrupt(CpuState *cpu, uint32 pc) {
+   (void)cpu; (void)pc; return 0;
+ }
+diff --git a/tools/generation_recipe.py b/tools/generation_recipe.py
+index 7bfa2424..acfcc39b 100644
+--- a/tools/generation_recipe.py
++++ b/tools/generation_recipe.py
+@@ -102,14 +102,15 @@ def load_recipe(cfg_dir: Path) -> Recipe | None:
+                              "(python -m pip install tomli)") from exc
+     data = tomllib.loads(path.read_text(encoding="utf-8"))
+     allowed = {"schema", "identity_file", "cfg_roots", "no_host_root_scan", "instruction_blocks", "region_paced",
+-               "profiles", "historical_profiles", "bind_legacy_profiles",
++               "aot_resume", "profiles", "historical_profiles", "bind_legacy_profiles",
+                "prepare", "postprocess"}
+     if type(data.get("schema")) is not int or data.get("schema") != 1 or data.keys() - allowed:
+         raise ValueError(f"unsupported generation recipe: {path}")
+     recipe = Recipe(path, cfg_dir.parent.resolve(), data)
+     if "identity_file" in data and not isinstance(data["identity_file"], str):
+         raise ValueError("recipe identity_file must be a path")
+-    for key in ("cfg_roots", "no_host_root_scan", "bind_legacy_profiles", "instruction_blocks", "region_paced"):
++    for key in ("cfg_roots", "no_host_root_scan", "bind_legacy_profiles", "instruction_blocks", "region_paced",
++                "aot_resume"):
+         if key in data and not isinstance(data[key], bool):
+             raise ValueError(f"recipe {key} must be a boolean")
+     for key in ("profiles", "historical_profiles"):
+diff --git a/tools/sdk_generate.py b/tools/sdk_generate.py
+index cfec92b7..4c8d1f74 100644
+--- a/tools/sdk_generate.py
++++ b/tools/sdk_generate.py
+@@ -70,6 +70,7 @@ def _generate(
+     analysis_backend: str = "native",
+     instruction_blocks: bool = False,
+     region_paced: bool = False,
++    aot_resume: bool = False,
+     expected_crc32: Optional[str] = None,
+     expected_sha256: Optional[str] = None,
+     progress: Optional[ProgressReporter] = None,
+@@ -90,6 +91,8 @@ def _generate(
+     reporter = progress or ProgressReporter()
+     if region_paced and not instruction_blocks:
+         raise ValueError("region-paced emission requires instruction-blocks")
++    if aot_resume and not region_paced:
++        raise ValueError("compiled resume requires region-paced emission")
+     rom = pathlib.Path(rom).resolve()
+     cfg_dir = pathlib.Path(cfg_dir).resolve()
+     out_dir = pathlib.Path(out_dir).resolve()
+@@ -129,6 +132,8 @@ def _generate(
+         emit_args.append("--instruction-blocks")
+     if region_paced:
+         emit_args.append("--region-paced")
++    if aot_resume:
++        emit_args.append("--aot-resume")
+     if no_host_root_scan:
+         emit_args.append("--no-host-root-scan")
+     for root in source_roots or ():
+@@ -220,6 +225,7 @@ def _generate(
+         "analysis_backend": analysis_backend,
+         "instruction_blocks": bool(instruction_blocks),
+         "region_paced": bool(region_paced),
++        "aot_resume": bool(aot_resume),
+     }
+     if _report_result:
+         reporter.phase("done", pct=1.0, message="Generate complete")
+@@ -260,17 +266,21 @@ def generate(**kwargs) -> dict:
+         if supplied and supplied.lower() != verified["sha256"].lower():
+             raise ValueError("legacy profile binding differs from verified recipe ROM")
+         options["legacy_profile_rom_sha256"] = verified["sha256"]
+-    for key in ("cfg_roots", "no_host_root_scan", "instruction_blocks", "region_paced"):
++    for key in ("cfg_roots", "no_host_root_scan", "instruction_blocks", "region_paced", "aot_resume"):
+         options[key] = bool(options.get(key) or recipe.data.get(key))
+     if options["region_paced"] and not options["instruction_blocks"]:
+         raise ValueError("region-paced emission requires instruction-blocks")
++    if options["aot_resume"] and not options["region_paced"]:
++        raise ValueError("compiled resume requires region-paced emission")
+     for key, recipe_key in (("profile_manifests", "profiles"),
+                             ("historical_profile_manifests", "historical_profiles")):
+         options[key] = list(dict.fromkeys(
+             [*recipe.profiles(recipe_key), *(options.get(key) or [])]))
+     options["generation_recipe_digest"] = hashlib.sha256(
+         (recipe.digest() + "\0instruction_blocks=" + str(int(options["instruction_blocks"])) +
+-         "\0region_paced=" + str(int(options["region_paced"]))).encode("ascii")).hexdigest()
++         "\0region_paced=" + str(int(options["region_paced"])) +
++         # Only when on, so recipes without it keep their digest.
++         ("\0aot_resume=1" if options["aot_resume"] else "")).encode("ascii")).hexdigest()
+     target = pathlib.Path(options["out_dir"]).resolve()
+     header = pathlib.Path(options["funcs_h"]).resolve() if options.get("funcs_h") else None
+     recipe.run("prepare", rom=rom, cfg_dir=cfg_dir, out_dir=target, reporter=reporter)
+@@ -359,6 +369,7 @@ def generate_command(args: argparse.Namespace, progress: ProgressReporter) -> in
+             analysis_backend=args.analysis_backend,
+             instruction_blocks=bool(getattr(args, "instruction_blocks", False)),
+             region_paced=bool(getattr(args, "region_paced", False)),
++            aot_resume=bool(getattr(args, "aot_resume", False)),
+             expected_crc32=args.expected_crc32,
+             expected_sha256=args.expected_sha256,
+             progress=progress,
+@@ -446,6 +457,9 @@ def add_generate_parser(subparsers) -> None:
+     add_identity_args(generate_parser)
+     generate_parser.add_argument("--region-paced", action="store_true",
+                                  help="opt in to conservative per-access region timing (requires --instruction-blocks)")
++    generate_parser.add_argument("--aot-resume", action="store_true",
++                                 help="every compiled instruction is also an entry, so code a deadline stopped in "
++                                      "goes on compiled (requires --region-paced)")
+     generate_parser.add_argument("--instruction-blocks", action="store_true",
+                                  help="check host deadlines at every guest instruction boundary")
+     generate_parser.add_argument(
+diff --git a/tools/v2_emit.py b/tools/v2_emit.py
+index 8148de83..43a2aae9 100644
+--- a/tools/v2_emit.py
++++ b/tools/v2_emit.py
+@@ -111,7 +111,8 @@ def _analysis_input_digest(*, rom: bytes, generator_digest: str,
+                            module_id: str = "main",
+                            module_prefix: str | None = None,
+                            instruction_blocks: bool = False,
+-                           region_paced: bool = False) -> str:
++                           region_paced: bool = False,
++                           aot_resume: bool = False) -> str:
+     value = {
+         "format": CACHE_FORMAT_VERSION,
+         "rom": hashlib.sha256(rom).hexdigest(),
+@@ -129,6 +130,7 @@ def _analysis_input_digest(*, rom: bytes, generator_digest: str,
+         "max_nodes": int(max_nodes),
+         "instruction_blocks": bool(instruction_blocks),
+         "region_paced": bool(region_paced),
++        "aot_resume": bool(aot_resume),
+         "sharding": [int(shard_threshold_bytes), int(shard_pc_span)],
+     }
+     encoded = json.dumps(
+@@ -228,6 +230,9 @@ def main() -> int:
+              "a funcs.h beside the cfg files; default: no prefix")
+     parser.add_argument("--region-paced", action="store_true",
+                         help="opt in to conservative native-mode per-access region timing (requires --instruction-blocks)")
++    parser.add_argument("--aot-resume", action="store_true",
++                        help="every compiled instruction is also an entry, so code a deadline stopped in "
++                             "goes on compiled (requires --region-paced)")
+     parser.add_argument("--no-host-root-scan", action="store_true")
+     parser.add_argument("--host-alias-header", default=None,
+                         help="funcs.h whose alias declarations name host entry "
+@@ -267,6 +272,8 @@ def main() -> int:
+     args = parser.parse_args()
+     if args.region_paced and not args.instruction_blocks:
+         parser.error("--region-paced requires --instruction-blocks")
++    if args.aot_resume and not args.region_paced:
++        parser.error("--aot-resume requires --region-paced")
+     if args.analysis_backend == "python":
+         parser.error("the Python analyzer was retired; the native analyzer "
+                      "is the only one (drop --analysis-backend python)")
+@@ -388,6 +395,7 @@ def _generate(args, parser, cfg_dir, *, symbol_roots=()):
+         module_id=args.module_id, module_prefix=args.module_prefix,
+         instruction_blocks=args.instruction_blocks,
+         region_paced=args.region_paced,
++        aot_resume=args.aot_resume,
+     )
+     cached = _verified_cached_stats(out_dir, analysis_input_digest)
+     if cached is not None and not args.no_link_closure_check:
+@@ -445,6 +453,7 @@ def _generate(args, parser, cfg_dir, *, symbol_roots=()):
+         enable_hle=not args.no_hle,
+         instruction_blocks=args.instruction_blocks,
+         region_paced=args.region_paced,
++        aot_resume=args.aot_resume,
+         shard_threshold_bytes=shard_threshold_bytes,
+         shard_pc_span=shard_pc_span,
+         check_link_closure=not args.no_link_closure_check,
