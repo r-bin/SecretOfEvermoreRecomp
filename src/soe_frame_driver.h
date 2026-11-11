@@ -1,6 +1,6 @@
 #ifndef SOE_FRAME_DRIVER_H
 #define SOE_FRAME_DRIVER_H
-/* Secret of Evermore's frame driver: snesrecomp's beam frame driver plus the late NMI (soe_frame_driver.c). */
+/* Secret of Evermore's frame driver: snesrecomp's beam frame driver with its MesenCE rules, and our hooks (soe_frame_driver.c). */
 #include <stdbool.h>
 #include <stdint.h>
 
