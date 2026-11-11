@@ -14,7 +14,7 @@ again, below).
 | 1 | [01-access-exact-timing.md](01-access-exact-timing.md) | [#241](https://github.com/RetroPortingToolKit/snesrecomp/pull/241) | **merged** 2026-11-09, squashed as `c1f84f61` | — | Trim the [Not proposed](#not-proposed) parts in a follow-up PR |
 | 2 | [02-ppu-reads-during-rendering.md](02-ppu-reads-during-rendering.md) | [#278](https://github.com/RetroPortingToolKit/snesrecomp/pull/278) | **open** 2026-11-10, fork branch `ppu-render-reads-main` | 1 (merged) | Game-neutral test in `tests/ppu/` |
 | 3 | [03-bus-exact-compiled-code.md](03-bus-exact-compiled-code.md) | — | **obsolete** (2026-11-10): upstream's region-paced emission (#250/#251) keeps both replays in sync | — | — |
-| 4 | [04-compiled-resume.md](04-compiled-resume.md) | not opened | **ready**: branch `aot-resume-main` (`e8c37cc1`), on region-paced code | — | Open it |
+| 4 | [04-compiled-resume.md](04-compiled-resume.md) | not opened | **ready**: branch `aot-resume-main` (`ef46b5da`), merges cleanly into main `80a41241` | — | Open it |
 | 5 | [05-brightness-rule.md](05-brightness-rule.md) | [#281](https://github.com/RetroPortingToolKit/snesrecomp/pull/281) | **open** 2026-11-10 (draft), fork branch `brightness-rule-main` | — | Wait for the answer to its question (in the PR) |
 | 6 | [06-frame-driver.md](06-frame-driver.md) | not opened | planned as five PRs 6.1-6.5 | — | 6.1: the short line and the reset clock in `snes.c` |
 | 7 | [07-hd-mode7-apple-gl.md](07-hd-mode7-apple-gl.md) | [#279](https://github.com/RetroPortingToolKit/snesrecomp/pull/279) | **open** 2026-11-10, fork branch `hd-mode7-no-fp64-main` | — | A non-Mac GL4 run (asked in the PR) |
@@ -35,7 +35,7 @@ State values: draft, open, conflicts, merged, closed, obsolete (upstream solved 
 
 The framework side of all of them is `framework/snesrecomp.patch` in this repository: the tree of `develop` in our fork
 https://github.com/r-bin/snesrecomp against main ([../framework.md](../framework.md)). A reviewer needs only this repository.
-**Since 2026-11-11** `framework/snesrecomp.patch` is the fork's branch `develop-rp`: main `e9c20732` + PR 4 on region-paced code +
+**Since 2026-11-11** `framework/snesrecomp.patch` is the fork's branch `develop-rp`: main `80a41241` (pin) + PR 4 on region-paced code +
 PRs 2, 5, 7 + the tier stats, no bus-exact code. It replaces the fork's `develop` once that is force-pushed. Verified: replays 01 and
 02 identical to MesenCE, native and all-interpreted; ctest 8/8; upstream's pytest 637 passed. `ablation-gates.patch` was written for
 the old stack and does not apply to it.

@@ -39,7 +39,7 @@ index f94ddc43..bae87a08 100644
              const_z_fold_collector=const_z_fold_collector,
              dispatch_target_suppressed_collector=
 diff --git a/recompiler/v2/emit_function.py b/recompiler/v2/emit_function.py
-index 301e594d..6132633d 100644
+index 82598b41..c779de0b 100644
 --- a/recompiler/v2/emit_function.py
 +++ b/recompiler/v2/emit_function.py
 @@ -538,6 +538,7 @@ def emit_function(rom: bytes, bank: int, start: int,
@@ -77,7 +77,7 @@ index 301e594d..6132633d 100644
          src.append(f'    return interp_tier_dispatch_tail(cpu, {_transfer_target_expr(fn_entry_pc, False)}, '
                     f'0x{fn_entry_pc:06X}u, _entry_s, _hrv); }} /* native-mode pacing only */')
      src.append(f'  if (_hrv == 2 || _hrv == 3) {{')
-@@ -2215,6 +2229,19 @@ def emit_function(rom: bytes, bank: int, start: int,
+@@ -2219,6 +2233,19 @@ def emit_function(rom: bytes, bank: int, start: int,
      # resolved to a SKIP_N non-local return (cpu_resolve_ancestor_skip).
      # Index by the just-pushed g_recomp_stack_top; pop is implicit (top--).
      src.append(f'  if (g_recomp_stack_top >= 1) g_cpu_entry_s[g_recomp_stack_top - 1] = _entry_s;')
@@ -97,7 +97,7 @@ index 301e594d..6132633d 100644
      # `entry_hook`: observational host callbacks (docs/ENTRY_HOOK.md).
      for hook_name in sorted({hook_by_pc24[(bank << 16) | (key.pc & 0xFFFF)]
                               for key in block_order
-@@ -2300,6 +2327,9 @@ def emit_function(rom: bytes, bank: int, start: int,
+@@ -2304,6 +2331,9 @@ def emit_function(rom: bytes, bank: int, start: int,
                             f'0x{block_pc24:06X}u, _entry_s, _hrv); }} /* MMIO remains authoritative LLE */')
              _fetch_last = rom_offset(bank, (_insn.addr + _insn.length - 1) & 0xFFFF)
              src.append(f'    cpu->open_bus = 0x{rom[_fetch_last]:02X}u; /* last opcode/operand fetch */')
@@ -801,7 +801,7 @@ index bbc1c1c5..a3ed6ee3 100644
  void SnesHdGpuReset(SnesHdGpu *gpu);
  /* No full-resolution staging image. Allocation belongs to the host; this
 diff --git a/runner/src/snes/interp_bridge.c b/runner/src/snes/interp_bridge.c
-index 8f997a51..b21da481 100644
+index 53e0b70a..227eec4d 100644
 --- a/runner/src/snes/interp_bridge.c
 +++ b/runner/src/snes/interp_bridge.c
 @@ -769,6 +769,8 @@ uint32_t g_interp_wlog_pc24 = 0;
@@ -1197,7 +1197,7 @@ index 8f997a51..b21da481 100644
                  if (s_apu_pending_master) {
                      snes_refresh_charge();
                      cpu_aot_instruction_boundary(cpu);
-@@ -3015,15 +3316,23 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
+@@ -3015,6 +3316,11 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
                  s_interp_bounce_owner_depth = _saved_bounce_owner;
                  s_interp_bounce_recomp_base = _saved_bounce_base;
                  g_interp_apu_driving = _apu_drv;
@@ -1209,22 +1209,24 @@ index 8f997a51..b21da481 100644
                  sync_cpu_to_interp(cpu, &in);
                  if (_ibrw)
                      fprintf(stderr, "[ibr] call op=$%02X pc=$%06X -> $%06X "
-                             "sp_pre=$%04X aot_ret=%d sp_post=$%04X\n",
-                             op, (unsigned)pc_before, (unsigned)target,
+@@ -3023,9 +3329,13 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
                              (unsigned)_sp_pre, (int)_air, (unsigned)in.sp);
--                const uint32_t ret =
--                    (pc_before + (uint32_t)call_len +
--                     (uint32_t)cpu_dispatch_inline_arg_bytes(target)) & 0xFFFFFF;
+                 /* Sequential code and inline arguments advance the 16-bit
+                  * PC within the caller's program bank. */
+-                const uint32_t ret = (pc_before & 0xFF0000u) |
+-                    ((pc_before + (uint32_t)call_len +
+-                      (uint32_t)cpu_dispatch_inline_arg_bytes(target)) & 0xFFFFu);
 +                const uint32_t ret = resume_frameless
 +                    ? aot_frameless_return_pc(cpu, _sp_pre, resume_entry_s, _fs, pc_before)
 +                    : resume_fn
 +                    ? aot_resume_return_pc(cpu, resume_entry_s, _fs, pc_before)
-+                    : (pc_before + (uint32_t)call_len +
-+                       (uint32_t)cpu_dispatch_inline_arg_bytes(target)) & 0xFFFFFF;
++                    : (pc_before & 0xFF0000u) |
++                      ((pc_before + (uint32_t)call_len +
++                        (uint32_t)cpu_dispatch_inline_arg_bytes(target)) & 0xFFFFu);
                  edge_expect = ret;
                  if (_air != RECOMP_RETURN_NORMAL) {
                      if (s_lle_unwind_active) {
-@@ -3382,12 +3691,15 @@ static int interp_bridge_run_ex2(CpuState *cpu, uint32_t entry_pc24,
+@@ -3384,12 +3694,15 @@ static int interp_bridge_run_ex2(CpuState *cpu, uint32_t entry_pc24,
      const char *_scope_name = interp_scope_name(entry_pc24);
      g_last_recomp_func = _scope_name;
      RecompStackPushInterpreter(_scope_name);
@@ -1240,7 +1242,7 @@ index 8f997a51..b21da481 100644
      RecompStackPop();
      g_last_recomp_func = _saved_func;
      s_interp_bridge_depth--;
-@@ -3801,8 +4113,11 @@ RecompReturn interp_tier_dispatch_tail_ex(CpuState *cpu, uint32_t target_pc24,
+@@ -3803,8 +4116,11 @@ RecompReturn interp_tier_dispatch_tail_ex(CpuState *cpu, uint32_t target_pc24,
       * sentinel to unwind to the owning interpreter and resume there at the tail
       * target.  The guest S/register state is untouched, and ordinary top-level
       * AOT tail fallbacks retain the balanced nested-interpreter path below. */
@@ -1529,10 +1531,10 @@ index 7f7b1559..f6a70bcf 100644
  void RtlApuLock(void) {}
  void RtlApuUnlock(void) {}
 diff --git a/tests/interp816/bridge_test.c b/tests/interp816/bridge_test.c
-index 58edcbff..f45adac9 100644
+index 982adaf1..00fb0f8a 100644
 --- a/tests/interp816/bridge_test.c
 +++ b/tests/interp816/bridge_test.c
-@@ -97,6 +97,22 @@ void ppudma_note_interrupt(int is_nmi) { (void)is_nmi; }
+@@ -100,6 +100,22 @@ void ppudma_note_interrupt(int is_nmi) { (void)is_nmi; }
  uint32_t cpu_region_speed(uint32_t addr24) {
      return (uint32_t)snes_region_speed(addr24, g_memsel);
  }

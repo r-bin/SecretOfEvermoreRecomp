@@ -1,6 +1,8 @@
 # 4. Compiled resume on region-paced code
 
-**Status:** ready to open (2026-11-11). Branch `aot-resume-main` in the fork: one commit, `e8c37cc1`, on main `e9c20732`. Depends on
+**Status:** ready to open (2026-11-11). Branch `aot-resume-main` in the fork: one commit, `e8c37cc1`, and a merge of main `80a41241`
+(`ef46b5da`; one conflict: paired continuations now keep the caller's bank, kept beside resume's return paths). Rechecked on that main:
+replays 01 and 02 in sync native and interpreted, 94.05 % native, pytest 638 passed. Depends on
 nothing open: it builds on upstream's region-paced emission (#250/#251, merged). Our build runs it since 2026-11-11 (`develop-rp` in
 the fork: main + this + PRs 2, 5, 7 + tier stats).
 
