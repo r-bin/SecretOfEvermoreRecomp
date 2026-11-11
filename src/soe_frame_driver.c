@@ -66,8 +66,6 @@ uint32_t soe_frame_driver_resume_pc(void) { return s_resume_pc; }
 bool soe_frame_driver_wai_halted(void) { return s_wai_halted; }
 void soe_frame_driver_set_resume(uint32_t pc, bool wai_halted) { s_resume_pc = pc; s_wai_halted = wai_halted; }
 
-static void align_field_length(void);
-static void align_beam(void);
 
 static uint32_t read_vector(uint32_t addr) {
     return ((uint32_t)snes_read(g_snes, addr + 1u) << 8) | snes_read(g_snes, addr);
@@ -114,16 +112,39 @@ void (*soe_frame_driver_nmi_hook)(void);
 #define REFRESH_H 538u
 #define REFRESH_CLOCKS 40u
 static uint64_t s_line0; /* master clock where this field's first line (V=225) started */
+static bool s_field_parity; /* this field's parity (snes.h fieldParity): whether its line 240 is the short one */
 
-static uint64_t mesen_line0(void);
+/* Where line 225 + j starts, from this field's line 225 on: every line 1364 clocks, the short lines 240 4 fewer. */
+static uint64_t line_start(uint64_t j) {
+    uint64_t start = s_line0 + j * LINE_CLOCKS;
+    bool parity = s_field_parity;
+    for (uint64_t m = 240u - VBLANK_LINE; m < j; m += 262u, parity = !parity)
+        start -= LINE_CLOCKS - snes_line_clocks(g_snes, 240u, parity);
+    return start;
+}
+
+/* The line (225 + j) the beam is on at master clock m >= line 225's start, and H there. */
+static uint64_t line_at(uint64_t m, uint64_t *h) {
+    uint64_t j = (m - s_line0) / LINE_CLOCKS;
+    while (line_start(j + 1) <= m) j++;
+    if (h) *h = m - line_start(j);
+    return j;
+}
+
+void soe_frame_driver_beam_at(uint64_t clock, unsigned *line, unsigned *h) {
+    uint64_t hh = 0;
+    const uint64_t j = clock > s_line0 ? line_at(clock, &hh) : 0;
+    *line = (unsigned)((VBLANK_LINE + j) % 262u);
+    *h = (unsigned)hh;
+}
+
 /*
  * Refresh point j of the field (line 225 + j). MesenCE (memoryManager.dramRefreshPosition) puts it at 538 - (the
  * line's start & 7) clocks into the line: lines are 1364 clocks (4 mod 8), so it alternates between H=538 and 534.
- * Lines 225-240 of the fields whose short line this driver takes at V=225 start 4 clocks later on MesenCE
- * (mesen_line0); from line 241 on its lines and the beam's agree.
+ * From line 241 on, a field with the short line 240 has its lines 4 clocks earlier.
  */
 static uint64_t refresh_point(uint64_t j) {
-    const uint64_t line = (j < 16 ? mesen_line0() : s_line0) + j * LINE_CLOCKS;
+    const uint64_t line = line_start(j);
     return line + REFRESH_H - (line & 7u);
 }
 
@@ -259,40 +280,6 @@ static bool free_slice_end(void) {
 }
 
 /*
- * The automatic joypad read. MesenCE (internalRegisters.autoReadClockStart) starts it on the first master clock
- * that is 128 past a multiple of 256 and at least 3 clocks after its line 225 began, and $4212 bit 0 reads busy
- * for 4352 clocks (17 x 256) from there, as the interpreter samples it: at the instruction's start clock, where
- * MesenCE samples 2 clocks into the access cycle, 20 clocks in for BIT/LDA absolute. MesenCE's line 225 is
- * field_end(k): in the fields whose short line this driver takes at V=225 the beam's line 225 starts 4 clocks
- * earlier (see the short scanline below). Measured over NMIs 2-330 of 01-no-inputs-4m.evsmv: every start, and with
- * it every NMI's clock and interrupted address through 319 (docs/imperfections/auto-joypad-read.md).
- * snesrecomp's beam holds the bit from V=225 for 4224 clocks; once the beam has crossed V=225 the timer is set to end
- * at MesenCE's end.
- */
-#define AUTO_JOY_GRID 128u
-#define AUTO_JOY_MIN_AFTER 3u
-#define AUTO_JOY_CLOCKS 4352u
-#define AUTO_JOY_READ_LEAD 20u /* BIT/LDA absolute: 3 fetches at 6, then MesenCE's sample 2 clocks into the read */
-static bool s_auto_joy_due; /* this field's read still needs MesenCE's timing */
-
-static void auto_joypad_begin(void) {
-    if (!s_auto_joy_due || g_snes->beamMasterLast <= s_line0) return;
-    s_auto_joy_due = false;
-    const uint64_t from = mesen_line0() + AUTO_JOY_MIN_AFTER;
-    const uint64_t start = from + (AUTO_JOY_GRID - from % 256u + 256u) % 256u;
-    const uint64_t end = start + AUTO_JOY_CLOCKS - AUTO_JOY_READ_LEAD, beam = g_snes->beamMasterLast;
-    static int log = -1;
-    if (log < 0) log = getenv("SOE_AUTO_JOY_LOG") != NULL;
-    if (log)
-        fprintf(stderr, "[aj] line0=%llu start=%llu end=%llu beam=%llu cpu=%llu on=%d timer=%u\n",
-                (unsigned long long)mesen_line0(), (unsigned long long)start, (unsigned long long)end,
-                (unsigned long long)beam, (unsigned long long)g_cpu.master_cycles, g_snes->autoJoyRead,
-                (unsigned)g_snes->autoJoyTimer);
-    if (!g_snes->autoJoyRead) return;
-    g_snes->autoJoyTimer = end > beam ? (uint16_t)(end - beam) : 0;
-}
-
-/*
  * The interrupt sequence's own time, which the framework's driver does not charge: 8 CPU cycles in native mode,
  * 2 internal (6 master clocks each), PB/PCH/PCL/P pushed to the WRAM stack (8 each), the vector read from bank $00
  * ROM (8 each) = 60 master clocks. MesenCE takes each field's NMI 76 clocks after V=225: the instruction the beam
@@ -322,10 +309,6 @@ static void run_interrupt(uint32_t vector, uint64_t deadline, bool nmi) {
 /* An interrupt's handler from `vector`, its frame already pushed. `counted`: an NMI the compare samples as a key (an NMI
  * a MesenCE state had already taken is not one: MesenCE's first key is the next NMI). */
 static void run_handler(uint32_t vector, uint64_t deadline, bool nmi, bool counted) {
-    if (nmi && s_auto_joy_due) {
-        snes_sync_master_clock(g_snes, g_cpu.master_cycles); /* the beam crosses V=225 before the handler reads $4212 */
-        auto_joypad_begin();
-    }
     if (nmi) soe_ppu_fixes_nmi_taken();
     if (nmi && counted && soe_frame_driver_nmi_hook) soe_frame_driver_nmi_hook();
     const uint64_t before = g_cpu.master_cycles;
@@ -366,46 +349,6 @@ static void run_nmi(uint64_t deadline) {
  */
 #define NMI_LINE_CLOCKS 6u
 #define NMI_SEEN_CLOCKS 12u
-
-/*
- * Vblank's two edges as $4212 bit 7 shows them. snesrecomp reads the bit from the beam at the instruction's start,
- * MesenCE at the access, 20 clocks in for LDA absolute: the waits at $80:C286 and $80:C2D7 (LDA $4212 / BPL, BMI) of the
- * flight scene ran a pass longer, and an NMI pushed other flags. So a slice stops 20 clocks before each edge, and the
- * beam waits on the edge's line for the CPU (docs/imperfections/vblank-flag-at-access.md).
- */
-#define VBLANK_EDGE_LEAD 20u
-static uint64_t s_edge_held; /* the edge the beam waits at, 0 when it runs */
-
-static uint64_t vblank_end(void) { return s_line0 + (262u - VBLANK_LINE) * LINE_CLOCKS; }
-
-static uint64_t edge_stop(uint64_t now, uint64_t deadline, uint64_t frame_end) {
-    const uint64_t stops[] = { s_edge_held, vblank_end() - VBLANK_EDGE_LEAD, frame_end - VBLANK_EDGE_LEAD };
-    for (int i = s_edge_held ? 0 : 1; i < (s_edge_held ? 1 : 3); i++)
-        if (now < stops[i] && stops[i] < deadline) deadline = stops[i];
-    return deadline;
-}
-
-static void edge_release(void) {
-    if (!s_edge_held) return;
-    snes_beam_hold(0);
-    s_edge_held = 0;
-}
-
-static void edge_step(uint64_t frame_end) {
-    const uint64_t now = g_cpu.master_cycles;
-    if (s_edge_held && now < s_edge_held) return;
-    edge_release();
-    const uint64_t edge = g_snes->vPos == 261u ? vblank_end() : g_snes->vPos == VBLANK_LINE - 1u ? frame_end : 0;
-    if (now >= edge || now + VBLANK_EDGE_LEAD < edge) return;
-    snes_sync_master_clock(g_snes, edge);
-    if (edge == frame_end) {
-        /* The beam's next step at V=225 H=0 starts the automatic read: its pads now, its busy bit later on MesenCE. */
-        snes_sync_master_clock(g_snes, edge + 2);
-        g_snes->autoJoyTimer = 0;
-    }
-    snes_beam_hold(1);
-    s_edge_held = edge;
-}
 
 /* Every deadline goes through here, so a C binding can tell whether it would run past one. `hard` is the first
  * stop that is not a DRAM refresh: a refresh is charged after the slice from the points it crossed (refresh_end),
@@ -548,16 +491,18 @@ void soe_frame_driver_run_frame(void) {
      * DMA does); the auto-joypad window and the refresh points count from line 225 itself. */
     {
         uint64_t back = g_snes->hPos;
+        const bool past_wrap = !booting && g_snes->vPos < VBLANK_LINE;
+        s_field_parity = g_snes->fieldParity != past_wrap;
         if (g_snes->vPos > VBLANK_LINE && g_snes->vPos < 262u) back += (uint64_t)(g_snes->vPos - VBLANK_LINE) * LINE_CLOCKS;
         /* Past the wrap: a DMA ran through the whole vblank (NMI 3065 of replay 05 comes on line 29), the window long over. */
-        else if (!booting && g_snes->vPos < VBLANK_LINE) back += (uint64_t)(g_snes->vPos + 262u - VBLANK_LINE) * LINE_CLOCKS;
+        else if (past_wrap) back += (uint64_t)(g_snes->vPos + 262u - VBLANK_LINE) * LINE_CLOCKS;
+        if ((past_wrap || g_snes->vPos > 240u) && snes_line_clocks(g_snes, 240u, s_field_parity) != LINE_CLOCKS) back -= 4u;
         /* A state loaded before the first frame: snesrecomp sets the beam's clock to the CPU's, still near 0, under the
          * saved V/H, so line 225 would have started before clock 0 and every refresh point below wrapped around (a
          * hang in refresh_points_upto). Pinned to 0 the first field's refresh points sit up to a line off; from the
          * next field they are exact again. Found 2026-11-03 (tests/save_state_resume.sh, docs/bugs-and-todos.md). */
         s_line0 = g_snes->beamMasterLast > back ? g_snes->beamMasterLast - back : 0;
     }
-    s_auto_joy_due = !booting;
     RtlSetCpuAccessClockHook(access_clock);
 
     if (s_state_in_nmi) {   /* the state's NMI, already taken: its handler, not counted as a key */
@@ -575,7 +520,7 @@ void soe_frame_driver_run_frame(void) {
             /* While a late NMI is possible, stop after every instruction to see whether it enabled NMI. */
             const bool watch = !booting && late_nmi_possible() && late_steps < MAX_LATE_NMI_STEPS;
             const uint64_t before = g_cpu.master_cycles;
-            uint64_t deadline = watch ? before + 1 : edge_stop(before, next_refresh_after(before) + 1, frame_end);
+            uint64_t deadline = watch ? before + 1 : next_refresh_after(before) + 1;
             if (deadline > cpu_end) deadline = cpu_end;
             /* Every slice records its instructions: a slice that stops for a refresh can still end past V=225 (a
              * long DMA), and its last instruction decides the NMI as the final slice's does. */
@@ -592,12 +537,11 @@ void soe_frame_driver_run_frame(void) {
             if (free_slice_end()) slices--; /* free slices do not count against the field's slice budget */
             if (approach) g_interp_bridge_pc_hook = s_bank_stats > 0 ? count_pc : 0;
             update_resume_pc();
-            align_beam();
-            edge_step(frame_end);
+            /* The beam where the CPU is: RDNMI and the vblank flag for the late-NMI watch below. */
+            if (!s_free) snes_sync_master_clock(g_snes, g_cpu.master_cycles);
             soe_ppu_fixes_slice_end();
             if (interp_bridge_lle_took_wai()) s_wai_halted = true;
             if (approach && !s_wai_halted) finish_nmi_approach(frame_end);
-            auto_joypad_begin();
             const bool refresh_stop = !watch && deadline < cpu_end && g_cpu.master_cycles > before;
             /* A step that ran nothing (a parked wait) falls through to the parking below, as unwatched. */
             if (watch && g_cpu.master_cycles > before && g_cpu.master_cycles < frame_end) {
@@ -643,7 +587,6 @@ void soe_frame_driver_run_frame(void) {
         advance_parked(next);
     }
 
-    edge_release();
     {
         int walk = 0;
         if (g_cpu.master_cycles < frame_end) advance_parked(frame_end);
@@ -654,67 +597,6 @@ void soe_frame_driver_run_frame(void) {
         }
         cart_sync_coprocessors(g_snes->cart, g_cpu.master_cycles);
     }
-    align_field_length();
-}
-
-/*
- * The short scanline. On NTSC without interlace, line 240 of every other field lasts 1360 master clocks, not 1364
- * (fullsnes; MesenCE SnesPpu.cpp: "scanline 240 of every other frame ... is only 1360 cycles"). snesrecomp's beam
- * makes every field 357,368 clocks, so the recomp gained 2 clocks a field on MesenCE: 774 by field 378, enough to
- * move where the decompressor stood when NMI came back (docs/imperfections/short-scanline.md).
- * Field k ends (V=225) at FIRST_VBLANK + k * 357,366 (+2 when k is odd), measured on MesenCE from power-on. At the
- * end of each field the beam's H position is set so that the next V=225 falls there; the 4 clocks are taken at
- * V=225 rather than at line 240, which moves H by 4 clocks for lines 225-240 of those fields only.
- */
-#define FIRST_VBLANK (225ull * LINE_CLOCKS)
-#define MEAN_FIELD 357366ull
-
-static uint64_t field_end(uint64_t k) { return FIRST_VBLANK + k * MEAN_FIELD + (k & 1 ? 2 : 0); }
-
-/* Where MesenCE's line 225 of this field started: field_end(k). Our beam's starts 4 clocks earlier in the fields
- * whose short line it takes at V=225 (see above). */
-static uint64_t mesen_line0(void) {
-    if (s_line0 < FIRST_VBLANK) return s_line0;
-    const uint64_t k = (s_line0 - FIRST_VBLANK + MEAN_FIELD / 2) / MEAN_FIELD;
-    return field_end(k) == s_line0 + 4 ? s_line0 + 4 : s_line0; /* only once the field grid holds (not in boot) */
-}
-
-/* Where the beam's line 225 of field k starts under this convention: the next V=225 falls on field_end(k + 1). */
-static uint64_t beam_line0(uint64_t k) { return field_end(k + 1) - FIELD_CLOCKS; }
-
-/*
- * A host frame that a long DMA carries across several fields (the reset code's three 64 KB clears) ends past V=225,
- * so align_field_length skips those fields and the beam keeps the framework's 357,368 clocks for each: 4 clocks
- * behind MesenCE's per short field it missed, until the next aligned field end. At NMI 11986 of the attract replay
- * the reset's RNG seed latched H on line 124 two dots early (docs/imperfections/short-scanline.md). After each slice
- * the beam is put where this convention has it at its own clock, when the move stays on its line and on one side of
- * H=1024 and H=0 (no line, HDMA or auto-joypad event is skipped or repeated); otherwise the next slice does it.
- */
-static void align_beam(void) {
-    const uint64_t t = g_snes->beamMasterLast;
-    if (t < FIRST_VBLANK) return;
-    uint64_t k = (t - FIRST_VBLANK) / MEAN_FIELD;
-    while (k > 0 && beam_line0(k) > t) k--;
-    while (beam_line0(k + 1) <= t) k++;
-    if (beam_line0(k) > t) return;
-    const uint64_t off = t - beam_line0(k);
-    const unsigned v = (unsigned)((VBLANK_LINE + off / LINE_CLOCKS) % 262u), h = (unsigned)(off % LINE_CLOCKS);
-    const unsigned oh = g_snes->hPos;
-    if (v != g_snes->vPos || h == oh || !h || !oh || (h < 1024u) != (oh < 1024u)) return;
-    static int log = -1;
-    if (log < 0) log = getenv("SOE_BEAM_LOG") != NULL;
-    if (log) fprintf(stderr, "[beam] at %llu line %u: H %u -> %u\n", (unsigned long long)t, v, oh, h);
-    s_line0 -= (int64_t)h - (int64_t)oh;
-    g_snes->hPos = (uint16_t)h;
-}
-
-static void align_field_length(void) {
-    /* The beam can stand past H=0 here: an instruction that ended after V=225 already moved it. */
-    const uint64_t line = g_snes->beamMasterLast - g_snes->hPos; /* where the beam's line 225 started */
-    if (line < FIRST_VBLANK || g_snes->vPos != VBLANK_LINE) return;
-    const uint64_t k = (line - FIRST_VBLANK + MEAN_FIELD / 2) / MEAN_FIELD;
-    const int64_t h = (int64_t)g_snes->hPos + (int64_t)line + (int64_t)FIELD_CLOCKS - (int64_t)field_end(k + 1);
-    if (h >= 0 && h < LINE_CLOCKS) g_snes->hPos = (uint16_t)h;
 }
 
 void soe_frame_driver_reset(void) {

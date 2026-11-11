@@ -80,8 +80,8 @@ static void cgram_dma_open_bus(uint32_t wram, uint8_t value, const char *via) {
 static struct { bool pending, second; uint8_t pointer; uint16_t size; uint64_t start; uint16_t cgram[256]; } s_cgram_dma;
 
 static bool cgram_writable(uint64_t t) {
-    const uint64_t line0 = soe_frame_driver_line0();
-    const uint64_t j = (t - line0) / LINE_CLOCKS, h = (t - line0) % LINE_CLOCKS, line = (VBLANK_LINE + j) % 262u;
+    unsigned line, h;
+    soe_frame_driver_beam_at(t, &line, &h);
     return line >= VBLANK_LINE || line == 0 || h < 88u || h >= 1096u;
 }
 
@@ -93,7 +93,9 @@ static bool cgram_writable(uint64_t t) {
 static struct { unsigned left; uint64_t t; uint16_t vram[0x8000]; } s_vram_dma;
 
 static bool vram_writable(uint64_t t) {
-    return (VBLANK_LINE + (t - soe_frame_driver_line0()) / LINE_CLOCKS) % 262u >= VBLANK_LINE;
+    unsigned line, h;
+    soe_frame_driver_beam_at(t, &line, &h);
+    return line >= VBLANK_LINE;
 }
 
 static void vram_dma_write(uint32_t byte_addr, uint8_t value) {

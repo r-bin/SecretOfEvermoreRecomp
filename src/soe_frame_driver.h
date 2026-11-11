@@ -29,6 +29,8 @@ void soe_frame_driver_free_time(bool on);
 /* For soe_ppu_fixes.c: where this field's line 225 began, the DRAM refresh points from there up to a clock, and the
  * last instruction the CPU started (0: none recorded in this slice). */
 uint64_t soe_frame_driver_line0(void);
+/* The beam's line and H clock at a master clock from this field's line 225 on, short lines included. */
+void soe_frame_driver_beam_at(uint64_t clock, unsigned *line, unsigned *h);
 uint64_t soe_frame_driver_refresh_points_upto(uint64_t clock);
 uint32_t soe_frame_driver_last_pc(void);
 
